@@ -16,8 +16,10 @@ public class Matcher {
 	public int nodes; //execution数量(execution里可以有多个operator)
 	public float[][] bandWidth; //节点间带宽
 	public Map<OperatorID,Operator_StateSize> stateSize; //算子状态大小，key ：OperatorID, Operator_StateSize内部是每个子任务的状态大小
-
-	private Map<String,Operator_StateSize> IPstateSize;
+	private float[][] transmission;//节点传输状态用时
+	private float[] confidence;//信誉值
+	private float[][] distance;//距离
+	private Map<String,Operator_StateSize> IPStateSize;//每个节点上所有算子的状态加起来有多大
 	public int IPNodes;//节点数量
 	public String[] IP;//节点IP
 	public Map<ExecutionVertex,String> executionIP;
@@ -57,39 +59,99 @@ public class Matcher {
 		}
 	}
 
-	public void computeBandWidth(String[] IP,int IpNodes){
-
+	private void computeBandWidth(String[] IP,int IpNodes){
+		bandWidth = new float[IPNodes][IPNodes];
 	}
-
+	private void computeTransmissionTime(){
+		transmission = new float[IPNodes][IPNodes];
+		for (int i = 0; i < IPNodes; ++i) {
+			for (int j = 0; j < IPNodes; ++j) {
+				transmission[i][j] = IPStateSize.get(IP[i]) / bandWidth[i][j];
+			}
+		}
+	}
 	private void getIPStateSize() {
 		for (Map.Entry<OperatorID, Operator_StateSize> entry : stateSize.entrySet()) {
+			IPStateSize = new HashMap<>();
 			String IP = entry.getKey().getIP();
 			Operator_StateSize opStateSize = entry.getValue();
-			IPstateSize.put(IP,IPstateSize.get(IP) + opStateSize);
+			IPStateSize.put(IP, IPStateSize.get(IP) + opStateSize);
 		}
 	}
 	private void getDistance() {
-
+		distance = new float[IPNodes][IPNodes];
 	}
-	private void getNearMatchScore() {
-
+	private void getConfidence() {
+		confidence = new float[IPNodes];
 	}
-	private void getFarMatchScore() {
-
+	private void getNearMatchScore(HashMap<Integer, Integer> matched) {
+		score = new int[IPNodes][IPNodes];
+		float maxTransmission = 0;
+		float maxDistance = 0;
+		for (int i = 0; i < IPNodes; ++i) {
+			for (int j = 0; j < IPNodes; ++j) {
+				maxTransmission = transmission[i][j] > maxTransmission ? transmission[i][j] : maxTransmission;
+				maxDistance = distance[i][j] > maxDistance ? distance[i][j] : maxDistance;
+			}
+		}
+		for (int i = 0; i < IPNodes; ++i) {
+			for (int j = 0; j < IPNodes; ++j) {
+				if(i == j) {
+					score[i][j] = 0;
+				}
+				else {
+					score[i][j] = (int) (distance[i][j] / maxDistance * 100 + (maxTransmission - transmission[i][j]) / maxTransmission * 100);
+				}
+			}
+		}
+		if (matched != null) {
+			for (Integer from : matched.keySet()) {  //不可以选择已经选择过的点
+				Integer to = matched.get(from);
+				score[from][to] = 0;
+			}
+		}
+	}
+	private void getFarMatchScore(HashMap<Integer, Integer> matched) {
+		score = new int[IPNodes][IPNodes];
+		float maxTransmission = 0;
+		float maxDistance = 0;
+		for (int i = 0; i < IPNodes; ++i) {
+			for (int j = 0; j < IPNodes; ++j) {
+				maxTransmission = transmission[i][j] > maxTransmission ? transmission[i][j] : maxTransmission;
+				maxDistance = distance[i][j] > maxDistance ? distance[i][j] : maxDistance;
+			}
+		}
+		for (int i = 0; i < IPNodes; ++i) {
+			for (int j = 0; j < IPNodes; ++j) {
+				if(i == j) {
+					score[i][j] = 0;
+				}
+				else {
+					score[i][j] = (int) ((maxDistance - distance[i][j]) / maxDistance * 100 + (maxTransmission - transmission[i][j]) / maxTransmission * 100);
+				}
+			}
+		}
+		if (matched != null) {
+			for (Integer from : matched.keySet()) {  //不可以选择已经选择过的点
+				Integer to = matched.get(from);
+				score[from][to] = 0;
+			}
+		}
 	}
 	//计算每个节点上的算子应该把状态发送到哪些节点 IP-IP(源-目的)
 	public Map<String,String> compute(Map<OperatorID, Operator_StateSize> opState_size){
 		KMRunner runner = new KMRunner();
 
 		computeBandWidth(IP,IPNodes); //计算节点间带宽
+		computeTransmissionTime(); //计算状态传输时间
 		getIPStateSize(); //计算节点的状态大小
 		getDistance(); //计算节点间距离
-		getNearMatchScore(); //计算近点匹配的得分
+		getConfidence(); //计算节点信誉分
+		getNearMatchScore(null); //计算近点匹配的得分
 		HashMap<Integer,Integer> match1 = runner.run(score);
-		getFarMatchScore(); //计算远点匹配的得分
+		getFarMatchScore(match1); //计算远点匹配的得分
 		HashMap<Integer,Integer> match2 = runner.run(score);
 		return null;
 	}
-
 
 }
