@@ -105,7 +105,7 @@ public class Matcher {
 			}
 		}
 		if (matched != null) {
-			for (Integer from : matched.keySet()) {  //不可以选择已经选择过的点
+			for (Integer from : matched.keySet()) {  //不选择已经选择过的点
 				Integer to = matched.get(from);
 				score[from][to] = 0;
 			}
@@ -132,7 +132,7 @@ public class Matcher {
 			}
 		}
 		if (matched != null) {
-			for (Integer from : matched.keySet()) {  //不可以选择已经选择过的点
+			for (Integer from : matched.keySet()) {  //不选择已经选择过的点
 				Integer to = matched.get(from);
 				score[from][to] = 0;
 			}
@@ -141,7 +141,7 @@ public class Matcher {
 	//计算每个节点上的算子应该把状态发送到哪些节点 IP-IP(源-目的)
 	public Map<String,String> compute(Map<OperatorID, Operator_StateSize> opState_size){
 		KMRunner runner = new KMRunner();
-
+		Map<String,String> res = new HashMap<String,String>();
 		computeBandWidth(IP,IPNodes); //计算节点间带宽
 		computeTransmissionTime(); //计算状态传输时间
 		getIPStateSize(); //计算节点的状态大小
@@ -151,7 +151,10 @@ public class Matcher {
 		HashMap<Integer,Integer> match1 = runner.run(score);
 		getFarMatchScore(match1); //计算远点匹配的得分
 		HashMap<Integer,Integer> match2 = runner.run(score);
-		return null;
+		for(int i = 0 ;i < nodes ;++i) {
+			res.put(IP[i],IP[match1.get(i)] + IP[match2.get(i)]);
+		}
+		return res;
 	}
 
 }
