@@ -152,7 +152,7 @@ public class Matcher {
 		getFarMatchScore(match1); //计算远点匹配的得分
 		HashMap<Integer,Integer> match2 = runner.run(score);
 		for(int i = 0 ;i < nodes ;++i) {
-			res.put(IP[i],IP[match1.get(i)] + IP[match2.get(i)]);
+			res.put(IP[i],IP[match1.get(i)] + ',' + IP[match2.get(i)]);
 		}
 		return res;
 	}
