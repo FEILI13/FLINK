@@ -20,9 +20,15 @@ package org.apache.flink.runtime.state.internal;
 
 import org.apache.flink.api.common.state.State;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.runtime.executiongraph.RescaleState;
+import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.StateEntry;
+import org.apache.flink.runtime.state.rescale.SubTaskMigrationInstruction;
+import org.apache.flink.runtime.taskexecutor.rpc.RpcRescalingResponder;
 
 import java.util.Collection;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * The {@code InternalKvState} is the root of the internal state type hierarchy, similar to the
@@ -84,6 +90,29 @@ public interface InternalKvState<K, N, V> extends State {
 	 * @param namespace The namespace.
 	 */
 	void setCurrentNamespace(N namespace);
+
+	default void markStateKeyGroups(
+		List<KeyGroupRange> keyGroupsInCharge,
+		RescaleState rescaleState,
+		RpcRescalingResponder rescalingResponder,
+		int subtaskIndex,
+		String taskName) {
+		throw new UnsupportedOperationException();
+	}
+
+	default CompletableFuture enableMarkedStateKeyGroups(
+		RescaleState rescaleState,
+		SubTaskMigrationInstruction instruction) {
+		throw new UnsupportedOperationException();
+	}
+
+	default byte[] fetchKeyGroupFromTask(int keyGroupIndex) {
+		throw new UnsupportedOperationException();
+	}
+
+	default void fetchKeyFromTask(byte[] keyData, int keyGroupIndex) {
+		throw new UnsupportedOperationException();
+	}
 
 	/**
 	 * Returns the serialized value for the given key and namespace.

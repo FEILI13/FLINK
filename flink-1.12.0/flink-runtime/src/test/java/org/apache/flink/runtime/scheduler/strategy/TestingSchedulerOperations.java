@@ -37,6 +37,11 @@ public class TestingSchedulerOperations implements SchedulerOperations {
 		scheduledVertices.add(executionVertexDeploymentOptions);
 	}
 
+	@Override
+	public void allocateSlotsAndDeployForRescale(List<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions) {
+		throw new UnsupportedOperationException("This method is not implemented for " + this.getClass());
+	}
+
 	List<List<ExecutionVertexDeploymentOption>> getScheduledVertices() {
 		return Collections.unmodifiableList(scheduledVertices);
 	}

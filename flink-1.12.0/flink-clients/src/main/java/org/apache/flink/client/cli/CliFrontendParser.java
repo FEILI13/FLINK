@@ -160,6 +160,18 @@ public class CliFrontendParser {
 			"Pip (version >= 7.1.0) and SetupTools (version >= 37.0.0). " +
 			"Please ensure that the specified environment meets the above requirements.");
 
+	static final Option RESCALE_MODE_OPTION = new Option("rmd", "rescaleMode", true,
+		"Rescale mode (for test only).");
+
+	static final Option RESCALE_PARALLELISM_OPTION = new Option("rp", "rescaleParallelism", true,
+		"Rescale global parallelism (for test only)." +
+			"If this is provided, rescaleParallelismList option is disabled.");
+
+	static final Option RESCALE_PARALLELISM_LIST_OPTION = new Option("rpl", "rescaleParallelismList", true,
+		"Rescale parallelism list (for test only)." +
+			"Surrounded by '<>' and each operator separated by ';'" +
+			".e.g. \"-rpl [source, 1; map, 2]\"");
+
 	static {
 		HELP_OPTION.setRequired(false);
 
@@ -299,6 +311,14 @@ public class CliFrontendParser {
 		Options options = buildGeneralOptions(new Options());
 		options.addOption(SAVEPOINT_DISPOSE_OPTION);
 		return options.addOption(JAR_OPTION);
+	}
+
+	static Options getRescaleCommandOptions() {
+		Options options = buildGeneralOptions(new Options());
+		options.addOption(RESCALE_MODE_OPTION);
+		options.addOption(RESCALE_PARALLELISM_OPTION);
+		options.addOption(RESCALE_PARALLELISM_LIST_OPTION);
+		return options;
 	}
 
 	// --------------------------------------------------------------------------------------------

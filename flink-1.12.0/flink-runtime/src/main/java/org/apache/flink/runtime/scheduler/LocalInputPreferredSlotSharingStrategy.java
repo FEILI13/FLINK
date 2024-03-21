@@ -71,6 +71,16 @@ class LocalInputPreferredSlotSharingStrategy implements SlotSharingStrategy {
 		return new HashSet<>(executionSlotSharingGroupMap.values());
 	}
 
+	@Override
+	public void updateForRescale(SlotSharingStrategy newSlotSharingStrategy) {
+		Map<ExecutionVertexID, ExecutionSlotSharingGroup> newMap = ((LocalInputPreferredSlotSharingStrategy) newSlotSharingStrategy).executionSlotSharingGroupMap;
+		for (ExecutionVertexID executionVertexID : newMap.keySet()) {
+			if (!this.executionSlotSharingGroupMap.containsKey(executionVertexID)) {
+				this.executionSlotSharingGroupMap.put(executionVertexID, newMap.get(executionVertexID));
+			}
+		}
+	}
+
 	static class Factory implements SlotSharingStrategy.Factory {
 
 		public LocalInputPreferredSlotSharingStrategy create(

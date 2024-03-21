@@ -21,6 +21,8 @@ package org.apache.flink.runtime.scheduler;
 import org.apache.flink.runtime.executiongraph.Execution;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 
+import org.apache.hadoop.hdfs.server.namenode.UnsupportedActionException;
+
 import java.util.List;
 
 /**
@@ -42,4 +44,6 @@ public interface ExecutionSlotAllocator {
 	 * @param executionVertexId identifying which slot request should be canceled.
 	 */
 	void cancel(ExecutionVertexID executionVertexId);
+
+	void updateForRescale(ExecutionSlotAllocator executionSlotAllocator) throws UnsupportedActionException;
 }

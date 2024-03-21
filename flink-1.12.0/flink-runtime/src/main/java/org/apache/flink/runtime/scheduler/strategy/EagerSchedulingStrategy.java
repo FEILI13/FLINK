@@ -24,6 +24,8 @@ import org.apache.flink.runtime.scheduler.DeploymentOption;
 import org.apache.flink.runtime.scheduler.ExecutionVertexDeploymentOption;
 import org.apache.flink.runtime.scheduler.SchedulerOperations;
 
+import org.apache.hadoop.hdfs.server.namenode.UnsupportedActionException;
+
 import java.util.List;
 import java.util.Set;
 

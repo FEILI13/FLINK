@@ -20,6 +20,7 @@ package org.apache.flink.runtime.state.heap;
 
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.runtime.state.RegisteredKeyValueStateBackendMetaInfo;
+import org.apache.flink.runtime.state.redis.ProcessLevelConf;
 
 /**
  * Asynchronous behavior for heap snapshot strategy.
@@ -38,6 +39,10 @@ class AsyncSnapshotStrategySynchronicityBehavior<K> implements SnapshotStrategyS
 		InternalKeyContext<K> keyContext,
 		RegisteredKeyValueStateBackendMetaInfo<N, V> newMetaInfo,
 		TypeSerializer<K> keySerializer) {
-		return new CopyOnWriteStateTable<>(keyContext, newMetaInfo, keySerializer);
+		if (Boolean.parseBoolean(ProcessLevelConf.getProperty(ProcessLevelConf.COMMON_POST_FETCH_ENABLED))) {
+			return new PostFetchStateTable<>(keyContext, newMetaInfo, keySerializer);
+		} else {
+			return new CopyOnWriteStateTable<>(keyContext, newMetaInfo, keySerializer);
+		}
 	}
 }

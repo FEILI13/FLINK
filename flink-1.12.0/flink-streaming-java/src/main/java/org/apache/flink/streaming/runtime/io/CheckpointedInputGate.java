@@ -30,7 +30,10 @@ import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.EndOfChannelStateEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.streaming.api.operators.MailboxExecutor;
+
+import org.apache.flink.streaming.runtime.tasks.StreamTask;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,6 +67,8 @@ public class CheckpointedInputGate implements PullingAsyncDataInput<BufferOrEven
 
 	/** Indicate end of the input. */
 	private boolean isFinished;
+
+	private StreamTask streamTask;
 
 	/**
 	 * Creates a new checkpoint stream aligner.
@@ -167,6 +172,10 @@ public class CheckpointedInputGate implements PullingAsyncDataInput<BufferOrEven
 		return next;
 	}
 
+	public void setStreamTask(StreamTask streamTask) {
+		this.streamTask = streamTask;
+	}
+
 	private Optional<BufferOrEvent> handleEvent(BufferOrEvent bufferOrEvent) throws IOException, InterruptedException {
 		Class<? extends AbstractEvent> eventClass = bufferOrEvent.getEvent().getClass();
 		if (eventClass == CheckpointBarrier.class) {
@@ -188,6 +197,13 @@ public class CheckpointedInputGate implements PullingAsyncDataInput<BufferOrEven
 				announcedEvent);
 			CheckpointBarrier announcedBarrier = (CheckpointBarrier) announcedEvent;
 			barrierHandler.processBarrierAnnouncement(announcedBarrier, eventAnnouncement.getSequenceNumber(), bufferOrEvent.getChannelInfo());
+		}
+		else if (eventClass == RescaleSignal.class) {
+			this.mailboxExecutor.execute(
+				() -> {
+					this.streamTask.handleReceivedRescaleSignal((RescaleSignal) (bufferOrEvent.getEvent()), bufferOrEvent.getChannelInfo());
+				},
+				"handleRescaleSignalEvent");
 		}
 		else if (bufferOrEvent.getEvent().getClass() == EndOfChannelStateEvent.class) {
 			upstreamRecoveryTracker.handleEndOfRecovery(bufferOrEvent.getChannelInfo());

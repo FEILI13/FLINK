@@ -26,19 +26,27 @@ import org.apache.flink.api.common.state.StateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
+import org.apache.flink.runtime.executiongraph.RescaleState;
+import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.heap.InternalKeyContext;
+import org.apache.flink.runtime.state.heap.PostFetchHeapValueState;
 import org.apache.flink.runtime.state.internal.InternalKvState;
+import org.apache.flink.runtime.state.rescale.SubTaskMigrationInstruction;
 import org.apache.flink.runtime.state.ttl.TtlStateFactory;
 import org.apache.flink.runtime.state.ttl.TtlTimeProvider;
+import org.apache.flink.runtime.taskexecutor.rpc.RpcRescalingResponder;
 import org.apache.flink.util.IOUtils;
 import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Stream;
 
+import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
@@ -365,4 +373,48 @@ public abstract class AbstractKeyedStateBackend<K> implements
 		return false;
 	}
 
+	@Override
+	public void markStateKeyGroups(
+		List<KeyGroupRange> keyGroupsInCharge,
+		RescaleState rescaleState,
+		RpcRescalingResponder rescalingResponder,
+		int subtaskIndex,
+		String taskName) {
+		if (lastState != null) {
+			checkArgument(this.lastState instanceof PostFetchHeapValueState);
+			this.lastState.markStateKeyGroups(keyGroupsInCharge, rescaleState, rescalingResponder, subtaskIndex, taskName);
+		}
+	}
+
+	@Override
+	public CompletableFuture enableMarkedStateKeyGroups(
+		RescaleState rescaleState,
+		SubTaskMigrationInstruction instruction) {
+		if (lastState != null){
+			checkArgument(this.lastState instanceof PostFetchHeapValueState);
+			return this.lastState.enableMarkedStateKeyGroups(rescaleState, instruction);
+		} else {
+			return CompletableFuture.completedFuture(Acknowledge.get());
+		}
+	}
+
+	@Override
+	public byte[] fetchKeyGroupFromTask(int keyGroupIndex) {
+		if (lastState != null){
+			checkArgument(this.lastState instanceof PostFetchHeapValueState);
+			return this.lastState.fetchKeyGroupFromTask(keyGroupIndex);
+		} else {
+			throw new UnknownError(); // this shouldn't happen
+		}
+	}
+
+	@Override
+	public void fetchKeyFromTask(byte[] keyData, int keyGroupIndex) {
+		if (lastState != null){
+			checkArgument(this.lastState instanceof PostFetchHeapValueState);
+			this.lastState.fetchKeyFromTask(keyData, keyGroupIndex);
+		} else {
+			throw new UnknownError(); // this shouldn't happen
+		}
+	}
 }

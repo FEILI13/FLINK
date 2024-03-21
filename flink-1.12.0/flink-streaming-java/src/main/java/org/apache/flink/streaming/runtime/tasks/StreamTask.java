@@ -19,6 +19,7 @@ package org.apache.flink.streaming.runtime.tasks;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.api.common.TaskInfo;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.io.InputStatus;
@@ -30,10 +31,12 @@ import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetricsBuilder;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
+import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.checkpoint.channel.SequentialChannelStateReader;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
+import org.apache.flink.runtime.executiongraph.RescaleState;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
 import org.apache.flink.runtime.io.network.api.writer.MultipleRecordWriters;
 import org.apache.flink.runtime.io.network.api.writer.NonRecordWriter;
@@ -49,10 +52,14 @@ import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.runtime.state.CheckpointStorageWorkerView;
+import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.runtime.state.StateBackendLoader;
+import org.apache.flink.runtime.state.redis.ProcessLevelConf;
 import org.apache.flink.runtime.state.ttl.TtlTimeProvider;
+import org.apache.flink.runtime.taskexecutor.rpc.RpcRescalingResponder;
 import org.apache.flink.runtime.taskmanager.DispatcherThreadFactory;
 import org.apache.flink.runtime.util.ExecutorThreadFactory;
 import org.apache.flink.runtime.util.FatalExitExceptionHandler;
@@ -91,8 +98,10 @@ import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
@@ -229,6 +238,12 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	private long latestAsyncCheckpointStartDelayNanos;
 
+	// indicating which rescale stage we are at
+	private RescaleSignal handlingRescaleSignal = new RescaleSignal();
+	private Set<Integer> receivedChannelsAtCurrentStage = new HashSet<>();
+	private int numChannelsToWaitAtCurrentStage = -1;
+	private RpcRescalingResponder rescalingResponder = null;
+
 	// ------------------------------------------------------------------------
 
 	/**
@@ -290,6 +305,10 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		this.recordWriter = createRecordWriterDelegate(configuration, environment);
 		this.actionExecutor = Preconditions.checkNotNull(actionExecutor);
 		this.mailboxProcessor = new MailboxProcessor(this::processInput, mailbox, actionExecutor);
+
+		this.mailboxProcessor.setRescaleState(environment.getTaskConfiguration().get(RescaleState.getConfigOption()));
+		LOG.info("Rescale state of " + this.getName() + " is initialized to be " + mailboxProcessor.getRescaleState());
+
 		this.mailboxProcessor.initMetric(environment.getMetricGroup());
 		this.mainMailboxExecutor = mailboxProcessor.getMainMailboxExecutor();
 		this.asyncExceptionHandler = new StreamTaskAsyncExceptionHandler(environment);
@@ -487,6 +506,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		// task specific initialization
 		init();
+		if (!(this instanceof OneInputStreamTask)) {
+			LOG.info("This StreamTask is not a OneInputStreamTask");
+		}
 
 		// save the work of reloading state, etc, if the task is already canceled
 		if (canceled) {
@@ -1216,5 +1238,319 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	protected long getAsyncCheckpointStartDelayNanos() {
 		return latestAsyncCheckpointStartDelayNanos;
+	}
+
+	public void changeRescaleState(RescaleState targetRescaleState) {
+		mailboxProcessor.setRescaleState(targetRescaleState);
+//		mainMailboxExecutor.execute(
+//			() -> {
+//				RescaleState cur = mailboxProcessor.getRescaleState();
+//				if (cur == targetRescaleState) {
+//					LOG.info("Rescale state of " + this.getName() + " keeps to be " + targetRescaleState);
+//				} else {
+//					LOG.info("Rescale state of " + this.getName() + " changes from " + cur + " to " + targetRescaleState);
+//					mailboxProcessor.setRescaleState(targetRescaleState);
+//				}
+//			},
+//			"changeRescaleState");
+	}
+
+	@Override
+	public void triggerRescaleSignal(RescaleSignal rescaleSignal) {
+		mainMailboxExecutor.execute(
+			() -> {
+				sendRescaleSignalDownStream(rescaleSignal);
+				handleRescaleSignalInternal(rescaleSignal);
+			},
+			"triggerRescaleSignal");
+	}
+
+	private void sendRescaleSignalDownStream(RescaleSignal rescaleSignal) {
+
+		LOG.info("Starting sending rescale signal ({}) from task {}", rescaleSignal, getName());
+
+		try {
+			recordWriter.broadcastEvent(rescaleSignal);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	private void sendRescaleSignalDownStreamIfInNewStage(RescaleSignal rescaleSignal, boolean needToSwitchStage) {
+		if (needToSwitchStage) {
+			sendRescaleSignalDownStream(rescaleSignal);
+		}
+	}
+
+	public void handleReceivedRescaleSignal(RescaleSignal rescaleSignal, InputChannelInfo channelInfo) {
+		try {
+			boolean needToSwitchStage = handlingRescaleSignal.getTimeStampAsID() != rescaleSignal.getTimeStampAsID();
+			if (needToSwitchStage && !handlingRescaleSignal.getType().canTransferTo(rescaleSignal.getType())) {
+				// most likely it is an out-dated signal
+				return;
+			}
+
+			LOG.info("{} received rescaleSignal ({}) from channel {}", getName(), rescaleSignal, channelInfo.getInputChannelIdx());
+			handleChannelsToWait(rescaleSignal, channelInfo, needToSwitchStage);
+			sendRescaleSignalDownStreamIfInNewStage(rescaleSignal, needToSwitchStage);
+			handleRescaleSignalInternal(rescaleSignal);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	private void handleChannelsToWait(RescaleSignal rescaleSignal, InputChannelInfo channelInfo, boolean needToSwitchStage) {
+		if (needToSwitchStage) {
+			receivedChannelsAtCurrentStage.clear();
+			numChannelsToWaitAtCurrentStage = this
+				.getEnvironment().getAllInputGates()[channelInfo.getGateIdx()]
+				.getNumberOfInputChannels();
+		}
+		if (receivedChannelsAtCurrentStage.contains(channelInfo.getInputChannelIdx())) {
+			return;
+		}
+		receivedChannelsAtCurrentStage.add(channelInfo.getInputChannelIdx());
+		numChannelsToWaitAtCurrentStage--;
+		LOG.info("{} still waits for {} channels", getName(), numChannelsToWaitAtCurrentStage);
+	}
+
+	/**
+	 * This should be called:
+	 * 1. If it is a source operator, it handles rescaleSignal immediately after sending the signal downstream.
+	 * 2. It is a non-source operator, it handles rescaleSignal after receiving one from upstream.
+	 */
+	private void handleRescaleSignalInternal(RescaleSignal rescaleSignal) {
+		HandleRescaleSignalResult handleRescaleSignalResult = HandleRescaleSignalResult.NO_WAIT_AND_DONT_NOTIFY_JOB_MASTER;
+		switch (rescaleSignal.getType()) {
+			case PREPARE:
+				handleRescaleSignalResult = handleRescaleSignalForPrepareStage(rescaleSignal);
+				break;
+			case CREATE:
+				handleRescaleSignalResult = handleRescaleSignalForCreateStage(rescaleSignal);
+				break;
+			case ALL_IN_ONCE_FETCH:
+				handleRescaleSignalResult = handleRescaleSignalForFetchStage(rescaleSignal, true);
+				break;
+			case GRADUAL_FETCH:
+				handleRescaleSignalResult = handleRescaleSignalForFetchStage(rescaleSignal, false);
+				break;
+			case CLEAN:
+				handleRescaleSignalResult = handleRescaleSignalForCleanStage(rescaleSignal);
+				break;
+			default:
+				break;
+		}
+		handlingRescaleSignal = rescaleSignal;
+		LOG.info("handlingRescaleSignal: " + handlingRescaleSignal);
+
+		notifyJobMaster(rescaleSignal, handleRescaleSignalResult.future, handleRescaleSignalResult.shouldNotifyJobMaster);
+	}
+
+	@SuppressWarnings("unchecked")
+	private void notifyJobMaster(RescaleSignal rescaleSignal, CompletableFuture optionalFuture, boolean shouldNotifyJobMaster) {
+		if (!shouldNotifyJobMaster) {
+			return;
+		}
+		if (optionalFuture != null) {
+			optionalFuture.whenCompleteAsync((a, throwable) -> {
+				if (throwable != null) {
+					((Exception) throwable).printStackTrace();
+				} else {
+					notifyJobMaster(rescaleSignal);
+				}
+			});
+		} else {
+			notifyJobMaster(rescaleSignal);
+		}
+	}
+
+	private void notifyJobMaster(RescaleSignal rescaleSignal) {
+		Environment env = getEnvironment();
+		env.acknowledgeRescaling(
+			env.getJobID(),
+			env.getExecutionId(),
+			env.getTaskInfo().getTaskNameWithSubtasks(),
+			rescaleSignal.getTimeStampAsID()
+		);
+		LOG.info("notifyJobMaster from " + getEnvironment().getTaskInfo().getTaskNameWithSubtasks() + "-" + rescaleSignal.getType());
+	}
+
+	private RpcRescalingResponder getRescalingResponder() {
+		if (rescalingResponder == null) {
+			rescalingResponder = getEnvironment().getRescalingResponder();
+		}
+		rescalingResponder.setTaskName(getEnvironment().getTaskInfo().getTaskName());
+		return rescalingResponder;
+	}
+
+	private void markCurrentKeyGroupsAsInCharge(RescaleState rescaleState) {
+		this.mainOperator.markStateKeyGroups(null, rescaleState == RescaleState.REMOVED ? rescaleState : RescaleState.NONE, getRescalingResponder(), getEnvironment().getTaskInfo().getIndexOfThisSubtask(), getEnvironment().getTaskInfo().getTaskName());
+	}
+
+	private void setStateKeyGroupsInCharge(List<KeyGroupRange> keyGroupsInCharge, RescaleState rescaleState) {
+		if (keyGroupsInCharge != null || rescaleState == RescaleState.REMOVED) {
+			this.mainOperator.markStateKeyGroups(keyGroupsInCharge, rescaleState, getRescalingResponder(), getEnvironment().getTaskInfo().getIndexOfThisSubtask(), getEnvironment().getTaskInfo().getTaskName());
+		}
+	}
+
+	private void setStateKeyGroupsInCharge(RescaleSignal rescaleSignal) {
+		TaskInfo taskInfo = this.getEnvironment().getTaskInfo();
+		String taskName = taskInfo.getTaskName();
+		int subtaskIndex = taskInfo.getIndexOfThisSubtask();
+		List<KeyGroupRange> keyGroupRanges = rescaleSignal.getOperatorKeyRange(taskName, subtaskIndex);
+		setStateKeyGroupsInCharge(keyGroupRanges, rescaleSignal.getOperatorRescaleState(taskName, subtaskIndex));
+	}
+
+	private HandleRescaleSignalResult handleRescaleSignalForPrepareStage(RescaleSignal rescaleSignal) {
+		if (handlingRescaleSignal.getType() == RescaleSignal.RescaleSignalType.PREPARE) {
+			return HandleRescaleSignalResult.NO_WAIT_AND_DONT_NOTIFY_JOB_MASTER;
+		}
+		TaskInfo taskInfo = this.getEnvironment().getTaskInfo();
+		String taskName = taskInfo.getTaskName();
+		int subtaskIndex = taskInfo.getIndexOfThisSubtask();
+		markCurrentKeyGroupsAsInCharge(rescaleSignal.getOperatorRescaleState(taskName, subtaskIndex));
+		return HandleRescaleSignalResult.NO_WAIT_AND_NOTIFY_JOB_MASTER;
+	}
+
+	private HandleRescaleSignalResult handleRescaleSignalForCreateStage(RescaleSignal rescaleSignal) {
+		if (handlingRescaleSignal.getType() == RescaleSignal.RescaleSignalType.CREATE) {
+			return HandleRescaleSignalResult.NO_WAIT_AND_DONT_NOTIFY_JOB_MASTER;
+		}
+		setStateKeyGroupsInCharge(rescaleSignal);
+		return HandleRescaleSignalResult.NO_WAIT_AND_NOTIFY_JOB_MASTER;
+	}
+
+	private HandleRescaleSignalResult handleRescaleSignalForFetchStage(RescaleSignal rescaleSignal, boolean allInOnce) {
+
+		TaskInfo taskInfo = this.getEnvironment().getTaskInfo();
+		String taskName = taskInfo.getTaskName();
+		int subtaskIndex = taskInfo.getIndexOfThisSubtask();
+		RescaleState operatorRescaleState = rescaleSignal.getOperatorRescaleState(taskName, subtaskIndex);
+		RescaleState jobVertexRescaleState = rescaleSignal.getJobVertexRescaleState(taskName);
+
+		switch (operatorRescaleState) {
+			case MODIFIED:
+				maybeUpdatePartitionStrategy(taskName, rescaleSignal, allInOnce);
+				break;
+			case NEW:
+				changeRescaleState(RescaleState.NONE);
+				break;
+			case REMOVED:
+				changeRescaleState(RescaleState.REMOVED);
+				break;
+			default:
+				break;
+		}
+
+		// aligned
+		if (jobVertexRescaleState == RescaleState.MODIFIED) {
+			if (Boolean.parseBoolean(ProcessLevelConf.getProperty(ProcessLevelConf.TEST_PARTIAL_PAUSE))) {
+				if (rescaleSignal.getTimeStampAsID() == handlingRescaleSignal.getTimeStampAsID()) {
+					return HandleRescaleSignalResult.NO_WAIT_AND_DONT_NOTIFY_JOB_MASTER;
+				} else {
+					LOG.info("enableMarkedStateKeyGroups {} at task {}.", rescaleSignal, getName());
+					return new HandleRescaleSignalResult(
+						this.mainOperator.enableMarkedStateKeyGroups(operatorRescaleState, null),
+						true);
+				}
+			}
+			// for now, ejv is marked as MODIFIED only if its parallelism is changes
+			// which means a state redistribution
+			if (allInOnce) {
+				if (numChannelsToWaitAtCurrentStage <= 0) {
+					LOG.info("enableMarkedStateKeyGroups {} at task {}.", rescaleSignal, getName());
+					return new HandleRescaleSignalResult(
+						this.mainOperator.enableMarkedStateKeyGroups(operatorRescaleState, null),
+						true);
+				} else {
+					this.mainOperator.enableMarkedStateKeyGroups(RescaleState.ALIGNING, null);
+					return new HandleRescaleSignalResult(null, false);
+				}
+			} else {
+				if (numChannelsToWaitAtCurrentStage <= 0) {
+					LOG.info("enableMarkedStateKeyGroups {} at task {}.", rescaleSignal, getName());
+					return new HandleRescaleSignalResult(
+						this.mainOperator.enableMarkedStateKeyGroups(operatorRescaleState, rescaleSignal.getOperatorInstruction(taskName, subtaskIndex)),
+						true);
+				} else {
+					this.mainOperator.enableMarkedStateKeyGroups(RescaleState.ALIGNING, rescaleSignal.getOperatorInstruction(taskName, subtaskIndex));
+					return new HandleRescaleSignalResult(null, false);
+				}
+			}
+		} else {
+			if (rescaleSignal.getTimeStampAsID() == handlingRescaleSignal.getTimeStampAsID()) {
+				return HandleRescaleSignalResult.NO_WAIT_AND_DONT_NOTIFY_JOB_MASTER;
+			} else {
+				return HandleRescaleSignalResult.NO_WAIT_AND_NOTIFY_JOB_MASTER;
+			}
+		}
+	}
+
+	private HandleRescaleSignalResult handleRescaleSignalForCleanStage(RescaleSignal rescaleSignal) {
+		if (handlingRescaleSignal.getType() == RescaleSignal.RescaleSignalType.CLEAN) {
+			return HandleRescaleSignalResult.NO_WAIT_AND_DONT_NOTIFY_JOB_MASTER;
+		}
+		return HandleRescaleSignalResult.NO_WAIT_AND_NOTIFY_JOB_MASTER;
+	}
+
+	private void maybeUpdatePartitionStrategy(String taskName, RescaleSignal rescaleSignal, boolean allInOnce) {
+		LOG.info("{} updates partition strategy", this.getName());
+
+		List<StreamEdge> outEdgesInOrder = configuration.getOutEdgesInOrder(this.getEnvironment().getUserCodeClassLoader().asClassLoader());
+
+		for (int i = 0; i < outEdgesInOrder.size(); i++) {
+			if (allInOnce) {
+				int newNumChannels = this.recordWriter.updatePartitionStrategy();
+				LOG.info(
+					"{} updates recordWriter {} to {} channels.",
+					this.getName(),
+					i,
+					newNumChannels);
+			} else {
+				this.recordWriter.updatePartitionStrategy(rescaleSignal.getRouteTableDifference(taskName));
+				LOG.info(
+					"{} updates recordWriter {} route table.",
+					this.getName(),
+					i
+				);
+			}
+		}
+	}
+
+	@Override
+	public void modifyUpperStreamChannelsForRescale(int previousNumChannels, ThrowingRunnable<? extends Exception> command, String description) {
+		final Environment env = getEnvironment();
+		final ChannelStateWriter channelStateWriter = subtaskCheckpointCoordinator.getChannelStateWriter();
+		for (final InputGate gate : env.getAllInputGates()) {
+			gate.setChannelStateWriterForNewChannels(channelStateWriter, previousNumChannels);
+		}
+
+		Preconditions.checkNotNull(inputProcessor);
+		inputProcessor.updateForRescale(getEnvironment().getIOManager());
+
+		this.mainMailboxExecutor.execute(command, description);
+	}
+
+	private static class HandleRescaleSignalResult {
+		CompletableFuture future;
+		boolean shouldNotifyJobMaster;
+
+		HandleRescaleSignalResult(CompletableFuture future, boolean shouldNotifyJobMaster) {
+			this.future = future;
+			this.shouldNotifyJobMaster = shouldNotifyJobMaster;
+		}
+
+		static final HandleRescaleSignalResult NO_WAIT_AND_NOTIFY_JOB_MASTER = new HandleRescaleSignalResult(null, true);
+		static final HandleRescaleSignalResult NO_WAIT_AND_DONT_NOTIFY_JOB_MASTER = new HandleRescaleSignalResult(null, false);
+	}
+
+	@Override
+	public byte[] fetchKeyGroupFromTask(int keyGroupIndex) {
+		return this.mainOperator.fetchKeyGroupFromTask(keyGroupIndex);
+	}
+
+	@Override
+	public void fetchKeyFromTask(byte[] keyData, int keyGroupIndex) {
+		this.mainOperator.fetchKeyFromTask(keyData, keyGroupIndex);
 	}
 }

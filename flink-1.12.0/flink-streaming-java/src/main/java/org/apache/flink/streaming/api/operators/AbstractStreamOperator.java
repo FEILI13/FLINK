@@ -34,17 +34,21 @@ import org.apache.flink.core.memory.ManagedMemoryUseCase;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.execution.Environment;
+import org.apache.flink.runtime.executiongraph.RescaleState;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.runtime.metrics.groups.TaskManagerJobMetricGroup;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
 import org.apache.flink.runtime.state.CheckpointStreamFactory;
+import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyedStateBackend;
 import org.apache.flink.runtime.state.OperatorStateBackend;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.runtime.state.VoidNamespace;
 import org.apache.flink.runtime.state.VoidNamespaceSerializer;
+import org.apache.flink.runtime.state.rescale.SubTaskMigrationInstruction;
+import org.apache.flink.runtime.taskexecutor.rpc.RpcRescalingResponder;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.StreamOperatorStateHandler.CheckpointedStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
@@ -59,8 +63,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -627,5 +633,32 @@ public abstract class AbstractStreamOperator<OUT>
 
 	protected Optional<InternalTimeServiceManager<?>> getTimeServiceManager() {
 		return Optional.ofNullable(timeServiceManager);
+	}
+
+	@Override
+	public void markStateKeyGroups(
+		List<KeyGroupRange> keyGroupsInCharge,
+		RescaleState rescaleState,
+		RpcRescalingResponder rescalingResponder,
+		int subtaskIndex,
+		String taskName) {
+		stateHandler.markStateKeyGroups(keyGroupsInCharge, rescaleState, rescalingResponder, subtaskIndex, taskName);
+	}
+
+	@Override
+	public CompletableFuture enableMarkedStateKeyGroups(
+		RescaleState rescaleState,
+		SubTaskMigrationInstruction instruction) {
+		return stateHandler.enableMarkedStateKeyGroups(rescaleState, instruction);
+	}
+
+	@Override
+	public byte[] fetchKeyGroupFromTask(int keyGroupIndex) {
+		return stateHandler.fetchKeyGroupFromTask(keyGroupIndex);
+	}
+
+	@Override
+	public void fetchKeyFromTask(byte[] keyData, int keyGroupIndex) {
+		stateHandler.fetchKeyFromTask(keyData, keyGroupIndex);
 	}
 }

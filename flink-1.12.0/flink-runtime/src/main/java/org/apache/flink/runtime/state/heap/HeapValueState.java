@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.state.heap;
 
+import org.apache.flink.api.common.state.PostFetchValueStateDescriptor;
 import org.apache.flink.api.common.state.State;
 import org.apache.flink.api.common.state.StateDescriptor;
 import org.apache.flink.api.common.state.ValueState;
@@ -44,7 +45,7 @@ class HeapValueState<K, N, V>
 	 * @param namespaceSerializer The serializer for the namespace.
 	 * @param defaultValue The default value for the state.
 	 */
-	private HeapValueState(
+	protected HeapValueState(
 		StateTable<K, N, V> stateTable,
 		TypeSerializer<K> keySerializer,
 		TypeSerializer<V> valueSerializer,
@@ -95,6 +96,18 @@ class HeapValueState<K, N, V>
 		StateDescriptor<S, SV> stateDesc,
 		StateTable<K, N, SV> stateTable,
 		TypeSerializer<K> keySerializer) {
+		if (stateDesc instanceof PostFetchValueStateDescriptor) {
+			stateTable = new PostFetchStateTable<>(stateTable.keyContext, stateTable.metaInfo, stateTable.keySerializer);
+			return PostFetchHeapValueState.create(stateDesc,
+				stateTable,
+				keySerializer);
+//			return (IS) new PostFetchHeapValueState<>(
+//				stateTable,
+//				keySerializer,
+//				stateTable.getStateSerializer(),
+//				stateTable.getNamespaceSerializer(),
+//				stateDesc.getDefaultValue());
+		}
 		return (IS) new HeapValueState<>(
 			stateTable,
 			keySerializer,

@@ -26,6 +26,8 @@ import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 
+import org.apache.hadoop.hdfs.server.namenode.UnsupportedActionException;
+
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -127,5 +129,10 @@ abstract class AbstractExecutionSlotAllocator implements ExecutionSlotAllocator 
 	@VisibleForTesting
 	Map<ExecutionVertexID, SlotExecutionVertexAssignment> getPendingSlotAssignments() {
 		return Collections.unmodifiableMap(pendingSlotAssignments);
+	}
+
+	@Override
+	public void updateForRescale(ExecutionSlotAllocator executionSlotAllocator) throws UnsupportedActionException {
+		throw new UnsupportedActionException("updateForRescale unsupported for DefaultExecutionSlotAllocator.");
 	}
 }

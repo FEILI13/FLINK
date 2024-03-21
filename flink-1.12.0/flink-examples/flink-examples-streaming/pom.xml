@@ -325,6 +325,227 @@ under the License.
 						</configuration>
 					</execution>
 
+					<!-- Rescale -->
+					<execution>
+						<id>RescaleWordCount</id>
+						<phase>package</phase>
+						<goals>
+							<goal>jar</goal>
+						</goals>
+						<configuration>
+							<classifier>RescaleWordCount</classifier>
+
+							<archive>
+								<manifestEntries>
+									<program-class>org.apache.flink.streaming.examples.rescale.RescaleWordCount</program-class>
+								</manifestEntries>
+							</archive>
+
+							<includes>
+								<include>org/apache/flink/streaming/examples/rescale/RescaleWordCount.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/RescaleWordCount*.class</include>
+								<include>org/apache/flink/streaming/connectors/kafka/FlinkKafkaConsumer.class</include>
+							</includes>
+						</configuration>
+					</execution>
+					<execution>
+						<id>NexmarkQ1</id>
+						<phase>package</phase>
+						<goals>
+							<goal>jar</goal>
+						</goals>
+						<configuration>
+							<classifier>NexmarkQ1</classifier>
+
+							<archive>
+								<manifestEntries>
+									<program-class>org.apache.flink.streaming.examples.rescale.NexmarkQ1</program-class>
+								</manifestEntries>
+							</archive>
+
+							<includes>
+								<include>org/apache/flink/streaming/examples/rescale/NexmarkQ1.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/NexmarkQ1*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/RescaleStruct*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils.*.class</include>
+							</includes>
+						</configuration>
+					</execution>
+					<execution>
+						<id>NexmarkQ2</id>
+						<phase>package</phase>
+						<goals>
+							<goal>jar</goal>
+						</goals>
+						<configuration>
+							<classifier>NexmarkQ2</classifier>
+
+							<archive>
+								<manifestEntries>
+									<program-class>org.apache.flink.streaming.examples.rescale.NexmarkQ2</program-class>
+								</manifestEntries>
+							</archive>
+
+							<includes>
+								<include>org/apache/flink/streaming/examples/rescale/NexmarkQ2.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/NexmarkQ2*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/RescaleStruct*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils.*.class</include>
+							</includes>
+						</configuration>
+					</execution>
+					<execution>
+						<id>NexmarkQ3</id>
+						<phase>package</phase>
+						<goals>
+							<goal>jar</goal>
+						</goals>
+						<configuration>
+							<classifier>NexmarkQ3</classifier>
+
+							<archive>
+								<manifestEntries>
+									<program-class>org.apache.flink.streaming.examples.rescale.NexmarkQ3</program-class>
+								</manifestEntries>
+							</archive>
+
+							<includes>
+								<include>org/apache/flink/streaming/examples/rescale/NexmarkQ3.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/NexmarkQ3*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/RescaleStruct*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils.*.class</include>
+							</includes>
+						</configuration>
+					</execution>
+					<execution>
+						<id>NexmarkQ4</id>
+						<phase>package</phase>
+						<goals>
+							<goal>jar</goal>
+						</goals>
+						<configuration>
+							<classifier>NexmarkQ4</classifier>
+
+							<archive>
+								<manifestEntries>
+									<program-class>org.apache.flink.streaming.examples.rescale.NexmarkQ4</program-class>
+								</manifestEntries>
+							</archive>
+
+							<includes>
+								<include>org/apache/flink/streaming/examples/rescale/NexmarkQ4.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/NexmarkQ4*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/RescaleStruct*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils.*.class</include>
+							</includes>
+						</configuration>
+					</execution>
+					<execution>
+						<id>NexmarkQ5</id>
+						<phase>package</phase>
+						<goals>
+							<goal>jar</goal>
+						</goals>
+						<configuration>
+							<classifier>NexmarkQ5</classifier>
+
+							<archive>
+								<manifestEntries>
+									<program-class>org.apache.flink.streaming.examples.rescale.NexmarkQ5</program-class>
+								</manifestEntries>
+							</archive>
+
+							<includes>
+								<include>org/apache/flink/streaming/examples/rescale/NexmarkQ5.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/NexmarkQ5*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/RescaleStruct*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils.*.class</include>
+							</includes>
+						</configuration>
+					</execution>
+					<execution>
+						<id>NexmarkQ6</id>
+						<phase>package</phase>
+						<goals>
+							<goal>jar</goal>
+						</goals>
+						<configuration>
+							<classifier>NexmarkQ6</classifier>
+
+							<archive>
+								<manifestEntries>
+									<program-class>org.apache.flink.streaming.examples.rescale.NexmarkQ6</program-class>
+								</manifestEntries>
+							</archive>
+
+							<includes>
+								<include>org/apache/flink/streaming/examples/rescale/NexmarkQ6.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/NexmarkQ6*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/RescaleStruct*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils.*.class</include>
+							</includes>
+						</configuration>
+					</execution>
+					<execution>
+						<id>NexmarkQ7</id>
+						<phase>package</phase>
+						<goals>
+							<goal>jar</goal>
+						</goals>
+						<configuration>
+							<classifier>NexmarkQ7</classifier>
+
+							<archive>
+								<manifestEntries>
+									<program-class>org.apache.flink.streaming.examples.rescale.NexmarkQ7</program-class>
+								</manifestEntries>
+							</archive>
+
+							<includes>
+								<include>org/apache/flink/streaming/examples/rescale/NexmarkQ7.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/NexmarkQ7*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/RescaleStruct*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils.*.class</include>
+							</includes>
+						</configuration>
+					</execution>
+					<execution>
+						<id>NexmarkQ8</id>
+						<phase>package</phase>
+						<goals>
+							<goal>jar</goal>
+						</goals>
+						<configuration>
+							<classifier>NexmarkQ8</classifier>
+
+							<archive>
+								<manifestEntries>
+									<program-class>org.apache.flink.streaming.examples.rescale.NexmarkQ8</program-class>
+								</manifestEntries>
+							</archive>
+
+							<includes>
+								<include>org/apache/flink/streaming/examples/rescale/NexmarkQ8.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/NexmarkQ8*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/RescaleStruct*.class</include>
+								<include>org/apache/flink/streaming/examples/rescale/Utils.*.class</include>
+							</includes>
+						</configuration>
+					</execution>
+
 					<!-- SocketWindowWordCount -->
 					<execution>
 						<id>SocketWindowWordCount</id>

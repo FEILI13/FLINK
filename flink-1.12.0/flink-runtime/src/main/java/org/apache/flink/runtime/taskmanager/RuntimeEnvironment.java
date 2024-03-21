@@ -42,6 +42,7 @@ import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.taskexecutor.GlobalAggregateManager;
+import org.apache.flink.runtime.taskexecutor.rpc.RpcRescalingResponder;
 import org.apache.flink.util.UserCodeClassLoader;
 
 import java.util.Map;
@@ -93,6 +94,8 @@ public class RuntimeEnvironment implements Environment {
 
 	private final Task containingTask;
 
+	private final RpcRescalingResponder rescalingResponder;
+
 	// ------------------------------------------------------------------------
 
 	public RuntimeEnvironment(
@@ -117,6 +120,7 @@ public class RuntimeEnvironment implements Environment {
 			IndexedInputGate[] inputGates,
 			TaskEventDispatcher taskEventDispatcher,
 			CheckpointResponder checkpointResponder,
+			RpcRescalingResponder rescalingResponder,
 			TaskOperatorEventGateway operatorEventGateway,
 			TaskManagerRuntimeInfo taskManagerInfo,
 			TaskMetricGroup metrics,
@@ -144,6 +148,8 @@ public class RuntimeEnvironment implements Environment {
 		this.inputGates = checkNotNull(inputGates);
 		this.taskEventDispatcher = checkNotNull(taskEventDispatcher);
 		this.checkpointResponder = checkNotNull(checkpointResponder);
+		this.rescalingResponder = checkNotNull(rescalingResponder);
+		rescalingResponder.setTaskName(taskInfo.getTaskName());
 		this.operatorEventGateway = checkNotNull(operatorEventGateway);
 		this.taskManagerInfo = checkNotNull(taskManagerInfo);
 		this.containingTask = containingTask;
@@ -307,5 +313,25 @@ public class RuntimeEnvironment implements Environment {
 	@Override
 	public void failExternally(Throwable cause) {
 		this.containingTask.failExternally(cause);
+	}
+
+	@Override
+	public void acknowledgeRescaling(
+		JobID jobID,
+		ExecutionAttemptID executionAttemptID,
+		String taskName,
+		long timestampAsID) {
+		this.rescalingResponder.acknowledgeRescale(jobID, executionAttemptID, taskName, timestampAsID);
+	}
+
+	@Override
+	public void acknowledgeDeploymentForRescaling(
+		ExecutionAttemptID executionAttemptID) {
+		this.rescalingResponder.acknowledgeDeploymentForRescaling(executionAttemptID);
+	}
+
+	@Override
+	public RpcRescalingResponder getRescalingResponder() {
+		return rescalingResponder;
 	}
 }

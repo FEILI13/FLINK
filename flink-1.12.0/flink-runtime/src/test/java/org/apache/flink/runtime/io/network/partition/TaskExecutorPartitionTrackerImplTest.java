@@ -24,6 +24,7 @@ import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
 import org.apache.flink.runtime.io.network.NettyShuffleEnvironmentBuilder;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.shuffle.ShuffleEnvironment;
@@ -210,6 +211,16 @@ public class TaskExecutorPartitionTrackerImplTest extends TestLogger {
 		@Override
 		public List<SingleInputGate> createInputGates(ShuffleIOOwnerContext ownerContext, PartitionProducerStateProvider partitionProducerStateProvider, List<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors) {
 			return backingShuffleEnvironment.createInputGates(ownerContext, partitionProducerStateProvider, inputGateDeploymentDescriptors);
+		}
+
+		@Override
+		public List<SingleInputGate> createInputGatesForRescale(ShuffleIOOwnerContext ownerContext, PartitionProducerStateProvider partitionProducerStateProvider, List<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors, int currentNumInputGates) {
+			throw new UnsupportedOperationException("createInputGatesForRescale unsupported for " + this.getClass());
+		}
+
+		@Override
+		public void modifyInputGateForRescale(ShuffleIOOwnerContext ownerContext, InputGate inputGate, InputGateDeploymentDescriptor inputGateDeploymentDescriptor) {
+			throw new UnsupportedOperationException("modifyInputGateForRescale unsupported for " + this.getClass());
 		}
 
 		@Override

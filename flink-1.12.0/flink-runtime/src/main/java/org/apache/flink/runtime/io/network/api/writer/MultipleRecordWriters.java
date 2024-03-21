@@ -24,6 +24,7 @@ import org.apache.flink.util.ExceptionUtils;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -67,6 +68,22 @@ public class MultipleRecordWriters<T extends IOReadableWritable> implements Reco
 	@Override
 	public RecordWriter<T> getRecordWriter(int outputIndex) {
 		return recordWriters.get(outputIndex);
+	}
+
+	@Override
+	public int updatePartitionStrategy() {
+		return this.recordWriters
+			.stream()
+			.mapToInt(RecordWriter::updateNumberOfChannels)
+			.sum();
+	}
+
+	@Override
+	public int updatePartitionStrategy(Map<Integer, Integer> routeTableDifference) {
+		return this.recordWriters
+			.stream()
+			.mapToInt(recordWriters -> recordWriters.updatePartitionStrategy(routeTableDifference))
+			.sum();
 	}
 
 	@Override

@@ -20,6 +20,7 @@ package org.apache.flink.runtime.io.network.partition.consumer;
 
 import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
 import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
+import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.io.PullingAsyncDataInput;
 import org.apache.flink.runtime.io.network.partition.ChannelStateHolder;
@@ -186,4 +187,21 @@ public abstract class InputGate implements PullingAsyncDataInput<BufferOrEvent>,
 	public abstract CompletableFuture<Void> getStateConsumedFuture();
 
 	public abstract void finishReadRecoveredState() throws IOException;
+
+	public void modifyForRescale(InputGateDeploymentDescriptor inputGateDeploymentDescriptor) {
+		throw new UnsupportedOperationException("modifyForRescale unsupported for " + this.getClass());
+	}
+
+	public void requestPartitionsForRescale(int previousNumChannels) {
+		throw new UnsupportedOperationException("modifyForRescale unsupported for " + this.getClass());
+	}
+
+	public void setChannelStateWriterForNewChannels(ChannelStateWriter channelStateWriter, int previousNumChannels) {
+		for (int index = previousNumChannels, numChannels = getNumberOfInputChannels(); index < numChannels; index++) {
+			final InputChannel channel = getChannel(index);
+			if (channel instanceof ChannelStateHolder) {
+				((ChannelStateHolder) channel).setChannelStateWriter(channelStateWriter);
+			}
+		}
+	}
 }

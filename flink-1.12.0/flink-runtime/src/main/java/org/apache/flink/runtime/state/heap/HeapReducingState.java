@@ -24,11 +24,17 @@ import org.apache.flink.api.common.state.ReducingStateDescriptor;
 import org.apache.flink.api.common.state.State;
 import org.apache.flink.api.common.state.StateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.runtime.executiongraph.RescaleState;
+import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.StateTransformationFunction;
 import org.apache.flink.runtime.state.internal.InternalReducingState;
+import org.apache.flink.runtime.state.rescale.SubTaskMigrationInstruction;
+import org.apache.flink.runtime.taskexecutor.rpc.RpcRescalingResponder;
 import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Heap-backed partitioned {@link ReducingState} that is snapshotted into files.
@@ -139,5 +145,29 @@ class HeapReducingState<K, N, V>
 			stateTable.getNamespaceSerializer(),
 			stateDesc.getDefaultValue(),
 			((ReducingStateDescriptor<SV>) stateDesc).getReduceFunction());
+	}
+
+	@Override
+	public void markStateKeyGroups(
+		List<KeyGroupRange> keyGroupsInCharge,
+		RescaleState rescaleState,
+		RpcRescalingResponder rescalingResponder,
+		int subtaskIndex, String taskName) {
+		System.out.println("setStateKeyGroupsInCharge");
+		((PostFetchStateTable) this.stateTable).markStateKeyGroups(
+			keyGroupsInCharge,
+			rescaleState,
+			rescalingResponder,
+			subtaskIndex,
+			taskName);
+	}
+
+	@Override
+	public CompletableFuture enableMarkedStateKeyGroups(
+		RescaleState rescaleState,
+		SubTaskMigrationInstruction instruction) {
+		System.out.println("enableMarkedStateKeyGroups");
+		return ((PostFetchStateTable) this.stateTable).enableMarkedStateKeyGroups(rescaleState,
+			instruction);
 	}
 }

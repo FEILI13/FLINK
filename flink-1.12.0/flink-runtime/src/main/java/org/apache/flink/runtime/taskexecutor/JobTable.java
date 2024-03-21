@@ -24,6 +24,7 @@ import org.apache.flink.runtime.execution.librarycache.LibraryCacheManager;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionConsumableNotifier;
 import org.apache.flink.runtime.jobmaster.JobMasterGateway;
 import org.apache.flink.runtime.jobmaster.JobMasterId;
+import org.apache.flink.runtime.taskexecutor.rpc.RpcRescalingResponder;
 import org.apache.flink.runtime.taskmanager.CheckpointResponder;
 import org.apache.flink.runtime.taskmanager.TaskManagerActions;
 import org.apache.flink.util.function.SupplierWithException;
@@ -150,6 +151,7 @@ public interface JobTable extends AutoCloseable {
 		 * @param aggregateManager aggregateManager associated with this connection
 		 * @param resultPartitionConsumableNotifier resultPartitionConsumableNotifier associated with this connection
 		 * @param partitionStateChecker partitionStateChecker associated with this connection
+		 * @param rescalingResponder
 		 * @return the established {@link Connection}
 		 * @throws IllegalStateException if the job is already connected
 		 */
@@ -160,7 +162,8 @@ public interface JobTable extends AutoCloseable {
 			CheckpointResponder checkpointResponder,
 			GlobalAggregateManager aggregateManager,
 			ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
-			PartitionProducerStateChecker partitionStateChecker);
+			PartitionProducerStateChecker partitionStateChecker,
+			RpcRescalingResponder rescalingResponder);
 
 		/**
 		 * Closes this job and removes it from the owning {@link JobTable}.
@@ -193,6 +196,8 @@ public interface JobTable extends AutoCloseable {
 		TaskManagerActions getTaskManagerActions();
 
 		CheckpointResponder getCheckpointResponder();
+
+		RpcRescalingResponder getRescalingResponder();
 
 		GlobalAggregateManager getGlobalAggregateManager();
 

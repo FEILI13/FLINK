@@ -21,6 +21,7 @@ package org.apache.flink.streaming.runtime.io;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.core.io.InputStatus;
 import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
+import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.streaming.api.operators.InputSelection;
 import org.apache.flink.streaming.api.operators.MultipleInputStreamOperator;
 import org.apache.flink.util.ExceptionUtils;
@@ -152,5 +153,10 @@ public final class StreamMultipleInputProcessor implements StreamInputProcessor 
 				inputSelectionHandler.setAvailableInput(i);
 			}
 		}
+	}
+
+	@Override
+	public void updateForRescale(IOManager ioManager) {
+		throw new UnsupportedOperationException("updateForRescale not implemented for " + this.getClass());
 	}
 }

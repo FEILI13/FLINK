@@ -154,6 +154,13 @@ public class SimpleAckingTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
+	public CompletableFuture<Acknowledge> modifyForRescale(
+		TaskDeploymentDescriptor tdd,
+		Time timeout) {
+		throw new UnsupportedOperationException("This method is not implemented for " + this.getClass());
+	}
+
+	@Override
 	public CompletableFuture<Acknowledge> sendOperatorEventToTask(
 			ExecutionAttemptID task,
 			OperatorID operator,

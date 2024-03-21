@@ -64,6 +64,7 @@ public class LatencyStats {
 
 		long now = System.currentTimeMillis();
 		latencyHistogram.update(now - marker.getMarkedTime());
+		System.out.println(marker.getMarkedTime() + ":" + marker.getOperatorId() + ":" + operatorId + ":" + now + ":" + (now - marker.getMarkedTime()));
 	}
 
 	/**

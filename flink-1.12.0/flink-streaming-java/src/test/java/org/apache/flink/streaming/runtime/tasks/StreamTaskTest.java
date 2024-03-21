@@ -44,6 +44,7 @@ import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
+import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.NettyShuffleEnvironment;
 import org.apache.flink.runtime.io.network.NettyShuffleEnvironmentBuilder;
 import org.apache.flink.runtime.io.network.api.writer.AvailabilityTestResultPartitionWriter;
@@ -1308,6 +1309,11 @@ public class StreamTaskTest extends TestLogger {
 		}
 
 		@Override
+		public void updateForRescale(IOManager ioManager) {
+			throw new UnsupportedOperationException("updateForRescale not implemented for " + this.getClass());
+		}
+
+		@Override
 		public void close() throws IOException {
 		}
 
@@ -1475,6 +1481,11 @@ public class StreamTaskTest extends TestLogger {
 		@Override
 		public CompletableFuture<Void> prepareSnapshot(ChannelStateWriter channelStateWriter, long checkpointId) {
 			return FutureUtils.completedVoidFuture();
+		}
+
+		@Override
+		public void updateForRescale(IOManager ioManager) {
+			throw new UnsupportedOperationException("updateForRescale not implemented for " + this.getClass());
 		}
 
 		@Override

@@ -44,13 +44,18 @@ import org.apache.flink.api.java.typeutils.TypeExtractor;
 import org.apache.flink.api.java.typeutils.runtime.TupleSerializer;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.runtime.executiongraph.RescaleState;
+import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.state.DefaultKeyedStateStore;
+import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyedStateBackend;
 import org.apache.flink.runtime.state.VoidNamespace;
 import org.apache.flink.runtime.state.VoidNamespaceSerializer;
 import org.apache.flink.runtime.state.internal.InternalAppendingState;
 import org.apache.flink.runtime.state.internal.InternalListState;
 import org.apache.flink.runtime.state.internal.InternalMergingState;
+import org.apache.flink.runtime.state.rescale.SubTaskMigrationInstruction;
+import org.apache.flink.runtime.taskexecutor.rpc.RpcRescalingResponder;
 import org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.InternalTimer;
@@ -70,6 +75,8 @@ import org.apache.flink.util.OutputTag;
 
 import java.io.Serializable;
 import java.util.Collection;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -993,5 +1000,46 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 	@VisibleForTesting
 	public StateDescriptor<? extends AppendingState<IN, ACC>, ?> getStateDescriptor() {
 		return windowStateDescriptor;
+	}
+
+	@Override
+	public void markStateKeyGroups(
+		List<KeyGroupRange> keyGroupsInCharge,
+		RescaleState rescaleState,
+		RpcRescalingResponder rescalingResponder,
+		int subtaskIndex,
+		String taskName) {
+		if (windowState != null) {
+			windowState.markStateKeyGroups(keyGroupsInCharge, rescaleState, rescalingResponder, subtaskIndex, taskName);
+		}
+	}
+
+	@Override
+	public CompletableFuture enableMarkedStateKeyGroups(
+		RescaleState rescaleState,
+		SubTaskMigrationInstruction instruction) {
+		if (windowState != null) {
+			return windowState.enableMarkedStateKeyGroups(rescaleState, instruction);
+		} else {
+			return CompletableFuture.completedFuture(Acknowledge.get());
+		}
+	}
+
+	@Override
+	public byte[] fetchKeyGroupFromTask(int keyGroupIndex) {
+		if (windowState != null) {
+			return windowState.fetchKeyGroupFromTask(keyGroupIndex);
+		} else {
+			throw new UnknownError(); // this shouldn't happen
+		}
+	}
+
+	@Override
+	public void fetchKeyFromTask(byte[] keyData, int keyGroupIndex) {
+		if (windowState != null) {
+			windowState.fetchKeyFromTask(keyData, keyGroupIndex);
+		} else {
+			throw new UnknownError(); // this shouldn't happen
+		}
 	}
 }

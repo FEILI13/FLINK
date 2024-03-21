@@ -67,6 +67,7 @@ import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguratio
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
 import org.apache.flink.runtime.query.KvStateLocationRegistry;
+import org.apache.flink.runtime.rescale.RescaleCoordinator;
 import org.apache.flink.runtime.scheduler.InternalFailuresListener;
 import org.apache.flink.runtime.scheduler.adapter.DefaultExecutionTopology;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
@@ -105,6 +106,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -317,6 +319,16 @@ public class ExecutionGraph implements AccessExecutionGraph {
 
 	private final ExecutionDeploymentListener executionDeploymentListener;
 	private final ExecutionStateUpdateListener executionStateUpdateListener;
+
+	private List<JobVertex> topologicallySortedJobVertices;
+
+	/** The coordinator for rescale signals. */
+	@Nullable
+	private RescaleCoordinator rescaleCoordinator;
+
+	public List<ExecutionVertex> removeExecutionVertices = new ArrayList<>();
+
+	private Set<Execution> canceledAttempts = new HashSet<>();
 
 	// --------------------------------------------------------------------------------------------
 	//   Constructors
@@ -813,6 +825,9 @@ public class ExecutionGraph implements AccessExecutionGraph {
 			topologiallySorted.size(),
 			tasks.size(),
 			intermediateResults.size());
+
+		// stored for rescale use
+		topologicallySortedJobVertices = topologiallySorted;
 
 		final ArrayList<ExecutionJobVertex> newExecJobVertices = new ArrayList<>(topologiallySorted.size());
 		final long createTimestamp = System.currentTimeMillis();
@@ -1482,6 +1497,11 @@ public class ExecutionGraph implements AccessExecutionGraph {
 
 		if (attempt != null) {
 			try {
+				if (canceledAttempts.contains(attempt)) {
+					// it is likely that the information of this execution is removed due to scale down
+					// dont try to update here
+					return true;
+				}
 				final boolean stateUpdated = updateStateInternal(state, attempt);
 				maybeReleasePartitions(attempt);
 				return stateUpdated;
@@ -1762,5 +1782,104 @@ public class ExecutionGraph implements AccessExecutionGraph {
 
 	ExecutionDeploymentListener getExecutionDeploymentListener() {
 		return executionDeploymentListener;
+	}
+
+	public void modifyForRescale(int newGlobalParallelism, Map<String, Integer> parallelismList) {
+		try {
+			// 1 - modify job graph
+			Set<JobVertexID> modifiedJobVertex = new HashSet<>();
+			// TODO: output modifiedJobVertex, and stop the rescale process if no vertex is modified
+			for (Map.Entry<JobVertexID, ExecutionJobVertex> entry : tasks.entrySet()) {
+				ExecutionJobVertex executionJobVertex = entry.getValue();
+				String operatorName = executionJobVertex.getJobVertex().getName();
+				JobVertex jobVertexToBeModified = (JobVertex) this.topologicallySortedJobVertices
+					.stream().filter(jobVertex -> jobVertex.getID() == executionJobVertex.getJobVertex().getID()).toArray()[0];
+				int maxParallelism = jobVertexToBeModified.getMaxParallelism();
+				maxParallelism = maxParallelism == -1 ? 128 : maxParallelism;
+				if (newGlobalParallelism != -1 && !operatorName.contains("Source")) {
+					int newParallelism = Math.min(newGlobalParallelism, maxParallelism);
+					jobVertexToBeModified.setParallelism(newParallelism);
+					modifiedJobVertex.add(jobVertexToBeModified.getID());
+					// TODO: modify jobedge here
+				} else if (parallelismList.containsKey(operatorName)) {
+					int newParallelism = Math.min(parallelismList.get(operatorName), maxParallelism);
+					jobVertexToBeModified.setParallelism(newParallelism);
+					modifiedJobVertex.add(jobVertexToBeModified.getID());
+					// TODO: modify jobedge here
+				}
+			}
+			List<JobVertex> topologicallySorted = this.topologicallySortedJobVertices;
+
+			// 2 - modify execution graph
+			// copied from attachJobGraph()
+			final ArrayList<ExecutionJobVertex> newExecJobVertices = new ArrayList<>(topologicallySorted.size());
+			final long createTimestamp = System.currentTimeMillis();
+
+			for (JobVertex jobVertex : topologicallySorted) {
+				// create the execution job vertex and attach it to the graph
+				ExecutionJobVertex ejv = this.tasks.get(jobVertex.getID());
+
+				// change the ejvs with new parallelism
+				ejv.modifyForRescale(jobVertex);
+
+				ejv.connectToPredecessorsForRescale(this.intermediateResults);
+				for (IntermediateResult res : ejv.getProducedDataSets()) {
+					this.intermediateResults.put(res.getId(), res);
+				}
+				for (ExecutionVertex ev : this.removeExecutionVertices) {
+					if (ev.rescaleState == RescaleState.REMOVED) {
+						this.canceledAttempts.add(ev.getCurrentExecutionAttempt());
+					}
+				}
+			}
+
+//			// the topology assigning should happen before notifying new vertices to failoverStrategy
+			executionTopology = DefaultExecutionTopology.fromExecutionGraph(this);
+
+			failoverStrategy.notifyNewVertices(newExecJobVertices); // seems like nothing should be done here
+
+			partitionReleaseStrategy = partitionReleaseStrategyFactory.createInstance(getSchedulingTopology());
+
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	@Nullable
+	public RescaleCoordinator getRescaleCoordinator() {
+		return rescaleCoordinator;
+	}
+
+	void enableRescaleCoordinator(
+		List<ExecutionJobVertex> verticesToTrigger,
+		List<ExecutionJobVertex> verticesToWaitFor,
+		List<ExecutionJobVertex> verticesToCommitTo) {
+		ExecutionVertex[] tasksToTrigger = collectExecutionVertices(verticesToTrigger);
+		ExecutionVertex[] tasksToWaitFor = collectExecutionVertices(verticesToWaitFor);
+		ExecutionVertex[] tasksToCommitTo = collectExecutionVertices(verticesToCommitTo);
+		rescaleCoordinator = new RescaleCoordinator(
+			getJobID(),
+			tasksToTrigger,
+			tasksToWaitFor,
+			tasksToCommitTo);
+	}
+
+	void addRemovedVertex(ExecutionVertex executionVertex) {
+		removeExecutionVertices.add(executionVertex);
+	}
+
+	public void cleanRescaleStates() {
+		for (ExecutionJobVertex ejv : verticesInCreationOrder) {
+			ejv.rescaleState = RescaleState.NONE;
+			ejv.previousParallelism = -1;
+			ejv.removedVertices.clear();
+			for (ExecutionVertex ev : ejv.getTaskVertices()) {
+				ev.rescaleState = RescaleState.NONE;
+				for (IntermediateResultPartition irp : ev.getProducedPartitions().values()) {
+					irp.rescaleState = RescaleState.NONE;
+				}
+			}
+		}
+		this.removeExecutionVertices.clear();
 	}
 }

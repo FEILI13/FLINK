@@ -27,6 +27,8 @@ import org.apache.flink.util.IterableUtils;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Sets;
 
+import org.apache.hadoop.hdfs.server.namenode.UnsupportedActionException;
+
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;

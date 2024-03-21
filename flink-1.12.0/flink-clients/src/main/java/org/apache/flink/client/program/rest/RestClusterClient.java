@@ -43,6 +43,7 @@ import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
 import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.runtime.rest.FileUpload;
 import org.apache.flink.runtime.rest.RestClient;
 import org.apache.flink.runtime.rest.handler.async.AsynchronousOperationInfo;
@@ -73,6 +74,9 @@ import org.apache.flink.runtime.rest.messages.job.JobSubmitResponseBody;
 import org.apache.flink.runtime.rest.messages.job.coordination.ClientCoordinationHeaders;
 import org.apache.flink.runtime.rest.messages.job.coordination.ClientCoordinationMessageParameters;
 import org.apache.flink.runtime.rest.messages.job.coordination.ClientCoordinationRequestBody;
+import org.apache.flink.runtime.rest.messages.job.rescaling.RescaleTriggerRequestBody;
+import org.apache.flink.runtime.rest.messages.job.rescaling.RescalingStatusHeaders;
+import org.apache.flink.runtime.rest.messages.job.rescaling.RescalingStatusMessageParameters;
 import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointDisposalRequest;
 import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointDisposalStatusHeaders;
 import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointDisposalStatusMessageParameters;
@@ -85,6 +89,8 @@ import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointTriggerMes
 import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointTriggerRequestBody;
 import org.apache.flink.runtime.rest.messages.job.savepoints.stop.StopWithSavepointRequestBody;
 import org.apache.flink.runtime.rest.messages.job.savepoints.stop.StopWithSavepointTriggerHeaders;
+import org.apache.flink.runtime.rest.messages.job.rescaling.RescalingTriggerHeaders;
+import org.apache.flink.runtime.rest.messages.job.rescaling.RescalingTriggerMessageParameters;
 import org.apache.flink.runtime.rest.messages.queue.AsynchronouslyCreatedResource;
 import org.apache.flink.runtime.rest.messages.queue.QueueStatus;
 import org.apache.flink.runtime.rest.util.RestClientException;
@@ -446,6 +452,47 @@ public class RestClusterClient<T> implements ClusterClient<T> {
 					throw new CompletionException("Failed to deserialize coordination response", e);
 				}
 			});
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> triggerRescale(JobID jobId, RescaleSignal.RescaleSignalType rescaleSignalType, int globalParallelism, @Nullable Map<String, Integer> parallelismList) {
+		final RescalingTriggerHeaders rescalingTriggerHeaders = RescalingTriggerHeaders.getInstance();
+		final RescalingTriggerMessageParameters rescalingTriggerMessageParameters =
+			rescalingTriggerHeaders.getUnresolvedMessageParameters();
+		rescalingTriggerMessageParameters.jobID.resolve(jobId);
+
+		final CompletableFuture<TriggerResponse> rescalingTriggerResponseFuture = sendRequest(
+			rescalingTriggerHeaders,
+			rescalingTriggerMessageParameters,
+			new RescaleTriggerRequestBody(rescaleSignalType, globalParallelism, parallelismList));
+
+		final CompletableFuture<AsynchronousOperationInfo> rescalingOperationFuture = rescalingTriggerResponseFuture.thenCompose(
+			(TriggerResponse triggerResponse) -> {
+				final TriggerId triggerId = triggerResponse.getTriggerId();
+				final RescalingStatusHeaders rescalingStatusHeaders = RescalingStatusHeaders.getInstance();
+				final RescalingStatusMessageParameters rescalingStatusMessageParameters = rescalingStatusHeaders.getUnresolvedMessageParameters();
+
+				rescalingStatusMessageParameters.jobPathParameter.resolve(jobId);
+				rescalingStatusMessageParameters.triggerIdPathParameter.resolve(triggerId);
+
+				return pollResourceAsync(
+					() -> sendRequest(
+						rescalingStatusHeaders,
+						rescalingStatusMessageParameters));
+			});
+
+		return rescalingOperationFuture.thenApply(
+			(AsynchronousOperationInfo asynchronousOperationInfo) -> {
+				if (asynchronousOperationInfo.getFailureCause() == null) {
+					return Acknowledge.get();
+				} else {
+					throw new CompletionException(asynchronousOperationInfo.getFailureCause());
+				}
+			});
+//		return responseFuture.thenCompose(scaleTriggerResponseBody -> {
+//			final TriggerId scaleTriggerId = scaleTriggerResponseBody.getTriggerId();
+//			return null;
+//		});
 	}
 
 	private CompletableFuture<String> triggerSavepoint(

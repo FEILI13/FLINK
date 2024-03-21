@@ -35,6 +35,7 @@ import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
 import org.apache.flink.runtime.plugable.DeserializationDelegate;
 import org.apache.flink.runtime.plugable.NonReusingDeserializationDelegate;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
@@ -44,14 +45,14 @@ import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import javax.annotation.Nonnull;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
-import static org.apache.flink.util.Preconditions.checkNotNull;
-import static org.apache.flink.util.Preconditions.checkState;
+import static org.apache.flink.util.Preconditions.*;
 
 /**
  * Implementation of {@link StreamTaskInput} that wraps an input from network taken from {@link CheckpointedInputGate}.
@@ -72,14 +73,14 @@ public final class StreamTaskNetworkInput<T> implements StreamTaskInput<T> {
 
 	private final DeserializationDelegate<StreamElement> deserializationDelegate;
 
-	private final RecordDeserializer<DeserializationDelegate<StreamElement>>[] recordDeserializers;
+	private RecordDeserializer<DeserializationDelegate<StreamElement>>[] recordDeserializers;
 
 	/** Valve that controls how watermarks and stream statuses are forwarded. */
 	private final StatusWatermarkValve statusWatermarkValve;
 
 	private final int inputIndex;
 
-	private final Map<InputChannelInfo, Integer> channelIndexes;
+	private Map<InputChannelInfo, Integer> channelIndexes;
 
 	private int lastChannel = UNSPECIFIED;
 
@@ -207,6 +208,19 @@ public final class StreamTaskNetworkInput<T> implements StreamTaskInput<T> {
 			"currentRecordDeserializer has already been released");
 
 		currentRecordDeserializer.setNextBuffer(bufferOrEvent.getBuffer());
+	}
+
+	public void updateForRescale(IOManager ioManager) {
+		// TODO: only copy the newly added channels
+		this.channelIndexes = getChannelIndexes(checkpointedInputGate);
+
+		int previousNumChannels = this.recordDeserializers.length;
+		int newNumChannels = this.channelIndexes.values().size();
+		this.recordDeserializers = Arrays.copyOf(recordDeserializers, newNumChannels);
+		for (int i = previousNumChannels; i < newNumChannels; i++) {
+			recordDeserializers[i] = new SpillingAdaptiveSpanningRecordDeserializer<>(
+				ioManager.getSpillingDirectoriesPaths());
+		}
 	}
 
 	@Override

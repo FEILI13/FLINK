@@ -30,6 +30,8 @@ import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.runtime.checkpoint.CheckpointException;
 import org.apache.flink.runtime.checkpoint.CheckpointFailureReason;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
+import org.apache.flink.runtime.executiongraph.RescaleState;
+import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.state.CheckpointStreamFactory;
 import org.apache.flink.runtime.state.CheckpointableKeyedStateBackend;
 import org.apache.flink.runtime.state.DefaultKeyedStateStore;
@@ -42,6 +44,8 @@ import org.apache.flink.runtime.state.StateInitializationContextImpl;
 import org.apache.flink.runtime.state.StatePartitionStreamProvider;
 import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.runtime.state.StateSnapshotContextSynchronousImpl;
+import org.apache.flink.runtime.state.rescale.SubTaskMigrationInstruction;
+import org.apache.flink.runtime.taskexecutor.rpc.RpcRescalingResponder;
 import org.apache.flink.util.CloseableIterable;
 import org.apache.flink.util.IOUtils;
 
@@ -54,7 +58,9 @@ import javax.annotation.Nullable;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -322,5 +328,74 @@ public class StreamOperatorStateHandler {
 		void initializeState(StateInitializationContext context) throws Exception;
 
 		void snapshotState(StateSnapshotContext context) throws Exception;
+	}
+
+	void markStateKeyGroups(
+		List<KeyGroupRange> keyGroupsInCharge,
+		RescaleState rescaleState,
+		RpcRescalingResponder rescalingResponder,
+		int subtaskIndex,
+		String taskName) {
+		if (keyedStateBackend != null) {
+			try {
+				// need to work around type restrictions
+				@SuppressWarnings("rawtypes")
+				CheckpointableKeyedStateBackend rawBackend = keyedStateBackend;
+
+				rawBackend.markStateKeyGroups(keyGroupsInCharge, rescaleState, rescalingResponder, subtaskIndex, taskName);
+			} catch (Exception e) {
+				throw new RuntimeException("Exception occurred while marking the key groups.", e);
+			}
+		}
+	}
+
+	CompletableFuture enableMarkedStateKeyGroups(RescaleState rescaleState, SubTaskMigrationInstruction instruction) {
+		if (keyedStateBackend != null) {
+			try {
+				// need to work around type restrictions
+				@SuppressWarnings("rawtypes")
+				CheckpointableKeyedStateBackend rawBackend = keyedStateBackend;
+
+				return rawBackend.enableMarkedStateKeyGroups(rescaleState, instruction);
+			} catch (Exception e) {
+				throw new RuntimeException("Exception occurred while enabling the marked key groups.", e);
+			}
+		} else {
+			// most likely it is a non-stateful operator
+			return CompletableFuture.completedFuture(Acknowledge.get());
+//			throw new RuntimeException("Exception occurred while enabling the marked key groups: keyedStateBackend is null");
+		}
+	}
+
+	byte[] fetchKeyGroupFromTask(int keyGroupIndex) {
+		if (keyedStateBackend != null) {
+			try {
+				// need to work around type restrictions
+				@SuppressWarnings("rawtypes")
+				CheckpointableKeyedStateBackend rawBackend = keyedStateBackend;
+
+				return rawBackend.fetchKeyGroupFromTask(keyGroupIndex);
+			} catch (Exception e) {
+				throw new RuntimeException("Exception occurred while fetchKeyGroupFromTask.", e);
+			}
+		} else {
+			throw new UnknownError(); // this shouldn't happen
+		}
+	}
+
+	void fetchKeyFromTask(byte[] keyData, int keyGroupIndex) {
+		if (keyedStateBackend != null) {
+			try {
+				// need to work around type restrictions
+				@SuppressWarnings("rawtypes")
+				CheckpointableKeyedStateBackend rawBackend = keyedStateBackend;
+
+				rawBackend.fetchKeyFromTask(keyData, keyGroupIndex);
+			} catch (Exception e) {
+				throw new RuntimeException("Exception occurred while fetchKeyGroupFromTask.", e);
+			}
+		} else {
+			throw new UnknownError(); // this shouldn't happen
+		}
 	}
 }

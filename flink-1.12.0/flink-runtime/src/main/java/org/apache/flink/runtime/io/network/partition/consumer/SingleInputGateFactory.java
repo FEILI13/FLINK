@@ -169,6 +169,42 @@ public class SingleInputGateFactory {
 			channelStatistics);
 	}
 
+	public void modifyInputChannelsForRescale(
+			SingleInputGate inputGate,
+			InputGateDeploymentDescriptor inputGateDeploymentDescriptor,
+			int previousNumChannels,
+			String ownerName,
+			InputChannelMetrics metrics) {
+		ShuffleDescriptor[] shuffleDescriptors = inputGateDeploymentDescriptor.getShuffleDescriptors();
+
+		int newNumChannels = shuffleDescriptors.length;
+		if (previousNumChannels < newNumChannels) {
+			// Create the input channels. There is one input channel for each consumed partition.
+			InputChannel[] inputChannels = new InputChannel[newNumChannels - previousNumChannels];
+
+			ChannelStatistics channelStatistics = new ChannelStatistics();
+
+			for (int i = previousNumChannels; i < newNumChannels; i++) {
+				inputChannels[i - previousNumChannels] = createInputChannel(
+					inputGate,
+					i,
+					shuffleDescriptors[i],
+					channelStatistics,
+					metrics);
+			}
+			inputGate.appendInputChannels(previousNumChannels, inputChannels);
+
+			LOG.debug("{}: Created {} input channels ({}).",
+				ownerName,
+				inputChannels.length,
+				channelStatistics);
+		} else {
+			LOG.debug("{}: Removed {} input channels.",
+				ownerName,
+				previousNumChannels - newNumChannels);
+		}
+	}
+
 	private InputChannel createInputChannel(
 			SingleInputGate inputGate,
 			int index,

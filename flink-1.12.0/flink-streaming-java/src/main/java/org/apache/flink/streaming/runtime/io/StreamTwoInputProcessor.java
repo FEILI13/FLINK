@@ -22,6 +22,7 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.core.io.InputStatus;
 import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
 import org.apache.flink.runtime.io.AvailabilityProvider;
+import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.streaming.api.operators.InputSelection;
 import org.apache.flink.streaming.runtime.tasks.TwoInputStreamTask;
 import org.apache.flink.util.ExceptionUtils;
@@ -105,6 +106,11 @@ public final class StreamTwoInputProcessor<IN1, IN2> implements StreamInputProce
 		return CompletableFuture.allOf(
 			processor1.prepareSnapshot(channelStateWriter, checkpointId),
 			processor2.prepareSnapshot(channelStateWriter, checkpointId));
+	}
+
+	@Override
+	public void updateForRescale(IOManager ioManager) {
+		throw new UnsupportedOperationException("updateForRescale not implemented for " + this.getClass());
 	}
 
 	private int selectFirstReadingInputIndex() throws IOException {

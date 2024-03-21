@@ -25,6 +25,8 @@ import org.apache.flink.runtime.jobmaster.SlotOwner;
 import org.apache.flink.runtime.jobmaster.TestingLogicalSlotBuilder;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 
+import org.apache.hadoop.hdfs.server.namenode.UnsupportedActionException;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -134,6 +136,11 @@ public class TestExecutionSlotAllocator implements ExecutionSlotAllocator, SlotO
 				.getLogicalSlotFuture()
 				.cancel(false);
 		}
+	}
+
+	@Override
+	public void updateForRescale(ExecutionSlotAllocator executionSlotAllocator) throws UnsupportedActionException {
+		throw new UnsupportedOperationException("This method is not implemented for " + this.getClass());
 	}
 
 	@Override

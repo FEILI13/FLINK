@@ -53,10 +53,10 @@ import static org.apache.flink.util.Preconditions.checkState;
 public abstract class BufferWritingResultPartition extends ResultPartition {
 
 	/** The subpartitions of this partition. At least one. */
-	protected final ResultSubpartition[] subpartitions;
+	protected ResultSubpartition[] subpartitions;
 
 	/** For non-broadcast mode, each subpartition maintains a separate BufferBuilder which might be null. */
-	private final BufferBuilder[] unicastBufferBuilders;
+	protected BufferBuilder[] unicastBufferBuilders;
 
 	/** For broadcast mode, a single BufferBuilder is shared by all subpartitions. */
 	private BufferBuilder broadcastBufferBuilder;

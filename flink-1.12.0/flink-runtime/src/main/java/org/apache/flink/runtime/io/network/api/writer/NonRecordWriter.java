@@ -22,6 +22,7 @@ import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.runtime.event.AbstractEvent;
 
 import java.io.IOException;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -39,6 +40,16 @@ public class NonRecordWriter<T extends IOReadableWritable> implements RecordWrit
 	@Override
 	public RecordWriter<T> getRecordWriter(int outputIndex) {
 		throw new UnsupportedOperationException("No record writer instance.");
+	}
+
+	@Override
+	public int updatePartitionStrategy() {
+		return 0;
+	}
+
+	@Override
+	public int updatePartitionStrategy(Map<Integer, Integer> routeTableDifference) {
+		return 0;
 	}
 
 	@Override

@@ -23,6 +23,7 @@ import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.AvailabilityProvider;
 
 import java.io.IOException;
+import java.util.Map;
 
 /**
  * The record writer delegate provides the availability function for task processor, and it might represent
@@ -43,4 +44,8 @@ public interface RecordWriterDelegate<T extends IOReadableWritable> extends Avai
 	 * @param outputIndex the index respective to the record writer instance.
 	 */
 	RecordWriter<T> getRecordWriter(int outputIndex);
+
+	int updatePartitionStrategy();
+
+	int updatePartitionStrategy(Map<Integer, Integer> routeTableDifference);
 }

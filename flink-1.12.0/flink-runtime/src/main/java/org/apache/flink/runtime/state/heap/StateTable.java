@@ -259,7 +259,7 @@ public abstract class StateTable<K, N, S>
 		return stateMap != null && stateMap.containsKey(key, namespace);
 	}
 
-	private void checkKeyNamespacePreconditions(K key, N namespace) {
+	void checkKeyNamespacePreconditions(K key, N namespace) {
 		Preconditions.checkNotNull(key, "No key set. This method should not be called outside of a keyed context.");
 		Preconditions.checkNotNull(namespace, "Provided namespace is null.");
 	}

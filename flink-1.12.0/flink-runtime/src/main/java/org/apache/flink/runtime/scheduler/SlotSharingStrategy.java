@@ -42,4 +42,6 @@ interface SlotSharingStrategy {
 			Set<SlotSharingGroup> logicalSlotSharingGroups,
 			Set<CoLocationGroupDesc> coLocationGroups);
 	}
+
+	void updateForRescale(SlotSharingStrategy slotSharingStrategy);
 }

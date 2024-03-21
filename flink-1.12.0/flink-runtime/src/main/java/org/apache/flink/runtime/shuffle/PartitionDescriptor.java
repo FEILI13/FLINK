@@ -52,7 +52,7 @@ public class PartitionDescriptor implements Serializable {
 	private final ResultPartitionType partitionType;
 
 	/** The number of subpartitions. */
-	private final int numberOfSubpartitions;
+	private int numberOfSubpartitions;
 
 	/** Connection index to identify this partition of intermediate result. */
 	private final int connectionIndex;
@@ -93,6 +93,11 @@ public class PartitionDescriptor implements Serializable {
 
 	public int getNumberOfSubpartitions() {
 		return numberOfSubpartitions;
+	}
+
+	public void changeNumberOfSubpartitions(int delta) {
+		checkArgument(numberOfSubpartitions + delta >= 1);
+		numberOfSubpartitions += delta;
 	}
 
 	int getConnectionIndex() {

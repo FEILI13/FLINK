@@ -21,12 +21,18 @@ import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.common.state.CheckpointListener;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
+import org.apache.flink.runtime.executiongraph.RescaleState;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.CheckpointStreamFactory;
+import org.apache.flink.runtime.state.KeyGroupRange;
+import org.apache.flink.runtime.state.rescale.SubTaskMigrationInstruction;
+import org.apache.flink.runtime.taskexecutor.rpc.RpcRescalingResponder;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.Disposable;
 
 import java.io.Serializable;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Basic interface for stream operators. Implementers would implement one of
@@ -140,4 +146,27 @@ public interface StreamOperator<OUT> extends CheckpointListener, KeyContext, Dis
 	MetricGroup getMetricGroup();
 
 	OperatorID getOperatorID();
+
+	default void markStateKeyGroups(
+		List<KeyGroupRange> keyGroupsInCharge,
+		RescaleState rescaleState,
+		RpcRescalingResponder rescalingResponder,
+		int subtaskIndex,
+		String taskName) {
+		throw new UnsupportedOperationException();
+	}
+
+	default CompletableFuture enableMarkedStateKeyGroups(
+		RescaleState rescaleState,
+		SubTaskMigrationInstruction instruction) {
+		throw new UnsupportedOperationException();
+	}
+
+	default byte[] fetchKeyGroupFromTask(int keyGroupIndex) {
+		throw new UnsupportedOperationException();
+	}
+
+	default void fetchKeyFromTask(byte[] keyData, int keyGroupIndex) {
+		throw new UnsupportedOperationException();
+	}
 }

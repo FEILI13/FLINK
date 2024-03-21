@@ -35,12 +35,14 @@ import org.apache.flink.runtime.messages.webmonitor.MultipleJobsDetails;
 import org.apache.flink.runtime.metrics.dump.MetricQueryService;
 import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
 import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.OperatorBackPressureStatsResponse;
 import org.apache.flink.runtime.rpc.RpcGateway;
 import org.apache.flink.runtime.rpc.RpcTimeout;
 import org.apache.flink.util.SerializedValue;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -208,6 +210,25 @@ public interface RestfulGateway extends RpcGateway {
 			OperatorID operatorId,
 			SerializedValue<CoordinationRequest> serializedRequest,
 			@RpcTimeout Time timeout) {
+		throw new UnsupportedOperationException();
+	}
+
+	/**
+	 * Trigger rescaling of the given job.
+	 *
+	 * @param jobId specifying the job to rescale
+	 * @param rescaleSignalType
+	 * @param newGlobalParallelism new parallelism of the job
+	 * @param parallelismList new parallelism of each operator in the job
+	 * @param timeout of this operation
+	 * @return Future which is completed with {@link Acknowledge} once the rescaling was successful
+	 */
+	default CompletableFuture<Acknowledge> rescaleJob(
+		JobID jobId,
+		RescaleSignal.RescaleSignalType rescaleSignalType,
+		int newGlobalParallelism,
+		Map<String, Integer> parallelismList,
+		@RpcTimeout Time timeout) {
 		throw new UnsupportedOperationException();
 	}
 }

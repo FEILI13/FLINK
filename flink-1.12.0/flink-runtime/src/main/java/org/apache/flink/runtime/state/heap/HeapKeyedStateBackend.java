@@ -23,6 +23,7 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.state.AggregatingStateDescriptor;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.state.MapStateDescriptor;
+import org.apache.flink.api.common.state.PostFetchValueStateDescriptor;
 import org.apache.flink.api.common.state.ReducingStateDescriptor;
 import org.apache.flink.api.common.state.State;
 import org.apache.flink.api.common.state.StateDescriptor;
@@ -81,7 +82,8 @@ public class HeapKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 			Tuple2.of(ListStateDescriptor.class, (StateFactory) HeapListState::create),
 			Tuple2.of(MapStateDescriptor.class, (StateFactory) HeapMapState::create),
 			Tuple2.of(AggregatingStateDescriptor.class, (StateFactory) HeapAggregatingState::create),
-			Tuple2.of(ReducingStateDescriptor.class, (StateFactory) HeapReducingState::create)
+			Tuple2.of(ReducingStateDescriptor.class, (StateFactory) HeapReducingState::create),
+			Tuple2.of(PostFetchValueStateDescriptor.class, (StateFactory) PostFetchHeapValueState::create)
 		).collect(Collectors.toMap(t -> t.f0, t -> t.f1));
 
 	/**

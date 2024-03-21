@@ -23,6 +23,7 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.TaskInfo;
 import org.apache.flink.api.common.cache.DistributedCache;
+import org.apache.flink.api.common.state.CheckpointListener;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.fs.FileSystemSafetyNet;
@@ -52,6 +53,7 @@ import org.apache.flink.runtime.io.network.NettyShuffleEnvironment;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.PartitionProducerStateProvider;
+import org.apache.flink.runtime.io.network.partition.PipelinedResultPartition;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionConsumableNotifier;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.consumer.IndexedInputGate;
@@ -67,15 +69,15 @@ import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.operators.coordination.TaskNotRunningException;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.runtime.shuffle.ShuffleEnvironment;
 import org.apache.flink.runtime.shuffle.ShuffleIOOwnerContext;
-import org.apache.flink.api.common.state.CheckpointListener;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.taskexecutor.BackPressureSampleableTask;
 import org.apache.flink.runtime.taskexecutor.GlobalAggregateManager;
 import org.apache.flink.runtime.taskexecutor.KvStateService;
 import org.apache.flink.runtime.taskexecutor.PartitionProducerStateChecker;
-import org.apache.flink.util.TaskManagerExceptionUtils;
+import org.apache.flink.runtime.taskexecutor.rpc.RpcRescalingResponder;
 import org.apache.flink.runtime.taskexecutor.slot.TaskSlotPayload;
 import org.apache.flink.runtime.util.FatalExitExceptionHandler;
 import org.apache.flink.types.Either;
@@ -84,6 +86,7 @@ import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
+import org.apache.flink.util.TaskManagerExceptionUtils;
 import org.apache.flink.util.UserCodeClassLoader;
 import org.apache.flink.util.WrappingRuntimeException;
 
@@ -102,6 +105,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
@@ -207,7 +211,7 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 
 	private final ResultPartitionWriter[] consumableNotifyingPartitionWriters;
 
-	private final IndexedInputGate[] inputGates;
+	private IndexedInputGate[] inputGates;
 
 	/** Connection to the task manager. */
 	private final TaskManagerActions taskManagerActions;
@@ -280,6 +284,10 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 	/** This class loader should be set as the context class loader for threads that may dynamically load user code. */
 	private UserCodeClassLoader userCodeClassLoader;
 
+	private ShuffleIOOwnerContext taskShuffleContext;
+
+	private final RpcRescalingResponder rescalingResponder;
+
 	/**
 	 * <p><b>IMPORTANT:</b> This constructor may not start any work that would need to
 	 * be undone in the case of a failing task deployment.</p>
@@ -305,6 +313,42 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 		TaskManagerActions taskManagerActions,
 		InputSplitProvider inputSplitProvider,
 		CheckpointResponder checkpointResponder,
+		TaskOperatorEventGateway operatorCoordinatorEventGateway,
+		GlobalAggregateManager aggregateManager,
+		LibraryCacheManager.ClassLoaderHandle classLoaderHandle,
+		FileCache fileCache,
+		TaskManagerRuntimeInfo taskManagerConfig,
+		@Nonnull TaskMetricGroup metricGroup,
+		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
+		PartitionProducerStateChecker partitionProducerStateChecker,
+		Executor executor) {
+
+		// TODO: make it work as before
+		throw new UnsupportedOperationException();
+	}
+
+	public Task(
+		JobInformation jobInformation,
+		TaskInformation taskInformation,
+		ExecutionAttemptID executionAttemptID,
+		AllocationID slotAllocationId,
+		int subtaskIndex,
+		int attemptNumber,
+		List<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+		List<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
+		int targetSlotNumber,
+		MemoryManager memManager,
+		IOManager ioManager,
+		ShuffleEnvironment<?, ?> shuffleEnvironment,
+		KvStateService kvStateService,
+		BroadcastVariableManager bcVarManager,
+		TaskEventDispatcher taskEventDispatcher,
+		ExternalResourceInfoProvider externalResourceInfoProvider,
+		TaskStateManager taskStateManager,
+		TaskManagerActions taskManagerActions,
+		InputSplitProvider inputSplitProvider,
+		CheckpointResponder checkpointResponder,
+		RpcRescalingResponder rescalingResponder,
 		TaskOperatorEventGateway operatorCoordinatorEventGateway,
 		GlobalAggregateManager aggregateManager,
 		LibraryCacheManager.ClassLoaderHandle classLoaderHandle,
@@ -355,6 +399,7 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 
 		this.inputSplitProvider = Preconditions.checkNotNull(inputSplitProvider);
 		this.checkpointResponder = Preconditions.checkNotNull(checkpointResponder);
+		this.rescalingResponder = Preconditions.checkNotNull(rescalingResponder);
 		this.operatorCoordinatorEventGateway = Preconditions.checkNotNull(operatorCoordinatorEventGateway);
 		this.aggregateManager = Preconditions.checkNotNull(aggregateManager);
 		this.taskManagerActions = checkNotNull(taskManagerActions);
@@ -376,6 +421,8 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 
 		final ShuffleIOOwnerContext taskShuffleContext = shuffleEnvironment
 			.createShuffleIOOwnerContext(taskNameWithSubtaskAndId, executionId, metrics.getIOMetricGroup());
+
+		this.taskShuffleContext = taskShuffleContext;
 
 		// produced intermediate result partitions
 		final ResultPartitionWriter[] resultPartitionWriters = shuffleEnvironment.createResultPartitionWriters(
@@ -685,6 +732,7 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 				inputGates,
 				taskEventDispatcher,
 				checkpointResponder,
+				rescalingResponder,
 				operatorCoordinatorEventGateway,
 				taskManagerConfig,
 				metrics,
@@ -1249,6 +1297,43 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 	}
 
 	/**
+	 * Calls the invokable to trigger a rescale signal.
+	 *
+	 * @param rescaleSignal Rescale mode.
+	 */
+	public void triggerRescaleSignal(
+		final RescaleSignal rescaleSignal) {
+
+		final AbstractInvokable invokable = this.invokable;
+
+		if (executionState == ExecutionState.RUNNING && invokable != null) {
+			try {
+				invokable.triggerRescaleSignal(rescaleSignal);
+			}
+			catch (RejectedExecutionException ex) {
+				// This may happen if the mailbox is closed. It means that the task is shutting down, so we just ignore it.
+				LOG.info(
+					"Triggering rescale signal {} for {} ({}) was rejected by the mailbox",
+					rescaleSignal, taskNameWithSubtask, executionId);
+			}
+			catch (Throwable t) {
+				if (getExecutionState() == ExecutionState.RUNNING) {
+					failExternally(new Exception(
+						"Error while triggering rescale signal " + rescaleSignal + " for " +
+							taskNameWithSubtask, t));
+				} else {
+					LOG.info("Encountered error while triggering rescale signal {} for " +
+							"{} ({}) while being not in state running.", rescaleSignal,
+						taskNameWithSubtask, executionId, t);
+				}
+			}
+		}
+		else {
+			LOG.debug("Declining triggering rescale signal request for non-running task {} ({}).", taskNameWithSubtask, executionId);
+		}
+	}
+
+	/**
 	 * Dispatches an operator event to the invokable task.
 	 *
 	 * <p>If the event delivery did not succeed, this method throws an exception. Callers can use that
@@ -1276,6 +1361,148 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 				throw e;
 			}
 		}
+	}
+
+	public void modifyForRescaleSync(
+			List<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+			List<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
+			ShuffleEnvironment<?, ?> shuffleEnvironment,
+			RescaleSignal.RescaleSignalType rescaleSignalType) {
+
+		if (executionState == ExecutionState.RUNNING && this.invokable != null) {
+			boolean isInCleanStage = rescaleSignalType == RescaleSignal.RescaleSignalType.CLEAN;
+
+			// modify result partition, change subpartitions and buffer pool
+//			checkArgument(resultPartitionDeploymentDescriptors.size() <= 1);
+//			checkArgument(this.consumableNotifyingPartitionWriters.length <= 1);
+			checkArgument(resultPartitionDeploymentDescriptors.size() == this.consumableNotifyingPartitionWriters.length);
+			for (int i = 0; i < resultPartitionDeploymentDescriptors.size(); i++) {
+				int newNumSubpartitions = resultPartitionDeploymentDescriptors
+					.get(i)
+					.getNumberOfSubpartitions();
+				ResultPartitionWriter resultPartitionWriter = this.consumableNotifyingPartitionWriters[i];
+				int previousNumSubpartitions = resultPartitionWriter.getNumberOfSubpartitions();
+				if (previousNumSubpartitions < newNumSubpartitions) {
+					checkArgument(resultPartitionWriter instanceof PipelinedResultPartition);
+					((PipelinedResultPartition) resultPartitionWriter).modifyForRescale(newNumSubpartitions);
+				} else if (previousNumSubpartitions > newNumSubpartitions) {
+					checkArgument(resultPartitionWriter instanceof PipelinedResultPartition);
+					((PipelinedResultPartition) resultPartitionWriter).modifyForRescale(newNumSubpartitions, !isInCleanStage);
+				}
+			}
+
+			// modify input gates
+//			checkArgument(inputGateDeploymentDescriptors.size() <= 1);
+			checkArgument(inputGateDeploymentDescriptors.size() == inputGates.length);
+			for (int i = 0; i < inputGateDeploymentDescriptors.size(); i++) {
+				int newNumChannels = inputGateDeploymentDescriptors
+					.get(i)
+					.getShuffleDescriptors().length;
+				InputGate inputGate = this.inputGates[i];
+				int previousNumChannels = inputGate.getNumberOfInputChannels();
+				if (previousNumChannels != newNumChannels) {
+					updateInputGate(
+						inputGateDeploymentDescriptors,
+						shuffleEnvironment,
+						inputGate,
+						previousNumChannels,
+						previousNumChannels > newNumChannels && !isInCleanStage);
+				}
+			}
+//		int newNumInputGates = inputGateDeploymentDescriptors.size();
+//		if (this.inputGates.length != newNumInputGates) {
+//			final String taskNameWithSubtaskAndId = taskNameWithSubtask + " (" + executionId + ')';
+//
+//			final ShuffleIOOwnerContext taskShuffleContext = shuffleEnvironment
+//				.createShuffleIOOwnerContext(taskNameWithSubtaskAndId, executionId, metrics.getIOMetricGroup());
+//			final IndexedInputGate[] newGates = shuffleEnvironment
+//				.createInputGatesForRescale(
+//					taskShuffleContext, this, inputGateDeploymentDescriptors, this.inputGates.length).toArray(new IndexedInputGate[0]);
+//
+//			int counter = this.inputGates.length;
+//			this.inputGates = Arrays.copyOf(inputGates, newNumInputGates);
+//			for (IndexedInputGate gate : newGates) {
+//				inputGates[counter++] = new InputGateWithMetrics(gate, metrics.getIOMetricGroup().getNumBytesInCounter());
+//			}
+//		}
+
+//			// modify partition strategy
+//			final AbstractInvokable invokable = this.invokable;
+//			invokable.modifyDownStreamChannelsForRescale();
+		} else {
+			LOG.warn("Declining modifyForRescale request for non-running task {} ({}).", taskNameWithSubtask, executionId);
+		}
+	}
+
+	public void notifyJobMasterRescaleDeployingCompleted(ExecutionAttemptID executionAttemptID) {
+		final AbstractInvokable invokable = this.invokable;
+		assert invokable != null;
+		invokable.getEnvironment().acknowledgeDeploymentForRescaling(executionAttemptID);
+	}
+
+	private void updateInputGate(
+			List<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
+			ShuffleEnvironment<?, ?> shuffleEnvironment,
+			InputGate inputGate,
+			int previousNumChannels,
+			boolean justMark) {
+
+		// justMark: if we need to destroy some channels, skip this function in the create stage, and do it in the clean stage
+		if (justMark) {
+			return;
+		}
+
+		shuffleEnvironment.modifyInputGateForRescale(
+			taskShuffleContext,
+			inputGate,
+			inputGateDeploymentDescriptors.get(0));
+
+		// make new channels request partitions
+		final AbstractInvokable invokable = this.invokable;
+
+		// wait for the new channels to consume recovery states, then use the streamTask's mail box to request partitions of new channels
+		CompletableFuture<Void> result = new CompletableFuture<>();
+		invokable.modifyUpperStreamChannelsForRescale(
+			previousNumChannels,
+			() -> {
+				try {
+					result.complete(newChannelsRequirePartitionsAsync(inputGate, previousNumChannels));
+				}
+				catch (Exception ex) {
+					// Report the failure both via the Future result but also to the mailbox
+					result.completeExceptionally(ex);
+					throw ex;
+				}
+			},
+			"Input gate request partitions (rescale)"
+		);
+
+		// wait until the streamTask's mail box has finished the mail
+		try {
+			result.get();
+		} catch (InterruptedException | ExecutionException e) {
+			LOG.debug("Input gate request partitions (rescale) failed.");
+			e.printStackTrace();
+		}
+	}
+
+	private Void newChannelsRequirePartitionsAsync(InputGate inputGate, int previousNumChannels) {
+		inputGate.requestPartitionsForRescale(previousNumChannels);
+		return null;
+	}
+
+	public byte[] fetchKeyGroupFromTask(int keyGroupIndex) {
+		final AbstractInvokable invokable = this.invokable;
+		return invokable.fetchKeyGroupFromTask(keyGroupIndex);
+	}
+
+	public void pushKeyGroup(int keyGroupIndex, byte[] bytes) {
+		return;
+	}
+
+	public void fetchKeyFromTask(byte[] keyData, int keyGroupIndex) {
+		final AbstractInvokable invokable = this.invokable;
+		invokable.fetchKeyFromTask(keyData, keyGroupIndex);
 	}
 
 	// ------------------------------------------------------------------------

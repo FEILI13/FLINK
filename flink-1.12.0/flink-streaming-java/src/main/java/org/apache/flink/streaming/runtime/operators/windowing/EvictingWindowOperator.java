@@ -26,7 +26,13 @@ import org.apache.flink.api.common.state.StateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.runtime.executiongraph.RescaleState;
+import org.apache.flink.runtime.messages.Acknowledge;
+import org.apache.flink.runtime.state.KeyGroupRange;
+import org.apache.flink.runtime.state.heap.PostFetchStateTable;
 import org.apache.flink.runtime.state.internal.InternalListState;
+import org.apache.flink.runtime.state.rescale.SubTaskMigrationInstruction;
+import org.apache.flink.runtime.taskexecutor.rpc.RpcRescalingResponder;
 import org.apache.flink.streaming.api.operators.InternalTimer;
 import org.apache.flink.streaming.api.windowing.assigners.MergingWindowAssigner;
 import org.apache.flink.streaming.api.windowing.assigners.WindowAssigner;
@@ -43,6 +49,8 @@ import org.apache.flink.shaded.guava18.com.google.common.collect.FluentIterable;
 import org.apache.flink.shaded.guava18.com.google.common.collect.Iterables;
 
 import java.util.Collection;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -460,5 +468,28 @@ public class EvictingWindowOperator<K, IN, OUT, W extends Window>
 	@SuppressWarnings("unchecked, rawtypes")
 	public StateDescriptor<? extends AppendingState<IN, Iterable<IN>>, ?> getStateDescriptor() {
 		return (StateDescriptor<? extends AppendingState<IN, Iterable<IN>>, ?>) evictingWindowStateDescriptor;
+	}
+
+	@Override
+	public void markStateKeyGroups(
+		List<KeyGroupRange> keyGroupsInCharge,
+		RescaleState rescaleState,
+		RpcRescalingResponder rescalingResponder,
+		int subtaskIndex, String taskName) {
+		if (evictingWindowState != null) {
+			evictingWindowState.markStateKeyGroups(keyGroupsInCharge, rescaleState, rescalingResponder, subtaskIndex, taskName);
+		}
+	}
+
+	@Override
+	public CompletableFuture enableMarkedStateKeyGroups(
+		RescaleState rescaleState,
+		SubTaskMigrationInstruction instruction) {
+		System.out.println("enableMarkedStateKeyGroups");
+		if (evictingWindowState != null) {
+			return evictingWindowState.enableMarkedStateKeyGroups(rescaleState, instruction);
+		} else {
+			return CompletableFuture.completedFuture(Acknowledge.get());
+		}
 	}
 }

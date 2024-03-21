@@ -572,6 +572,11 @@ public class SlotSharingExecutionSlotAllocatorTest extends TestLogger {
 			return new HashSet<>(executionSlotSharingGroups.values());
 		}
 
+		@Override
+		public void updateForRescale(SlotSharingStrategy slotSharingStrategy) {
+			throw new UnsupportedOperationException("This method is not implemented for " + this.getClass());
+		}
+
 		private static TestingSlotSharingStrategy createWithGroups(Iterable<ExecutionVertexID[]> groups) {
 			Map<ExecutionVertexID, ExecutionSlotSharingGroup> executionSlotSharingGroups = new HashMap<>();
 			for (ExecutionVertexID[] group : groups) {

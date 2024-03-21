@@ -21,6 +21,7 @@ package org.apache.flink.streaming.runtime.io;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.core.io.InputStatus;
 import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
+import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.streaming.api.operators.BoundedMultiInput;
 import org.apache.flink.streaming.runtime.io.PushingAsyncDataInput.DataOutput;
 
@@ -30,6 +31,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 
+import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
@@ -83,5 +85,11 @@ public final class StreamOneInputProcessor<IN> implements StreamInputProcessor {
 	@Override
 	public void close() throws IOException {
 		input.close();
+	}
+
+	@Override
+	public void updateForRescale(IOManager ioManager) {
+		checkArgument(input instanceof StreamTaskNetworkInput);
+		((StreamTaskNetworkInput) input).updateForRescale(ioManager);
 	}
 }

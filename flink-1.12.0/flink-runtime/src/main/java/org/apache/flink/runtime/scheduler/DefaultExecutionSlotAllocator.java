@@ -28,6 +28,7 @@ import org.apache.flink.runtime.jobmaster.SlotRequestId;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 
+import org.apache.hadoop.hdfs.server.namenode.UnsupportedActionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -89,6 +90,11 @@ class DefaultExecutionSlotAllocator extends AbstractExecutionSlotAllocator {
 		}
 
 		return slotExecutionVertexAssignments;
+	}
+
+	@Override
+	public void updateForRescale(ExecutionSlotAllocator executionSlotAllocator) throws UnsupportedActionException {
+		throw new UnsupportedActionException("updateForRescale unsupported for DefaultExecutionSlotAllocator.");
 	}
 
 	private CompletableFuture<LogicalSlot> allocateSlot(

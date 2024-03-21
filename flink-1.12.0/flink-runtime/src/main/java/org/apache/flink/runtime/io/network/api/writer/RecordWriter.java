@@ -33,6 +33,7 @@ import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 
@@ -56,7 +57,7 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 
 	protected final ResultPartitionWriter targetPartition;
 
-	protected final int numberOfChannels;
+	protected int numberOfChannels;
 
 	protected final DataOutputSerializer serializer;
 
@@ -260,5 +261,17 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 	@VisibleForTesting
 	ResultPartitionWriter getTargetPartition() {
 		return targetPartition;
+	}
+
+	public int updateNumberOfChannels() {
+		int numChannels = this.targetPartition.getNumberOfSubpartitionsForRescale();
+		this.numberOfChannels = numChannels;
+		return numChannels;
+	}
+
+	int updatePartitionStrategy(Map<Integer, Integer> routeTableDifference) {
+		int numChannels = this.targetPartition.getNumberOfSubpartitionsForRescale();
+		this.numberOfChannels = numChannels;
+		return numChannels;
 	}
 }

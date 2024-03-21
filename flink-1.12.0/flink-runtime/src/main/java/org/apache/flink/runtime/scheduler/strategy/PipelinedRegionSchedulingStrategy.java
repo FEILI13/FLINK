@@ -56,6 +56,8 @@ public class PipelinedRegionSchedulingStrategy implements SchedulingStrategy {
 
 	private final Map<SchedulingPipelinedRegion, List<ExecutionVertexID>> regionVerticesSorted = new IdentityHashMap<>();
 
+	private List<ExecutionVertexDeploymentOption> savedExecutionVertexDeploymentOptionsForRescale;
+
 	public PipelinedRegionSchedulingStrategy(
 			final SchedulerOperations schedulerOperations,
 			final SchedulingTopology schedulingTopology) {
@@ -89,6 +91,20 @@ public class PipelinedRegionSchedulingStrategy implements SchedulingStrategy {
 			.filter(region -> !region.getConsumedResults().iterator().hasNext())
 			.collect(Collectors.toSet());
 		maybeScheduleRegions(sourceRegions);
+	}
+
+	@Override
+	public void startSchedulingForRescale() {
+		final Set<SchedulingPipelinedRegion> sourceRegions = IterableUtils
+			.toStream(schedulingTopology.getAllPipelinedRegions())
+			.filter(region -> !region.getConsumedResults().iterator().hasNext())
+			.collect(Collectors.toSet());
+		maybeScheduleRegionsForRescale(sourceRegions);
+	}
+
+	@Override
+	public void releaseResourcesForRescale() {
+		this.schedulerOperations.cancelTasksAndChannelsForRescale(savedExecutionVertexDeploymentOptionsForRescale);
 	}
 
 	@Override
@@ -140,6 +156,32 @@ public class PipelinedRegionSchedulingStrategy implements SchedulingStrategy {
 				regionVerticesSorted.get(region),
 				id -> deploymentOption);
 		schedulerOperations.allocateSlotsAndDeploy(vertexDeploymentOptions);
+	}
+
+	private void maybeScheduleRegionsForRescale(final Set<SchedulingPipelinedRegion> regions) {
+		final List<SchedulingPipelinedRegion> regionsSorted =
+			SchedulingStrategyUtils.sortPipelinedRegionsInTopologicalOrder(schedulingTopology, regions);
+		for (SchedulingPipelinedRegion region : regionsSorted) {
+			maybeScheduleRegionForRescale(region);
+		}
+	}
+
+	private void maybeScheduleRegionForRescale(final SchedulingPipelinedRegion region) {
+		if (!areRegionInputsAllConsumable(region)) {
+			return;
+		}
+
+//		checkState(areRegionVerticesAllInCreatedState(region), "BUG: trying to schedule a region which is not in CREATED state");
+
+		final List<ExecutionVertexDeploymentOption> vertexDeploymentOptions =
+			SchedulingStrategyUtils.createExecutionVertexDeploymentOptions(
+				regionVerticesSorted.get(region),
+				id -> deploymentOption);
+
+		schedulerOperations.allocateSlotsAndDeployForRescale(vertexDeploymentOptions);
+
+		// save the deploymentOptions for clean stage
+		savedExecutionVertexDeploymentOptionsForRescale = vertexDeploymentOptions;
 	}
 
 	private boolean areRegionInputsAllConsumable(final SchedulingPipelinedRegion region) {

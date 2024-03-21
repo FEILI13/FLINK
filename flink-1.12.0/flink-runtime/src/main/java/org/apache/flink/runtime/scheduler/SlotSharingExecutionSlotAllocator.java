@@ -136,6 +136,14 @@ class SlotSharingExecutionSlotAllocator implements ExecutionSlotAllocator {
 		cancelLogicalSlotRequest(executionVertexId, null);
 	}
 
+	@Override
+	public void updateForRescale(ExecutionSlotAllocator executionSlotAllocator) {
+		// TODO: consider better implementation for all kinds of situations
+		// maybe just add all of them, but only deploy the new slots and kill the removed slots
+		// or modify when new executionSlotAllocator is initialized
+		this.slotSharingStrategy.updateForRescale(((SlotSharingExecutionSlotAllocator) executionSlotAllocator).slotSharingStrategy);
+	}
+
 	private void cancelLogicalSlotRequest(ExecutionVertexID executionVertexId, Throwable cause) {
 		ExecutionSlotSharingGroup executionSlotSharingGroup =
 			slotSharingStrategy.getExecutionSlotSharingGroup(executionVertexId);

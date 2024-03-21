@@ -164,6 +164,13 @@ public class TestingTaskExecutorGateway implements TaskExecutorGateway {
 	}
 
 	@Override
+	public CompletableFuture<Acknowledge> modifyForRescale(
+		TaskDeploymentDescriptor tdd,
+		Time timeout) {
+		throw new UnsupportedOperationException("This method is not implemented for " + this.getClass());
+	}
+
+	@Override
 	public CompletableFuture<Acknowledge> confirmCheckpoint(ExecutionAttemptID executionAttemptID, long checkpointId, long checkpointTimestamp) {
 		return CompletableFuture.completedFuture(Acknowledge.get());
 	}

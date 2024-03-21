@@ -304,6 +304,7 @@ public class ProcessMemoryUtils<FM extends FlinkMemory> {
 		}
 
 		jvmArgStr.append(" -XX:MaxMetaspaceSize=").append(processSpec.getJvmMetaspaceSize().getBytes());
+		jvmArgStr.append(" -XX:MetaspaceSize=").append(processSpec.getJvmMetaspaceSize().getBytes());
 
 		return jvmArgStr.toString();
 	}

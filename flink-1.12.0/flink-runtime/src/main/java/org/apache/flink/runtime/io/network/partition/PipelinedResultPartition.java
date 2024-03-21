@@ -27,6 +27,7 @@ import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 
@@ -55,7 +56,7 @@ public class PipelinedResultPartition extends BufferWritingResultPartition
 	/** A flag for each subpartition indicating whether it was already consumed or not,
 	 * to make releases idempotent. */
 	@GuardedBy("releaseLock")
-	private final boolean[] consumedSubpartitions;
+	private boolean[] consumedSubpartitions;
 
 	/** The total number of references to subpartitions of this result. The result partition can be
 	 * safely released, iff the reference count is zero. */
@@ -168,5 +169,36 @@ public class PipelinedResultPartition extends BufferWritingResultPartition
 		for (ResultSubpartition subpartition : subpartitions) {
 			((CheckpointedResultSubpartition) subpartition).finishReadRecoveredState(notifyAndBlockOnCompletion);
 		}
+	}
+
+	public void modifyForRescale(int newNumSubpartitions) {
+		modifyForRescale(newNumSubpartitions, false);
+	}
+
+	public void modifyForRescale(int newNumSubpartitions, boolean justMark) {
+		checkArgument(newNumSubpartitions != this.numSubpartitions);
+		if (justMark) {
+			markedNewNumSubpartitions = newNumSubpartitions;
+		} else {
+			// we first clean the markedNewNumSubpartitions, then do the actual increase/decrease
+			markedNewNumSubpartitions = UNSET_MARKED_NUM_SUB_PAR;
+			if (newNumSubpartitions > this.numSubpartitions) {
+				this.consumedSubpartitions = Arrays.copyOf(consumedSubpartitions, newNumSubpartitions);
+				this.subpartitions = Arrays.copyOf(subpartitions, newNumSubpartitions);
+				this.unicastBufferBuilders = Arrays.copyOf(unicastBufferBuilders, newNumSubpartitions);
+				for (int i = this.numSubpartitions; i < newNumSubpartitions; i++) {
+					subpartitions[i] = new PipelinedSubpartition(i, this);
+				}
+				this.bufferPool.updateForRescale(newNumSubpartitions);
+			} else {
+				this.consumedSubpartitions = Arrays.copyOf(consumedSubpartitions, newNumSubpartitions);
+				this.subpartitions = Arrays.copyOf(subpartitions, newNumSubpartitions);
+				this.unicastBufferBuilders = Arrays.copyOf(unicastBufferBuilders, newNumSubpartitions);
+				this.bufferPool.updateForRescale(newNumSubpartitions);
+			}
+
+			this.numSubpartitions = newNumSubpartitions;
+		}
+
 	}
 }

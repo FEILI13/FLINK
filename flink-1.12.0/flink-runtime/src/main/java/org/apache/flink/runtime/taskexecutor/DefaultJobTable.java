@@ -24,6 +24,7 @@ import org.apache.flink.runtime.execution.librarycache.LibraryCacheManager;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionConsumableNotifier;
 import org.apache.flink.runtime.jobmaster.JobMasterGateway;
 import org.apache.flink.runtime.jobmaster.JobMasterId;
+import org.apache.flink.runtime.taskexecutor.rpc.RpcRescalingResponder;
 import org.apache.flink.runtime.taskmanager.CheckpointResponder;
 import org.apache.flink.runtime.taskmanager.TaskManagerActions;
 import org.apache.flink.util.Preconditions;
@@ -157,6 +158,11 @@ public final class DefaultJobTable implements JobTable {
 		}
 
 		@Override
+		public RpcRescalingResponder getRescalingResponder() {
+			return verifyContainsEstablishedConnection().getRescalingResponder();
+		}
+
+		@Override
 		public GlobalAggregateManager getGlobalAggregateManager() {
 			return verifyContainsEstablishedConnection().getGlobalAggregateManager();
 		}
@@ -199,13 +205,14 @@ public final class DefaultJobTable implements JobTable {
 
 		@Override
 		public JobTable.Connection connect(
-				ResourceID resourceId,
-				JobMasterGateway jobMasterGateway,
-				TaskManagerActions taskManagerActions,
-				CheckpointResponder checkpointResponder,
-				GlobalAggregateManager aggregateManager,
-				ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
-				PartitionProducerStateChecker partitionStateChecker) {
+			ResourceID resourceId,
+			JobMasterGateway jobMasterGateway,
+			TaskManagerActions taskManagerActions,
+			CheckpointResponder checkpointResponder,
+			GlobalAggregateManager aggregateManager,
+			ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
+			PartitionProducerStateChecker partitionStateChecker,
+			RpcRescalingResponder rescalingResponder) {
 			verifyJobIsNotClosed();
 			Preconditions.checkState(connection == null);
 
@@ -216,7 +223,8 @@ public final class DefaultJobTable implements JobTable {
 				checkpointResponder,
 				aggregateManager,
 				resultPartitionConsumableNotifier,
-				partitionStateChecker);
+				partitionStateChecker,
+				rescalingResponder);
 			resourceIdJobIdIndex.put(resourceId, jobId);
 
 			return this;
@@ -261,6 +269,9 @@ public final class DefaultJobTable implements JobTable {
 		// Checkpoint responder for the specific job manager
 		private final CheckpointResponder checkpointResponder;
 
+		// Rescale responder for the specific job manager
+		private final RpcRescalingResponder rescalingResponder;
+
 		// GlobalAggregateManager interface to job manager
 		private final GlobalAggregateManager globalAggregateManager;
 
@@ -277,7 +288,8 @@ public final class DefaultJobTable implements JobTable {
 			CheckpointResponder checkpointResponder,
 			GlobalAggregateManager globalAggregateManager,
 			ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
-			PartitionProducerStateChecker partitionStateChecker) {
+			PartitionProducerStateChecker partitionStateChecker,
+			RpcRescalingResponder rescalingResponder) {
 			this.resourceID = Preconditions.checkNotNull(resourceID);
 			this.jobMasterGateway = Preconditions.checkNotNull(jobMasterGateway);
 			this.taskManagerActions = Preconditions.checkNotNull(taskManagerActions);
@@ -285,6 +297,7 @@ public final class DefaultJobTable implements JobTable {
 			this.globalAggregateManager = Preconditions.checkNotNull(globalAggregateManager);
 			this.resultPartitionConsumableNotifier = Preconditions.checkNotNull(resultPartitionConsumableNotifier);
 			this.partitionStateChecker = Preconditions.checkNotNull(partitionStateChecker);
+			this.rescalingResponder = Preconditions.checkNotNull(rescalingResponder);
 		}
 
 		public ResourceID getResourceID() {
@@ -305,6 +318,10 @@ public final class DefaultJobTable implements JobTable {
 
 		public CheckpointResponder getCheckpointResponder() {
 			return checkpointResponder;
+		}
+
+		public RpcRescalingResponder getRescalingResponder() {
+			return rescalingResponder;
 		}
 
 		public GlobalAggregateManager getGlobalAggregateManager() {

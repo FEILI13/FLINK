@@ -26,12 +26,18 @@ import org.apache.flink.api.common.typeutils.base.ListSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.queryablestate.client.state.serialization.KvStateSerializer;
+import org.apache.flink.runtime.executiongraph.RescaleState;
+import org.apache.flink.runtime.messages.Acknowledge;
+import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.internal.InternalListState;
+import org.apache.flink.runtime.state.rescale.SubTaskMigrationInstruction;
+import org.apache.flink.runtime.taskexecutor.rpc.RpcRescalingResponder;
 import org.apache.flink.util.Preconditions;
 
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Heap-backed partitioned {@link ListState} that is snapshotted into files.
@@ -130,7 +136,7 @@ class HeapListState<K, N, V>
 		// write the same as RocksDB writes lists, with one ',' separator
 		for (int i = 0; i < result.size(); i++) {
 			dupSerializer.serialize(result.get(i), view);
-			if (i < result.size() -1) {
+			if (i < result.size() - 1) {
 				view.writeByte(',');
 			}
 		}
@@ -196,5 +202,30 @@ class HeapListState<K, N, V>
 			(TypeSerializer<List<E>>) stateTable.getStateSerializer(),
 			stateTable.getNamespaceSerializer(),
 			(List<E>) stateDesc.getDefaultValue());
+	}
+
+	@Override
+	public void markStateKeyGroups(
+		List<KeyGroupRange> keyGroupsInCharge,
+		RescaleState rescaleState,
+		RpcRescalingResponder rescalingResponder,
+		int subtaskIndex,
+		String taskName) {
+		System.out.println("setStateKeyGroupsInCharge");
+		((PostFetchStateTable) this.stateTable).markStateKeyGroups(
+			keyGroupsInCharge,
+			rescaleState,
+			rescalingResponder,
+			subtaskIndex,
+			taskName);
+	}
+
+	@Override
+	public CompletableFuture enableMarkedStateKeyGroups(
+		RescaleState rescaleState,
+		SubTaskMigrationInstruction instruction) {
+		System.out.println("enableMarkedStateKeyGroups");
+		return ((PostFetchStateTable) this.stateTable).enableMarkedStateKeyGroups(rescaleState,
+			instruction);
 	}
 }

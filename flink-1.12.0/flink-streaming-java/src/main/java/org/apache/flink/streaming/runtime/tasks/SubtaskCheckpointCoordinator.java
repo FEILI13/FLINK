@@ -85,4 +85,12 @@ public interface SubtaskCheckpointCoordinator extends Closeable {
 		long checkpointId,
 		OperatorChain<?, ?> operatorChain,
 		Supplier<Boolean> isRunning) throws Exception;
+
+
+//	/**
+//	 * Handle RescaleSignal.
+//	 */
+//	void handleRescaleSignal(
+//		int mode,
+//		OperatorChain<?, ?> operatorChain) throws Exception;
 }

@@ -30,6 +30,7 @@ import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.TaskBackPressureResponse;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.runtime.rpc.RpcTimeout;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorOperatorEventGateway;
 import org.apache.flink.util.SerializedValue;
@@ -151,6 +152,40 @@ public interface TaskManagerGateway extends TaskExecutorOperatorEventGateway {
 		long timestamp,
 		CheckpointOptions checkpointOptions,
 		boolean advanceToEndOfEventTime);
+
+	/**
+	 * Trigger rescale signal.
+	 *
+	 * @param executionAttemptID identifying the task
+	 * @param jobId identifying the job to which the task belongs
+	 * @param rescaleSignal identifying the rescale mode
+	 */
+	default void triggerRescaleSignal(ExecutionAttemptID executionAttemptID, JobID jobId, RescaleSignal rescaleSignal) {
+		throw new UnsupportedOperationException();
+	}
+
+	/**
+	 * modifyForRescale.
+	 *
+	 * @param tdd describing the task to submit
+	 * @param timeout of the submit operation
+	 * @return Future acknowledge of the successful operation
+	 */
+	CompletableFuture<Acknowledge> modifyForRescale(
+		TaskDeploymentDescriptor tdd,
+		Time timeout);
+
+	default void fetchKeyGroupFromTask(int keyGroupIndex, ExecutionAttemptID executionAttemptID) {
+		throw new UnsupportedOperationException();
+	}
+
+	default void pushKeyGroup(int keyGroupIndex, byte[] bytes, ExecutionAttemptID executionAttemptID) {
+		throw new UnsupportedOperationException();
+	}
+
+	default void fetchKeyFromTask(byte[] keyData, int keyGroupIndex, ExecutionAttemptID attemptId) {
+		throw new UnsupportedOperationException();
+	}
 
 	/**
 	 * Frees the slot with the given allocation ID.

@@ -28,6 +28,7 @@ import org.apache.flink.runtime.jobmaster.JobResult;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
 import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.util.FlinkException;
 
 import javax.annotation.Nullable;
@@ -175,4 +176,14 @@ public interface ClusterClient<T> extends AutoCloseable {
 	 * @return the response from the coordinator
 	 */
 	CompletableFuture<CoordinationResponse> sendCoordinationRequest(JobID jobId, OperatorID operatorId, CoordinationRequest request);
+
+
+	/**
+	 * Triggers a rescale for the job identified by the job id.
+	 *
+	 * @param jobId specifies the job which the coordinator belongs to
+	 * @param rescaleSignalType
+	 * @return the response from the coordinator
+	 */
+	CompletableFuture<Acknowledge> triggerRescale(JobID jobId, RescaleSignal.RescaleSignalType rescaleSignalType, int globalParallelism, @Nullable Map<String, Integer> parallelismList);
 }

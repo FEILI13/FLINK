@@ -49,6 +49,10 @@ public interface ResultPartitionWriter extends AutoCloseable, AvailabilityProvid
 
 	int getNumberOfSubpartitions();
 
+	default int getNumberOfSubpartitionsForRescale() {
+		throw new UnsupportedOperationException();
+	}
+
 	int getNumTargetKeyGroups();
 
 	/**

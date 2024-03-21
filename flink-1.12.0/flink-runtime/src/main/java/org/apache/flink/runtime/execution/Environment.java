@@ -42,6 +42,7 @@ import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.state.internal.InternalKvState;
 import org.apache.flink.runtime.taskexecutor.GlobalAggregateManager;
+import org.apache.flink.runtime.taskexecutor.rpc.RpcRescalingResponder;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
 import org.apache.flink.util.UserCodeClassLoader;
 
@@ -233,4 +234,21 @@ public interface Environment {
 	IndexedInputGate[] getAllInputGates();
 
 	TaskEventDispatcher getTaskEventDispatcher();
+
+	default void acknowledgeRescaling(
+		JobID jobID,
+		ExecutionAttemptID executionAttemptID,
+		String taskName,
+		long timestampAsID) {
+		throw new UnsupportedOperationException();
+	}
+
+	default void acknowledgeDeploymentForRescaling(
+		ExecutionAttemptID executionAttemptID) {
+		throw new UnsupportedOperationException();
+	}
+
+	default RpcRescalingResponder getRescalingResponder() {
+		throw new UnsupportedOperationException();
+	}
 }

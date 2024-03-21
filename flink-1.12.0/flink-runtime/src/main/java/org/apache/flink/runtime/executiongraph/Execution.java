@@ -57,6 +57,8 @@ import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.TaskBackPressureResponse;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.operators.coordination.TaskNotRunningException;
+import org.apache.flink.runtime.rescale.RescaleCoordinator;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.runtime.shuffle.NettyShuffleMaster;
 import org.apache.flink.runtime.shuffle.PartitionDescriptor;
 import org.apache.flink.runtime.shuffle.ProducerDescriptor;
@@ -77,6 +79,7 @@ import org.slf4j.Logger;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -103,8 +106,7 @@ import static org.apache.flink.runtime.execution.ExecutionState.FINISHED;
 import static org.apache.flink.runtime.execution.ExecutionState.RUNNING;
 import static org.apache.flink.runtime.execution.ExecutionState.SCHEDULED;
 import static org.apache.flink.runtime.scheduler.ExecutionVertexSchedulingRequirementsMapper.getPhysicalSlotResourceProfile;
-import static org.apache.flink.util.Preconditions.checkNotNull;
-import static org.apache.flink.util.Preconditions.checkState;
+import static org.apache.flink.util.Preconditions.*;
 
 /**
  * A single execution of a vertex. While an {@link ExecutionVertex} can be executed multiple times
@@ -677,6 +679,46 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		return maxParallelism;
 	}
 
+	public void deployForRescale(RescaleSignal.RescaleSignalType rescaleSignalType) {
+		try {
+			// as it is during a rescale process, the slot must have been allocated
+			final LogicalSlot slot  = assignedResource;
+			final TaskDeploymentDescriptor deployment;
+			final ComponentMainThreadExecutor jobMasterMainThreadExecutor =
+				vertex.getExecutionGraph().getJobMasterMainThreadExecutor();
+
+			deployment = TaskDeploymentDescriptorFactory
+				.fromExecutionVertex(vertex, attemptNumber)
+				.createDeploymentDescriptor(
+					slot.getAllocationId(),
+					slot.getPhysicalSlotNumber(),
+					taskRestore,
+					producedPartitions.values());
+
+			deployment.rescaleState = this.vertex.rescaleState;
+			deployment.rescaleSignalType = rescaleSignalType;
+			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+			CompletableFuture.supplyAsync(() -> taskManagerGateway.modifyForRescale(deployment, rpcTimeout), executor)
+				.thenCompose(Function.identity())
+				.whenCompleteAsync(
+					(ack, failure) -> {
+						if (failure != null) {
+							failure.printStackTrace();
+						} else {
+//							LOG.info("deploy for rescale completed " + this.vertex.getTaskName());
+//							RescaleCoordinator rescaleCoordinator = this.vertex.getExecutionGraph().getRescaleCoordinator();
+//							if (rescaleCoordinator != null) {
+//								rescaleCoordinator.notifyRescaleDeploymentCompleted(this.vertex);
+//							}
+						}
+					},
+					jobMasterMainThreadExecutor);
+		} catch (IOException e) {
+			System.out.println(this.vertex.getTaskName());
+			e.printStackTrace();
+		}
+	}
+
 	/**
 	 * Deploys the execution to the previously assigned resource.
 	 *
@@ -741,6 +783,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 					slot.getPhysicalSlotNumber(),
 					taskRestore,
 					producedPartitions.values());
+
+			deployment.rescaleState = this.vertex.rescaleState;
 
 			// null taskRestore to let it be GC'ed
 			taskRestore = null;
@@ -1727,5 +1771,86 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 	private void assertRunningInJobMasterMainThread() {
 		vertex.getExecutionGraph().assertRunningInJobMasterMainThread();
+	}
+
+	public void triggerRescaleSignal(RescaleSignal rescaleSignal) {
+
+		final LogicalSlot slot = assignedResource;
+
+		if (slot != null) {
+			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+
+			taskManagerGateway.triggerRescaleSignal(attemptId, getVertex().getJobId(), rescaleSignal);
+		} else {
+			LOG.debug("The execution has no slot assigned. This indicates that the execution is no longer running.");
+		}
+	}
+
+	public Map<IntermediateResultPartitionID, ResultPartitionDeploymentDescriptor> getProducedPartitions() {
+		return producedPartitions;
+	}
+
+	public boolean cancelAsync(CompletableFuture<Acknowledge> cancelResult) {
+		// skip checking state
+		checkArgument(state == RUNNING);
+
+		if (transitionState(state, CANCELING)) {
+			taskManagerLocationFuture.cancel(false);
+
+			final LogicalSlot slot = assignedResource;
+
+			if (slot != null) {
+				final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+				final ComponentMainThreadExecutor jobMasterMainThreadExecutor =
+					getVertex().getExecutionGraph().getJobMasterMainThreadExecutor();
+
+				CompletableFuture<Acknowledge> cancelResultFuture = FutureUtils.retry(
+					() -> taskManagerGateway.cancelTask(attemptId, rpcTimeout),
+					NUM_CANCEL_CALL_TRIES,
+					jobMasterMainThreadExecutor);
+
+				cancelResultFuture.whenComplete(
+					(ack, failure) -> {
+						if (failure != null) {
+							fail(new Exception("Task could not be canceled.", failure));
+							cancelResult.completeExceptionally(failure);
+						} else {
+							completeCancelling();
+							cancelResult.complete(ack);
+						}
+					});
+			}
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	public CompletableFuture<Acknowledge> fetchKeyGroupFromTask(int keyGroupIndex) {
+		// as it is during a rescale process, the slot must have been allocated
+		final LogicalSlot slot  = assignedResource;
+		return CompletableFuture.supplyAsync(() -> {
+			slot.getTaskManagerGateway().fetchKeyGroupFromTask(keyGroupIndex, this.getAttemptId());
+			return Acknowledge.get();
+		});
+	}
+
+	public CompletableFuture<Acknowledge> pushKeyGroupFromTask(int keyGroupIndex, byte[] bytes) {
+		// as it is during a rescale process, the slot must have been allocated
+		final LogicalSlot slot  = assignedResource;
+		return CompletableFuture.supplyAsync(() -> {
+			slot.getTaskManagerGateway().pushKeyGroup(keyGroupIndex, bytes, this.getAttemptId());
+			return Acknowledge.get();
+		});
+	}
+
+	public CompletableFuture<Acknowledge> fetchKeyFromTask(byte[] keyData, int keyGroupIndex, String taskName) {
+		// as it is during a rescale process, the slot must have been allocated
+		final LogicalSlot slot  = assignedResource;
+		return CompletableFuture.supplyAsync(() -> {
+			System.out.println("Send request: " + keyGroupIndex + "at" + System.currentTimeMillis());
+			slot.getTaskManagerGateway().fetchKeyFromTask(keyData, keyGroupIndex, this.getAttemptId());
+			return Acknowledge.get();
+		});
 	}
 }

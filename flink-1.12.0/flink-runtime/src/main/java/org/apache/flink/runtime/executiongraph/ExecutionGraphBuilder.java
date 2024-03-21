@@ -354,6 +354,11 @@ public class ExecutionGraphBuilder {
 				completedCheckpoints,
 				rootBackend,
 				checkpointStatsTracker);
+			executionGraph.enableRescaleCoordinator(
+				triggerVertices,
+				ackVertices,
+				confirmVertices
+			);
 		}
 
 		// create all the metrics for the Execution Graph

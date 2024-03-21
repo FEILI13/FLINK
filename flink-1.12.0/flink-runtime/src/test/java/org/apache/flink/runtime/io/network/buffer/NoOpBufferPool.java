@@ -107,6 +107,11 @@ public class NoOpBufferPool implements BufferPool {
 	}
 
 	@Override
+	public void updateForRescale(int newNumSubpartitions) {
+		throw new UnsupportedOperationException("updateForRescale unsupported for" + this.getClass());
+	}
+
+	@Override
 	public void recycle(MemorySegment memorySegment) {
 		throw new UnsupportedOperationException();
 	}

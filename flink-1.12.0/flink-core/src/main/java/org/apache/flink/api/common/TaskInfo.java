@@ -34,7 +34,7 @@ public class TaskInfo {
 	private final String allocationIDAsString;
 	private final int maxNumberOfParallelSubtasks;
 	private final int indexOfSubtask;
-	private final int numberOfParallelSubtasks;
+	private int numberOfParallelSubtasks;
 	private final int attemptNumber;
 
 	public TaskInfo(
@@ -138,5 +138,9 @@ public class TaskInfo {
 	 */
 	public String getAllocationIDAsString() {
 		return allocationIDAsString;
+	}
+
+	public void setNumberOfParallelSubtasks(int numberOfParallelSubtasks) {
+		this.numberOfParallelSubtasks = numberOfParallelSubtasks;
 	}
 }

@@ -19,8 +19,13 @@
 package org.apache.flink.runtime.state;
 
 import org.apache.flink.api.common.state.CheckpointListener;
+import org.apache.flink.runtime.executiongraph.RescaleState;
+import org.apache.flink.runtime.state.rescale.SubTaskMigrationInstruction;
+import org.apache.flink.runtime.taskexecutor.rpc.RpcRescalingResponder;
 
 import java.io.Closeable;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Interface that combines both, the {@link KeyedStateBackend} interface, which encapsulates methods
@@ -41,4 +46,27 @@ public interface CheckpointableKeyedStateBackend<K> extends
 	 * Returns the key groups which this state backend is responsible for.
 	 */
 	KeyGroupRange getKeyGroupRange();
+
+	default void markStateKeyGroups(
+		List<KeyGroupRange> keyGroupsInCharge,
+		RescaleState rescaleState,
+		RpcRescalingResponder rescalingResponder,
+		int subtaskIndex,
+		String taskName) {
+		throw new UnsupportedOperationException();
+	}
+
+	default CompletableFuture enableMarkedStateKeyGroups(
+		RescaleState rescaleState,
+		SubTaskMigrationInstruction instruction) {
+		throw new UnsupportedOperationException();
+	}
+
+	default byte[] fetchKeyGroupFromTask(int keyGroupIndex) {
+		throw new UnsupportedOperationException();
+	}
+
+	default void fetchKeyFromTask(byte[] keyData, int keyGroupIndex) {
+		throw new UnsupportedOperationException();
+	}
 }

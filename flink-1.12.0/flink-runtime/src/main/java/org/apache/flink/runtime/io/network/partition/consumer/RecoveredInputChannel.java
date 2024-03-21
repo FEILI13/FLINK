@@ -86,6 +86,11 @@ public abstract class RecoveredInputChannel extends InputChannel implements Chan
 		this.channelStateWriter = checkNotNull(channelStateWriter);
 	}
 
+	public final InputChannel completeStateConsumedFutureAndConvertToInputChannel() throws IOException {
+		stateConsumedFuture.complete(null);
+		return toInputChannelInternal();
+	}
+
 	public final InputChannel toInputChannel() throws IOException {
 		Preconditions.checkState(stateConsumedFuture.isDone(), "recovered state is not fully consumed");
 		return toInputChannelInternal();

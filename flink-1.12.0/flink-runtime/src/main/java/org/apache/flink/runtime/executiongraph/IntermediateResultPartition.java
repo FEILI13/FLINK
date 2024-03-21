@@ -36,6 +36,8 @@ public class IntermediateResultPartition {
 
 	private List<List<ExecutionEdge>> consumers;
 
+	RescaleState rescaleState = RescaleState.NONE;
+
 	/**
 	 * Whether this partition has produced some data.
 	 */
@@ -107,6 +109,14 @@ public class IntermediateResultPartition {
 	}
 
 	void addConsumer(ExecutionEdge edge, int consumerNumber) {
+		consumers.get(consumerNumber).add(edge);
+	}
+
+	void removeConsumer(ExecutionEdge edge, int consumerNumber) {
+		consumers.get(consumerNumber).remove(edge);
+	}
+
+	void addConsumerForRescale(ExecutionEdge edge, int consumerNumber) {
 		consumers.get(consumerNumber).add(edge);
 	}
 

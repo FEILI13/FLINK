@@ -22,6 +22,7 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.metrics.Meter;
 import org.apache.flink.metrics.MeterView;
 import org.apache.flink.metrics.SimpleCounter;
+import org.apache.flink.runtime.executiongraph.RescaleState;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.streaming.api.operators.MailboxExecutor;
 import org.apache.flink.streaming.runtime.tasks.StreamTaskActionExecutor;
@@ -85,6 +86,8 @@ public class MailboxProcessor implements Closeable {
 	private final StreamTaskActionExecutor actionExecutor;
 
 	private Meter idleTime = new MeterView(new SimpleCounter());
+
+	private RescaleState rescaleState = RescaleState.NONE;
 
 	public MailboxProcessor(MailboxDefaultAction mailboxDefaultAction) {
 		this(mailboxDefaultAction, StreamTaskActionExecutor.IMMEDIATE);
@@ -292,7 +295,8 @@ public class MailboxProcessor implements Closeable {
 
 		// If the default action is currently not available, we can run a blocking mailbox execution until the default
 		// action becomes available again.
-		while (isDefaultActionUnavailable() && isMailboxLoopRunning()) {
+		// It can also be blocked if the task in blocked by rescaling actions.
+		while ((isDefaultActionUnavailable() || isInRescalingBlockingStage()) && isMailboxLoopRunning()) {
 			maybeMail = mailbox.tryTake(MIN_PRIORITY);
 			if (!maybeMail.isPresent()) {
 				long start = System.currentTimeMillis();
@@ -325,6 +329,20 @@ public class MailboxProcessor implements Closeable {
 	@VisibleForTesting
 	public boolean isDefaultActionUnavailable() {
 		return suspendedDefaultAction != null;
+	}
+
+	boolean isInRescalingBlockingStage() {
+		// do not block here, otherwise this operator cannot receive rescale signals
+//		return rescaleState != RescaleState.NONE;
+		return false;
+	}
+
+	public void setRescaleState(RescaleState rescaleState) {
+		this.rescaleState = rescaleState;
+	}
+
+	public RescaleState getRescaleState() {
+		return rescaleState;
 	}
 
 	@VisibleForTesting

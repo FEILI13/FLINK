@@ -31,6 +31,7 @@ import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.TaskBackPressureResponse;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
@@ -105,6 +106,41 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 			timestamp,
 			checkpointOptions,
 			advanceToEndOfEventTime);
+	}
+
+	@Override
+	public void triggerRescaleSignal(ExecutionAttemptID executionAttemptID, JobID jobId, RescaleSignal rescaleSignal) {
+		taskExecutorGateway.triggerRescaleSignal(
+			executionAttemptID,
+			jobId,
+			rescaleSignal);
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> modifyForRescale(
+		TaskDeploymentDescriptor tdd,
+		Time timeout) {
+		return taskExecutorGateway.modifyForRescale(
+			tdd,
+			timeout);
+	}
+
+	@Override
+	public void fetchKeyGroupFromTask(int keyGroupIndex, ExecutionAttemptID executionAttemptID) {
+		taskExecutorGateway.fetchKeyGroupFromTask(
+			keyGroupIndex, executionAttemptID);
+	}
+
+	@Override
+	public void pushKeyGroup(int keyGroupIndex, byte[] bytes, ExecutionAttemptID executionAttemptID) {
+		taskExecutorGateway.pushKeyGroup(
+			keyGroupIndex, bytes, executionAttemptID);
+	}
+
+	@Override
+	public void fetchKeyFromTask(byte[] keyData, int keyGroupIndex, ExecutionAttemptID executionAttemptID) {
+		taskExecutorGateway.fetchKeyFromTask(
+			keyData, keyGroupIndex, executionAttemptID);
 	}
 
 	@Override

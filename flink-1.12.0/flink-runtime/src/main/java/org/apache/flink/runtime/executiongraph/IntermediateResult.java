@@ -23,6 +23,9 @@ import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 
+import scala.Array;
+
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -35,7 +38,7 @@ public class IntermediateResult {
 
 	private final ExecutionJobVertex producer;
 
-	private final IntermediateResultPartition[] partitions;
+	private IntermediateResultPartition[] partitions;
 
 	/**
 	 * Maps intermediate result partition IDs to a partition index. This is
@@ -45,7 +48,7 @@ public class IntermediateResult {
 	 */
 	private final HashMap<IntermediateResultPartitionID, Integer> partitionLookupHelper = new HashMap<>();
 
-	private final int numParallelProducers;
+	private int numParallelProducers;
 
 	private final AtomicInteger numberOfRunningProducers;
 
@@ -151,6 +154,15 @@ public class IntermediateResult {
 		return index;
 	}
 
+	public int registerConsumerForRescale() {
+		for (IntermediateResultPartition p : partitions) {
+			if (p.rescaleState == RescaleState.NEW) {
+				p.addConsumerGroup();
+			}
+		}
+		return 0;
+	}
+
 	public int getConnectionIndex() {
 		return connectionIndex;
 	}
@@ -182,5 +194,17 @@ public class IntermediateResult {
 	@Override
 	public String toString() {
 		return "IntermediateResult " + id.toString();
+	}
+
+	IntermediateResult getModifiedInstanceForRescale(int newParallelism) {
+		numParallelProducers = newParallelism;
+		if (newParallelism < this.partitions.length) {
+			// decrease
+			for (int i = newParallelism; i < this.partitions.length; i++) {
+				this.partitions[i].rescaleState = RescaleState.REMOVED;
+			}
+		}
+		this.partitions = Arrays.copyOf(this.partitions, numParallelProducers); // the actual value of partitions is set when the execution vertices are initialized
+		return this;
 	}
 }

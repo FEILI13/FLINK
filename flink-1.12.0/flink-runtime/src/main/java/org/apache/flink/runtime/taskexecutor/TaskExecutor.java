@@ -21,6 +21,7 @@ package org.apache.flink.runtime.taskexecutor;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.api.common.typeutils.base.IntSerializer;
 import org.apache.flink.runtime.accumulators.AccumulatorSnapshot;
 import org.apache.flink.runtime.blob.BlobCacheService;
 import org.apache.flink.runtime.blob.PermanentBlobCache;
@@ -44,6 +45,7 @@ import org.apache.flink.runtime.execution.librarycache.LibraryCacheManager;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.JobInformation;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
+import org.apache.flink.runtime.executiongraph.RescaleState;
 import org.apache.flink.runtime.executiongraph.TaskInformation;
 import org.apache.flink.runtime.externalresource.ExternalResourceInfoProvider;
 import org.apache.flink.runtime.filecache.FileCache;
@@ -83,6 +85,7 @@ import org.apache.flink.runtime.query.KvStateClientProxy;
 import org.apache.flink.runtime.query.KvStateRegistry;
 import org.apache.flink.runtime.query.KvStateServer;
 import org.apache.flink.runtime.registration.RegistrationConnectionListener;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.resourcemanager.TaskExecutorRegistration;
@@ -99,6 +102,9 @@ import org.apache.flink.runtime.state.TaskExecutorLocalStateStoresManager;
 import org.apache.flink.runtime.state.TaskLocalStateStore;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.state.TaskStateManagerImpl;
+import org.apache.flink.runtime.state.VoidNamespaceSerializer;
+import org.apache.flink.runtime.state.heap.pooled.PooledHashMap;
+import org.apache.flink.runtime.state.redis.ProcessLevelConf;
 import org.apache.flink.runtime.taskexecutor.exceptions.RegistrationTimeoutException;
 import org.apache.flink.runtime.taskexecutor.exceptions.SlotAllocationException;
 import org.apache.flink.runtime.taskexecutor.exceptions.SlotOccupiedException;
@@ -110,6 +116,7 @@ import org.apache.flink.runtime.taskexecutor.rpc.RpcGlobalAggregateManager;
 import org.apache.flink.runtime.taskexecutor.rpc.RpcInputSplitProvider;
 import org.apache.flink.runtime.taskexecutor.rpc.RpcKvStateRegistryListener;
 import org.apache.flink.runtime.taskexecutor.rpc.RpcPartitionStateChecker;
+import org.apache.flink.runtime.taskexecutor.rpc.RpcRescalingResponder;
 import org.apache.flink.runtime.taskexecutor.rpc.RpcResultPartitionConsumableNotifier;
 import org.apache.flink.runtime.taskexecutor.rpc.RpcTaskOperatorEventGateway;
 import org.apache.flink.runtime.taskexecutor.slot.SlotActions;
@@ -360,6 +367,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	public void onStart() throws Exception {
 		try {
 			startTaskExecutorServices();
+			prepareObjectPool();
 		} catch (Throwable t) {
 			final TaskManagerException exception = new TaskManagerException(String.format("Could not start the TaskExecutor %s", getAddress()), t);
 			onFatalError(exception);
@@ -367,6 +375,18 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		}
 
 		startRegistrationTimeout();
+	}
+
+	private void prepareObjectPool() {
+		if (Boolean.parseBoolean(ProcessLevelConf.getMecesConf().getProperty(ProcessLevelConf.COMMON_USE_POOLED_MAP))) {
+			Map<Integer, Integer> map = new PooledHashMap<>(
+				Integer.parseInt(ProcessLevelConf
+					.getMecesConf()
+					.getProperty(ProcessLevelConf.COMMON_POOLED_MAP_POOL_SIZE_PER_THREAD)),
+				VoidNamespaceSerializer.class,
+				IntSerializer.class,
+				IntSerializer.class);
+		}
 	}
 
 	private void startTaskExecutorServices() throws Exception {
@@ -586,6 +606,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 			TaskManagerActions taskManagerActions = jobManagerConnection.getTaskManagerActions();
 			CheckpointResponder checkpointResponder = jobManagerConnection.getCheckpointResponder();
+			RpcRescalingResponder rescalingResponder = jobManagerConnection.getRescalingResponder();
 			GlobalAggregateManager aggregateManager = jobManagerConnection.getGlobalAggregateManager();
 
 			LibraryCacheManager.ClassLoaderHandle classLoaderHandle = jobManagerConnection.getClassLoaderHandle();
@@ -635,6 +656,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				taskManagerActions,
 				inputSplitProvider,
 				checkpointResponder,
+				rescalingResponder,
 				taskOperatorEventGateway,
 				aggregateManager,
 				classLoaderHandle,
@@ -644,6 +666,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				resultPartitionConsumableNotifier,
 				partitionStateChecker,
 				getRpcService().getExecutor());
+			task.getTaskConfiguration().set(RescaleState.getConfigOption(), tdd.rescaleState); // this will later be written into RuntimeEnvironment's taskConfiguration
 
 			taskMetricGroup.gauge(MetricNames.IS_BACKPRESSURED, task::isBackPressured);
 
@@ -1464,6 +1487,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 		CheckpointResponder checkpointResponder = new RpcCheckpointResponder(jobMasterGateway);
 		GlobalAggregateManager aggregateManager = new RpcGlobalAggregateManager(jobMasterGateway);
+		RpcRescalingResponder rescalingResponder = new RpcRescalingResponder(jobMasterGateway);
 
 		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier = new RpcResultPartitionConsumableNotifier(
 			jobMasterGateway,
@@ -1481,7 +1505,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			checkpointResponder,
 			aggregateManager,
 			resultPartitionConsumableNotifier,
-			partitionStateChecker);
+			partitionStateChecker,
+			rescalingResponder);
 	}
 
 	private void disassociateFromJobManager(JobTable.Connection jobManagerConnection, Exception cause) throws IOException {
@@ -2058,5 +2083,63 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				classLoaderLease,
 				closeHook);
 		}
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> triggerRescaleSignal(
+		ExecutionAttemptID executionAttemptID, JobID jobId, RescaleSignal rescaleSignal) {
+		log.info("Trigger rescale signal {} for {}.", rescaleSignal, executionAttemptID);
+
+		final Task task = taskSlotTable.getTask(executionAttemptID);
+
+		if (task != null) {
+			task.triggerRescaleSignal(rescaleSignal);
+
+			return CompletableFuture.completedFuture(Acknowledge.get());
+		} else {
+			final String message = "TaskManager received a rescale signal request for unknown task " + executionAttemptID + '.';
+
+			log.debug(message);
+			return FutureUtils.completedExceptionally(new CheckpointException(message, CheckpointFailureReason.TASK_CHECKPOINT_FAILURE));
+		}
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> modifyForRescale(
+		TaskDeploymentDescriptor tdd,
+		Time timeout) {
+		try {
+			Task task = this.taskSlotTable.getTask(tdd.getExecutionAttemptId());
+			log.info("Get modify request for rescale for {} {}.", task.getTaskInfo().getTaskName(), tdd.getExecutionAttemptId());
+			CompletableFuture.runAsync(() -> {
+				task.modifyForRescaleSync(tdd.getProducedPartitions(), tdd.getInputGates(), taskExecutorServices.getShuffleEnvironment(), tdd.rescaleSignalType);
+			}).whenCompleteAsync(((aVoid, throwable) -> task.notifyJobMasterRescaleDeployingCompleted(tdd.getExecutionAttemptId())));
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return CompletableFuture.completedFuture(Acknowledge.get());
+	}
+
+	@Override
+	public void fetchKeyGroupFromTask(int keyGroupIndex, ExecutionAttemptID executionAttemptID) {
+		Task task = this.taskSlotTable.getTask(executionAttemptID);
+		log.info("Get fetchKeyGroupFromTask request for {} {}.", task.getTaskInfo().getTaskName(), executionAttemptID);
+		CompletableFuture.runAsync(() -> {
+			task.fetchKeyGroupFromTask(keyGroupIndex);
+		});
+	}
+
+	@Override
+	public void pushKeyGroup(int keyGroupIndex, byte[] bytes, ExecutionAttemptID executionAttemptID) {
+		return;
+	}
+
+	@Override
+	public void fetchKeyFromTask(byte[] keyData, int keyGroupIndex, ExecutionAttemptID executionAttemptID) {
+		Task task = this.taskSlotTable.getTask(executionAttemptID);
+		log.info("Get fetchKeyFromTask request for {} {}. {}, at {}", task.getTaskInfo().getTaskName(), executionAttemptID, keyGroupIndex, System.currentTimeMillis());
+		CompletableFuture.runAsync(() -> {
+			task.fetchKeyFromTask(keyData, keyGroupIndex);
+		});
 	}
 }

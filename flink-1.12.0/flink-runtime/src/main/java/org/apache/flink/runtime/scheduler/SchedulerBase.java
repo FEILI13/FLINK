@@ -92,6 +92,8 @@ import org.apache.flink.runtime.operators.coordination.TaskNotRunningException;
 import org.apache.flink.runtime.query.KvStateLocation;
 import org.apache.flink.runtime.query.KvStateLocationRegistry;
 import org.apache.flink.runtime.query.UnknownKvStateLocation;
+import org.apache.flink.runtime.rescale.RescaleCoordinator;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.BackPressureStatsTracker;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.OperatorBackPressureStats;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
@@ -141,9 +143,9 @@ public abstract class SchedulerBase implements SchedulerNG {
 
 	private final JobGraph jobGraph;
 
-	private final ExecutionGraph executionGraph;
+	protected final ExecutionGraph executionGraph;
 
-	private final SchedulingTopology schedulingTopology;
+	protected SchedulingTopology schedulingTopology;
 
 	protected final StateLocationRetriever stateLocationRetriever;
 
@@ -1126,5 +1128,24 @@ public abstract class SchedulerBase implements SchedulerNG {
 	@VisibleForTesting
 	JobID getJobId() {
 		return jobGraph.getJobID();
+	}
+
+	@Override
+	public void triggerRescaleSignal(RescaleSignal rescaleSignal) {
+		mainThreadExecutor.assertRunningInMainThread();
+
+		final RescaleCoordinator rescaleCoordinator = executionGraph.getRescaleCoordinator();
+		assert rescaleCoordinator != null;
+
+		log.info("Triggering rescale signal with mode {} for job {}.", rescaleSignal, jobGraph.getJobID());
+
+		rescaleCoordinator
+			.startTriggeringRescaleSignal(rescaleSignal);
+//			.handleAsync((ignore, throwable) -> {
+//				if (throwable != null) {
+//					throw new CompletionException(throwable);
+//				}
+//				return true;
+//			}, mainThreadExecutor);
 	}
 }

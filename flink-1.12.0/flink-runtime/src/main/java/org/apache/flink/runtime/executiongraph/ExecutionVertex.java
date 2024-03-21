@@ -61,6 +61,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import static org.apache.flink.runtime.execution.ExecutionState.FINISHED;
+import static org.apache.flink.runtime.executiongraph.RescaleState.*;
 
 /**
  * The ExecutionVertex is a parallel subtask of the execution. It may be executed once, or several times, each of
@@ -98,6 +99,12 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 	private final ArrayList<InputSplit> inputSplits;
 
+	private long initialGlobalModVersion;
+	private long createTimestamp;
+	int maxPriorExecutionHistoryLength;
+
+	public RescaleState rescaleState = RescaleState.NONE;
+
 	// --------------------------------------------------------------------------------------------
 
 	/**
@@ -126,6 +133,10 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		this.executionVertexId = new ExecutionVertexID(jobVertex.getJobVertexId(), subTaskIndex);
 		this.taskNameWithSubtask = String.format("%s (%d/%d)",
 				jobVertex.getJobVertex().getName(), subTaskIndex + 1, jobVertex.getParallelism());
+
+		this.initialGlobalModVersion = initialGlobalModVersion;
+		this.createTimestamp = createTimestamp;
+		this.maxPriorExecutionHistoryLength = maxPriorExecutionHistoryLength;
 
 		this.resultPartitions = new LinkedHashMap<>(producedDataSets.length, 1);
 
@@ -375,6 +386,90 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		// edges as the execution graph
 		for (ExecutionEdge ee : edges) {
 			ee.getSource().addConsumer(ee, consumerNumber);
+		}
+	}
+
+	void connectSourceForRescale(int inputNumber, IntermediateResult source, JobEdge edge, int consumerNumber) {
+
+		final DistributionPattern pattern = edge.getDistributionPattern();
+		final IntermediateResultPartition[] sourcePartitions = source.getPartitions();
+
+		ExecutionEdge[] edges;
+
+		switch (pattern) {
+			case POINTWISE:
+				edges = connectPointwise(sourcePartitions, inputNumber);
+				break;
+
+			case ALL_TO_ALL:
+				edges = connectAllToAll(sourcePartitions, inputNumber);
+				break;
+
+			default:
+				throw new RuntimeException("Unrecognized distribution pattern.");
+
+		}
+
+		inputEdges[inputNumber] = edges;
+
+		// add the consumers to the source
+		// for now (until the receiver initiated handshake is in place), we need to register the
+		// edges as the execution graph
+		for (ExecutionEdge ee : edges) {
+			if (this.rescaleState == NEW || ee.getSource().rescaleState == NEW) {
+				ee.getSource().addConsumer(ee, consumerNumber);
+
+				if (this.rescaleState == NEW) {
+					trySetVertexAsModified(ee.getSource().getProducer());
+
+					if (ee.getSource().getProducer().rescaleState == NEW) {
+//						Map<IntermediateResultPartitionID, IntermediateResultPartition> sourceVertexProducedPartitions = ee.getSource().getProducer().getProducedPartitions();
+//						sourceVertexProducedPartitions
+//							.get(ee.getSource().getPartitionId())
+//							.addConsumerForRescale(ee, 0);
+					} else if (ee.getSource().getProducer().rescaleState == MODIFIED) {
+						ee.getSource().getProducer().currentExecution.getProducedPartitions()
+							.get(ee.getSource().getPartitionId())
+							.changeNumberOfSubpartitions(1);
+					}
+				}
+				if (ee.getSource().rescaleState == NEW) {
+					trySetVertexAsModified(ee.getTarget());
+				}
+			}
+		}
+	}
+
+	private boolean trySetVertexAsModified(ExecutionVertex ev) {
+		if (ev.rescaleState == NONE) {
+			ev.rescaleState = MODIFIED;
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	void disConnectSourceForRescale(int inputNumber, IntermediateResult source, JobEdge edge, int consumerNumber) {
+		for (ExecutionEdge ee : inputEdges[inputNumber]) {
+			if (this.rescaleState == REMOVED) {
+				ee.getSource().removeConsumer(ee, consumerNumber);
+
+				trySetVertexAsModified(ee.getSource().getProducer());
+				ee.getSource().getProducer().currentExecution.getProducedPartitions()
+					.get(ee.getSource().getPartitionId())
+					.changeNumberOfSubpartitions(-1);
+			}
+		}
+	}
+
+	void checkRemovedConsumerEdges(int inputNumber, IntermediateResult source, JobEdge edge, int consumerNumber) {
+		if (inputEdges[inputNumber] == null) {
+			return;
+		}
+		for (ExecutionEdge ee : inputEdges[inputNumber]) {
+			if (ee.getSource().rescaleState == REMOVED) {
+				trySetVertexAsModified(ee.getTarget());
+			}
 		}
 	}
 
@@ -904,5 +999,13 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 	public boolean isLegacyScheduling() {
 		return getExecutionGraph().isLegacyScheduling();
+	}
+
+	public ExecutionVertex getModifiedInstanceForRescale(int subTaskIndex, IntermediateResult[] producedDataSets) {
+		// TODO: improve these function names
+		ExecutionVertex ev = new ExecutionVertex(this.jobVertex, subTaskIndex, producedDataSets, timeout, initialGlobalModVersion, createTimestamp, maxPriorExecutionHistoryLength);
+		ev.rescaleState = NEW;
+		ev.resultPartitions.values().forEach(consumer -> consumer.rescaleState = NEW);
+		return ev;
 	}
 }

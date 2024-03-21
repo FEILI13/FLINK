@@ -85,7 +85,10 @@ public abstract class ResultPartition implements ResultPartitionWriter {
 
 	protected final ResultPartitionManager partitionManager;
 
-	protected final int numSubpartitions;
+	protected int numSubpartitions;
+
+	static final int UNSET_MARKED_NUM_SUB_PAR = -1;
+	int markedNewNumSubpartitions = UNSET_MARKED_NUM_SUB_PAR; // this is used only for rescale
 
 	private final int numTargetKeyGroups;
 
@@ -164,6 +167,11 @@ public abstract class ResultPartition implements ResultPartitionWriter {
 	@Override
 	public int getNumberOfSubpartitions() {
 		return numSubpartitions;
+	}
+
+	@Override
+	public int getNumberOfSubpartitionsForRescale() {
+		return markedNewNumSubpartitions == -1 ? numSubpartitions : markedNewNumSubpartitions;
 	}
 
 	public BufferPool getBufferPool() {

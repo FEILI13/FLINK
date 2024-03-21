@@ -22,6 +22,7 @@ import org.apache.flink.core.io.IOReadableWritable;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Map;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -69,5 +70,21 @@ public final class ChannelSelectorRecordWriter<T extends IOReadableWritable> ext
 		if (flushAlways) {
 			flushAll();
 		}
+	}
+
+	@Override
+	public int updateNumberOfChannels() {
+		int numChannels = super.updateNumberOfChannels();
+		this.channelSelector.setup(numChannels);
+		return numChannels;
+	}
+
+	@Override
+	int updatePartitionStrategy(Map<Integer, Integer> routeTableDifference) {
+		int numChannels = super.updateNumberOfChannels();
+		if (!this.channelSelector.setup(numChannels, routeTableDifference)) {
+			this.channelSelector.setup(numChannels);
+		}
+		return numChannels;
 	}
 }

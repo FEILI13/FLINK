@@ -69,6 +69,7 @@ import org.apache.flink.runtime.query.UnknownKvStateLocation;
 import org.apache.flink.runtime.registration.RegisteredRpcConnection;
 import org.apache.flink.runtime.registration.RegistrationResponse;
 import org.apache.flink.runtime.registration.RetryingRegistration;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.BackPressureStatsTracker;
@@ -110,6 +111,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeoutException;
@@ -772,6 +774,45 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		} catch (Exception e) {
 			return FutureUtils.completedExceptionally(e);
 		}
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> triggerRescaling(
+		RescaleSignal.RescaleSignalType rescaleSignalType,
+		int newGlobalParallelism,
+		Map<String, Integer> parallelismList,
+		final Time timeout) {
+
+		try {
+			return CompletableFuture.supplyAsync(() -> schedulerNG.rescale(newGlobalParallelism, parallelismList, rescaleSignalType)).get();
+		} catch (InterruptedException | ExecutionException e) {
+			return FutureUtils.completedExceptionally(e);
+		}
+	}
+
+	@Override
+	public void acknowledgeRescale(
+		JobID jobID,
+		ExecutionAttemptID executionAttemptID,
+		String taskName,
+		long timestampAsID) {
+//		log.info("receive acknowledgeRescale for job {} from execution {} for rescale {}", jobID, taskName, timestampAsID);
+		schedulerNG.acknowledgeRescale(jobID, executionAttemptID, timestampAsID);
+	}
+
+	@Override
+	public void acknowledgeDeploymentForRescaling(ExecutionAttemptID executionAttemptID) {
+		schedulerNG.acknowledgeDeploymentForRescaling(executionAttemptID);
+	}
+
+	@Override
+	public void fetchKeyGroupFromTask(int keyGroupIndex, String taskName, int requestingSubtaskIndex) {
+		schedulerNG.fetchKeyGroupFromTask(keyGroupIndex, taskName, requestingSubtaskIndex);
+	}
+
+	@Override
+	public void fetchKeyFromTask(byte[] keyData, int keyGroupIndex, String taskName) {
+		schedulerNG.fetchKeyFromTask(keyData, keyGroupIndex, taskName);
 	}
 
 	//----------------------------------------------------------------------------------------------

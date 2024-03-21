@@ -85,7 +85,7 @@ public class ConsumableNotifyingResultPartitionWriterDecorator {
 	//  wrapper class to send notification
 	// ------------------------------------------------------------------------
 
-	private static final class ConsumableNotifyingResultPartitionWriter implements ResultPartitionWriter, CheckpointedResultPartition {
+	static final class ConsumableNotifyingResultPartitionWriter implements ResultPartitionWriter, CheckpointedResultPartition {
 
 		private final TaskActions taskActions;
 
@@ -116,6 +116,11 @@ public class ConsumableNotifyingResultPartitionWriterDecorator {
 		@Override
 		public int getNumberOfSubpartitions() {
 			return partitionWriter.getNumberOfSubpartitions();
+		}
+
+		@Override
+		public int getNumberOfSubpartitionsForRescale() {
+			return partitionWriter.getNumberOfSubpartitionsForRescale();
 		}
 
 		@Override
@@ -236,6 +241,10 @@ public class ConsumableNotifyingResultPartitionWriterDecorator {
 			} else {
 				throw new IllegalStateException("This partition is not checkpointable: " + partitionWriter);
 			}
+		}
+
+		public ResultPartitionWriter getPartitionWriter() {
+			return partitionWriter;
 		}
 	}
 }

@@ -20,6 +20,8 @@ package org.apache.flink.runtime.io.network.api.writer;
 
 import org.apache.flink.core.io.IOReadableWritable;
 
+import java.util.Map;
+
 /**
  * The {@link ChannelSelector} determines to which logical channels a record
  * should be written to.
@@ -35,6 +37,16 @@ public interface ChannelSelector<T extends IOReadableWritable> {
 	 * 		to respective output gate.
 	 */
 	void setup(int numberOfChannels);
+
+	/**
+	 * @param numberOfChannels the total number of output channels which are attached
+	 * 	 * 		to respective output gate
+	 * @param routeTableDifference the route table
+	 * @return false if the target does not use a route table
+	 */
+	default boolean setup(int numberOfChannels, Map<Integer, Integer> routeTableDifference) {
+		return false;
+	}
 
 	/**
 	 * Returns the logical channel index, to which the given record should be written. It is

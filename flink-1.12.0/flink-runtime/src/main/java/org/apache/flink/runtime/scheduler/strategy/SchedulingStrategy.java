@@ -23,6 +23,9 @@ import org.apache.flink.runtime.executiongraph.Execution;
 import org.apache.flink.runtime.executiongraph.IntermediateResultPartition;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 
+import org.apache.hadoop.hdfs.server.namenode.UnsupportedActionException;
+
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -36,6 +39,17 @@ public interface SchedulingStrategy {
 	 * Called when the scheduling is started (initial scheduling operation).
 	 */
 	void startScheduling();
+
+	/**
+	 * Called when the scheduling is started (for rescale).
+	 */
+	default void startSchedulingForRescale() throws UnsupportedActionException {
+		throw new UnsupportedOperationException("startSchedulingForRescale not implemented for " + this.getClass());
+	}
+
+	default void releaseResourcesForRescale() throws UnsupportedActionException {
+		throw new UnsupportedOperationException("startSchedulingForRescale not implemented for " + this.getClass());
+	}
 
 	/**
 	 * Called whenever vertices need to be restarted (due to task failure).

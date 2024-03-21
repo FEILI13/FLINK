@@ -44,6 +44,7 @@ import org.apache.flink.runtime.shuffle.NettyShuffleDescriptor;
 import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
 import org.apache.flink.runtime.shuffle.ShuffleEnvironment;
 import org.apache.flink.runtime.shuffle.ShuffleIOOwnerContext;
+import org.apache.flink.runtime.taskmanager.InputGateWithMetrics;
 import org.apache.flink.runtime.taskmanager.NettyShuffleEnvironmentConfiguration;
 import org.apache.flink.util.Preconditions;
 
@@ -53,6 +54,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -99,6 +101,8 @@ public class NettyShuffleEnvironment implements ShuffleEnvironment<ResultPartiti
 	private final Executor ioExecutor;
 
 	private boolean isClosed;
+
+	private final Map<InputGateID, InputChannelMetrics> inputGateChannelMetrics = new HashMap<>();
 
 	NettyShuffleEnvironment(
 			ResourceID taskExecutorResourceId,
@@ -233,12 +237,67 @@ public class NettyShuffleEnvironment implements ShuffleEnvironment<ResultPartiti
 					inputChannelMetrics);
 				InputGateID id = new InputGateID(igdd.getConsumedResultId(), ownerContext.getExecutionAttemptID());
 				inputGatesById.put(id, inputGate);
+				inputGateChannelMetrics.put(id, inputChannelMetrics);
 				inputGate.getCloseFuture().thenRun(() -> inputGatesById.remove(id));
 				inputGates[gateIndex] = inputGate;
 			}
 
 			registerInputMetrics(config.isNetworkDetailedMetrics(), networkInputGroup, inputGates);
 			return Arrays.asList(inputGates);
+		}
+	}
+
+	@Override
+	public List<SingleInputGate> createInputGatesForRescale(
+			ShuffleIOOwnerContext ownerContext,
+			PartitionProducerStateProvider partitionProducerStateProvider,
+			List<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
+			int currentNumGates) {
+		synchronized (lock) {
+			checkArgument(inputGateDeploymentDescriptors.size() > currentNumGates);
+			Preconditions.checkState(!isClosed, "The NettyShuffleEnvironment has already been shut down.");
+
+			MetricGroup networkInputGroup = ownerContext.getInputGroup();
+			@SuppressWarnings("deprecation")
+			InputChannelMetrics inputChannelMetrics = new InputChannelMetrics(networkInputGroup, ownerContext.getParentGroup());
+
+			SingleInputGate[] inputGates = new SingleInputGate[inputGateDeploymentDescriptors.size() - currentNumGates];
+			for (int gateIndex = currentNumGates; gateIndex < inputGateDeploymentDescriptors.size(); gateIndex++) {
+				final InputGateDeploymentDescriptor igdd = inputGateDeploymentDescriptors.get(gateIndex);
+				SingleInputGate inputGate = singleInputGateFactory.create(
+					ownerContext.getOwnerName(),
+					gateIndex,
+					igdd,
+					partitionProducerStateProvider,
+					inputChannelMetrics);
+				InputGateID id = new InputGateID(igdd.getConsumedResultId(), ownerContext.getExecutionAttemptID());
+				inputGatesById.put(id, inputGate);
+				inputGate.getCloseFuture().thenRun(() -> inputGatesById.remove(id));
+				inputGates[gateIndex - currentNumGates] = inputGate;
+			}
+
+			registerInputMetrics(config.isNetworkDetailedMetrics(), networkInputGroup, inputGates);
+			return Arrays.asList(inputGates);
+		}
+	}
+
+	@Override
+	public void modifyInputGateForRescale(ShuffleIOOwnerContext ownerContext, InputGate inputGate, InputGateDeploymentDescriptor inputGateDeploymentDescriptor) {
+		synchronized (lock) {
+			if (inputGate instanceof InputGateWithMetrics) {
+				inputGate = ((InputGateWithMetrics) inputGate).getInputGate();
+			}
+			checkArgument(inputGate instanceof SingleInputGate);
+
+			int previousNumChannels = inputGate.getNumberOfInputChannels();
+			inputGate.modifyForRescale(inputGateDeploymentDescriptor);
+			InputGateID id = new InputGateID(inputGateDeploymentDescriptor.getConsumedResultId(), ownerContext.getExecutionAttemptID());
+			singleInputGateFactory.modifyInputChannelsForRescale(
+				(SingleInputGate) inputGate,
+				inputGateDeploymentDescriptor,
+				previousNumChannels,
+				ownerContext.getOwnerName(),
+				inputGateChannelMetrics.get(id));
 		}
 	}
 
