@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<project name="maven-antrun-" default="main"  >
+<target name="main">
+  <echo message="unpacking javax jars"/>
+  <unzip dest="C:\Users\FEILI13\Desktop\stream\code\flink-1.12.0\flink-filesystems\flink-s3-fs-hadoop\target/classes/META-INF/versions/11">
+    <fileset dir="C:\Users\FEILI13\Desktop\stream\code\flink-1.12.0\flink-filesystems\flink-s3-fs-hadoop\target/temporary">
+      <include name="*"/>
+    </fileset>
+  </unzip>
+</target>
+</project>

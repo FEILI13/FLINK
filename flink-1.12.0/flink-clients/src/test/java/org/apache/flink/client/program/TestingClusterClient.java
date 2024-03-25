@@ -28,6 +28,7 @@ import org.apache.flink.runtime.jobmaster.JobResult;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
 import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.util.function.TriFunction;
 
 import javax.annotation.Nonnull;
@@ -137,10 +138,15 @@ public class TestingClusterClient<T> implements ClusterClient<T> {
 
 	@Override
 	public CompletableFuture<CoordinationResponse> sendCoordinationRequest(
-			JobID jobId,
-			OperatorID operatorId,
-			CoordinationRequest request) {
+		JobID jobId,
+		OperatorID operatorId,
+		CoordinationRequest request) {
 		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> triggerRescale(JobID jobId, RescaleSignal.RescaleSignalType rescaleSignalType, int globalParallelism, @Nullable Map<String, Integer> parallelismList) {
+		throw new UnsupportedOperationException("This method is not implemented for " + this.getClass());
 	}
 
 	@Override

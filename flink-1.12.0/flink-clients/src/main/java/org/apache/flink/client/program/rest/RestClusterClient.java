@@ -43,6 +43,7 @@ import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
 import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.runtime.rest.FileUpload;
 import org.apache.flink.runtime.rest.RestClient;
 import org.apache.flink.runtime.rest.handler.async.AsynchronousOperationInfo;
@@ -73,6 +74,9 @@ import org.apache.flink.runtime.rest.messages.job.JobSubmitResponseBody;
 import org.apache.flink.runtime.rest.messages.job.coordination.ClientCoordinationHeaders;
 import org.apache.flink.runtime.rest.messages.job.coordination.ClientCoordinationMessageParameters;
 import org.apache.flink.runtime.rest.messages.job.coordination.ClientCoordinationRequestBody;
+import org.apache.flink.runtime.rest.messages.job.rescaling.RescaleTriggerRequestBody;
+import org.apache.flink.runtime.rest.messages.job.rescaling.RescalingStatusHeaders;
+import org.apache.flink.runtime.rest.messages.job.rescaling.RescalingStatusMessageParameters;
 import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointDisposalRequest;
 import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointDisposalStatusHeaders;
 import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointDisposalStatusMessageParameters;
@@ -85,6 +89,8 @@ import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointTriggerMes
 import org.apache.flink.runtime.rest.messages.job.savepoints.SavepointTriggerRequestBody;
 import org.apache.flink.runtime.rest.messages.job.savepoints.stop.StopWithSavepointRequestBody;
 import org.apache.flink.runtime.rest.messages.job.savepoints.stop.StopWithSavepointTriggerHeaders;
+import org.apache.flink.runtime.rest.messages.job.rescaling.RescalingTriggerHeaders;
+import org.apache.flink.runtime.rest.messages.job.rescaling.RescalingTriggerMessageParameters;
 import org.apache.flink.runtime.rest.messages.queue.AsynchronouslyCreatedResource;
 import org.apache.flink.runtime.rest.messages.queue.QueueStatus;
 import org.apache.flink.runtime.rest.util.RestClientException;
@@ -169,9 +175,9 @@ public class RestClusterClient<T> implements ClusterClient<T> {
 	}
 
 	public RestClusterClient(
-			Configuration config,
-			T clusterId,
-			ClientHighAvailabilityServices clientHAServices) throws Exception {
+		Configuration config,
+		T clusterId,
+		ClientHighAvailabilityServices clientHAServices) throws Exception {
 		this(
 			config,
 			null,
@@ -352,12 +358,12 @@ public class RestClusterClient<T> implements ClusterClient<T> {
 		submissionFuture
 			.thenCombine(jobGraphFileFuture, (ignored, jobGraphFile) -> jobGraphFile)
 			.thenAccept(jobGraphFile -> {
-			try {
-				Files.delete(jobGraphFile);
-			} catch (IOException e) {
-				LOG.warn("Could not delete temporary file {}.", jobGraphFile, e);
-			}
-		});
+				try {
+					Files.delete(jobGraphFile);
+				} catch (IOException e) {
+					LOG.warn("Could not delete temporary file {}.", jobGraphFile, e);
+				}
+			});
 
 		return submissionFuture
 			.thenApply(ignore -> jobGraph.getJobID())
@@ -380,20 +386,20 @@ public class RestClusterClient<T> implements ClusterClient<T> {
 
 	@Override
 	public CompletableFuture<String> stopWithSavepoint(
-			final JobID jobId,
-			final boolean advanceToEndOfTime,
-			@Nullable final String savepointDirectory) {
+		final JobID jobId,
+		final boolean advanceToEndOfTime,
+		@Nullable final String savepointDirectory) {
 
 		final StopWithSavepointTriggerHeaders stopWithSavepointTriggerHeaders = StopWithSavepointTriggerHeaders.getInstance();
 
 		final SavepointTriggerMessageParameters stopWithSavepointTriggerMessageParameters =
-				stopWithSavepointTriggerHeaders.getUnresolvedMessageParameters();
+			stopWithSavepointTriggerHeaders.getUnresolvedMessageParameters();
 		stopWithSavepointTriggerMessageParameters.jobID.resolve(jobId);
 
 		final CompletableFuture<TriggerResponse> responseFuture = sendRequest(
-				stopWithSavepointTriggerHeaders,
-				stopWithSavepointTriggerMessageParameters,
-				new StopWithSavepointRequestBody(savepointDirectory, advanceToEndOfTime));
+			stopWithSavepointTriggerHeaders,
+			stopWithSavepointTriggerMessageParameters,
+			new StopWithSavepointRequestBody(savepointDirectory, advanceToEndOfTime));
 
 		return responseFuture.thenCompose(savepointTriggerResponseBody -> {
 			final TriggerId savepointTriggerId = savepointTriggerResponseBody.getTriggerId();
@@ -413,16 +419,16 @@ public class RestClusterClient<T> implements ClusterClient<T> {
 
 	@Override
 	public CompletableFuture<String> triggerSavepoint(
-			final JobID jobId,
-			final @Nullable String savepointDirectory) {
+		final JobID jobId,
+		final @Nullable String savepointDirectory) {
 		return triggerSavepoint(jobId, savepointDirectory, false);
 	}
 
 	@Override
 	public CompletableFuture<CoordinationResponse> sendCoordinationRequest(
-			JobID jobId,
-			OperatorID operatorId,
-			CoordinationRequest request) {
+		JobID jobId,
+		OperatorID operatorId,
+		CoordinationRequest request) {
 		ClientCoordinationHeaders headers = ClientCoordinationHeaders.getInstance();
 		ClientCoordinationMessageParameters params = new ClientCoordinationMessageParameters();
 		params.jobPathParameter.resolve(jobId);
@@ -448,10 +454,51 @@ public class RestClusterClient<T> implements ClusterClient<T> {
 			});
 	}
 
+	@Override
+	public CompletableFuture<Acknowledge> triggerRescale(JobID jobId, RescaleSignal.RescaleSignalType rescaleSignalType, int globalParallelism, @Nullable Map<String, Integer> parallelismList) {
+		final RescalingTriggerHeaders rescalingTriggerHeaders = RescalingTriggerHeaders.getInstance();
+		final RescalingTriggerMessageParameters rescalingTriggerMessageParameters =
+			rescalingTriggerHeaders.getUnresolvedMessageParameters();
+		rescalingTriggerMessageParameters.jobID.resolve(jobId);
+
+		final CompletableFuture<TriggerResponse> rescalingTriggerResponseFuture = sendRequest(
+			rescalingTriggerHeaders,
+			rescalingTriggerMessageParameters,
+			new RescaleTriggerRequestBody(rescaleSignalType, globalParallelism, parallelismList));
+
+		final CompletableFuture<AsynchronousOperationInfo> rescalingOperationFuture = rescalingTriggerResponseFuture.thenCompose(
+			(TriggerResponse triggerResponse) -> {
+				final TriggerId triggerId = triggerResponse.getTriggerId();
+				final RescalingStatusHeaders rescalingStatusHeaders = RescalingStatusHeaders.getInstance();
+				final RescalingStatusMessageParameters rescalingStatusMessageParameters = rescalingStatusHeaders.getUnresolvedMessageParameters();
+
+				rescalingStatusMessageParameters.jobPathParameter.resolve(jobId);
+				rescalingStatusMessageParameters.triggerIdPathParameter.resolve(triggerId);
+
+				return pollResourceAsync(
+					() -> sendRequest(
+						rescalingStatusHeaders,
+						rescalingStatusMessageParameters));
+			});
+
+		return rescalingOperationFuture.thenApply(
+			(AsynchronousOperationInfo asynchronousOperationInfo) -> {
+				if (asynchronousOperationInfo.getFailureCause() == null) {
+					return Acknowledge.get();
+				} else {
+					throw new CompletionException(asynchronousOperationInfo.getFailureCause());
+				}
+			});
+//		return responseFuture.thenCompose(scaleTriggerResponseBody -> {
+//			final TriggerId scaleTriggerId = scaleTriggerResponseBody.getTriggerId();
+//			return null;
+//		});
+	}
+
 	private CompletableFuture<String> triggerSavepoint(
-			final JobID jobId,
-			final @Nullable String savepointDirectory,
-			final boolean cancelJob) {
+		final JobID jobId,
+		final @Nullable String savepointDirectory,
+		final boolean cancelJob) {
 		final SavepointTriggerHeaders savepointTriggerHeaders = SavepointTriggerHeaders.getInstance();
 		final SavepointTriggerMessageParameters savepointTriggerMessageParameters =
 			savepointTriggerHeaders.getUnresolvedMessageParameters();
@@ -496,8 +543,8 @@ public class RestClusterClient<T> implements ClusterClient<T> {
 	}
 
 	private CompletableFuture<SavepointInfo> pollSavepointAsync(
-			final JobID jobId,
-			final TriggerId triggerID) {
+		final JobID jobId,
+		final TriggerId triggerID) {
 		return pollResourceAsync(() -> {
 			final SavepointStatusHeaders savepointStatusHeaders = SavepointStatusHeaders.getInstance();
 			final SavepointStatusMessageParameters savepointStatusMessageParameters =
@@ -585,14 +632,14 @@ public class RestClusterClient<T> implements ClusterClient<T> {
 	 * @return A {@code CompletableFuture} delivering the resource.
 	 */
 	private <R, A extends AsynchronouslyCreatedResource<R>> CompletableFuture<R> pollResourceAsync(
-			final Supplier<CompletableFuture<A>> resourceFutureSupplier) {
+		final Supplier<CompletableFuture<A>> resourceFutureSupplier) {
 		return pollResourceAsync(resourceFutureSupplier, new CompletableFuture<>(), 0);
 	}
 
 	private <R, A extends AsynchronouslyCreatedResource<R>> CompletableFuture<R> pollResourceAsync(
-			final Supplier<CompletableFuture<A>> resourceFutureSupplier,
-			final CompletableFuture<R> resultFuture,
-			final long attempt) {
+		final Supplier<CompletableFuture<A>> resourceFutureSupplier,
+		final CompletableFuture<R> resultFuture,
+		final long attempt) {
 
 		resourceFutureSupplier.get().whenComplete((asynchronouslyCreatedResource, throwable) -> {
 			if (throwable != null) {
@@ -632,30 +679,30 @@ public class RestClusterClient<T> implements ClusterClient<T> {
 	//-------------------------------------------------------------------------
 
 	private <M extends MessageHeaders<EmptyRequestBody, P, U>, U extends MessageParameters, P extends ResponseBody> CompletableFuture<P>
-			sendRequest(M messageHeaders, U messageParameters) {
+	sendRequest(M messageHeaders, U messageParameters) {
 		return sendRequest(messageHeaders, messageParameters, EmptyRequestBody.getInstance());
 	}
 
 	private <M extends MessageHeaders<R, P, EmptyMessageParameters>, R extends RequestBody, P extends ResponseBody> CompletableFuture<P>
-			sendRequest(M messageHeaders, R request) {
+	sendRequest(M messageHeaders, R request) {
 		return sendRequest(messageHeaders, EmptyMessageParameters.getInstance(), request);
 	}
 
 	@VisibleForTesting
 	<M extends MessageHeaders<EmptyRequestBody, P, EmptyMessageParameters>, P extends ResponseBody> CompletableFuture<P>
-			sendRequest(M messageHeaders) {
+	sendRequest(M messageHeaders) {
 		return sendRequest(messageHeaders, EmptyMessageParameters.getInstance(), EmptyRequestBody.getInstance());
 	}
 
 	@VisibleForTesting
 	public <M extends MessageHeaders<R, P, U>, U extends MessageParameters, R extends RequestBody, P extends ResponseBody> CompletableFuture<P>
-			sendRequest(M messageHeaders, U messageParameters, R request) {
+	sendRequest(M messageHeaders, U messageParameters, R request) {
 		return sendRetriableRequest(
 			messageHeaders, messageParameters, request, isConnectionProblemOrServiceUnavailable());
 	}
 
 	private <M extends MessageHeaders<R, P, U>, U extends MessageParameters, R extends RequestBody, P extends ResponseBody> CompletableFuture<P>
-			sendRetriableRequest(M messageHeaders, U messageParameters, R request, Predicate<Throwable> retryPredicate) {
+	sendRetriableRequest(M messageHeaders, U messageParameters, R request, Predicate<Throwable> retryPredicate) {
 		return sendRetriableRequest(messageHeaders, messageParameters, request, Collections.emptyList(), retryPredicate);
 	}
 
@@ -671,8 +718,8 @@ public class RestClusterClient<T> implements ClusterClient<T> {
 	}
 
 	private <C> CompletableFuture<C> retry(
-			CheckedSupplier<CompletableFuture<C>> operation,
-			Predicate<Throwable> retryPredicate) {
+		CheckedSupplier<CompletableFuture<C>> operation,
+		Predicate<Throwable> retryPredicate) {
 		return FutureUtils.retryWithDelay(
 			CheckedSupplier.unchecked(operation),
 			restClusterClientConfiguration.getRetryMaxAttempts(),

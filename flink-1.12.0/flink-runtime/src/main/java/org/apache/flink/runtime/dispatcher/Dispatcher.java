@@ -59,6 +59,7 @@ import org.apache.flink.runtime.metrics.MetricNames;
 import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
 import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
 import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.resourcemanager.ResourceOverview;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.OperatorBackPressureStatsResponse;
@@ -78,9 +79,11 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -150,11 +153,11 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 	}
 
 	public Dispatcher(
-			RpcService rpcService,
-			DispatcherId fencingToken,
-			Collection<JobGraph> recoveredJobs,
-			DispatcherBootstrapFactory dispatcherBootstrapFactory,
-			DispatcherServices dispatcherServices) throws Exception {
+		RpcService rpcService,
+		DispatcherId fencingToken,
+		Collection<JobGraph> recoveredJobs,
+		DispatcherBootstrapFactory dispatcherBootstrapFactory,
+		DispatcherServices dispatcherServices) throws Exception {
 		super(rpcService, AkkaRpcServiceUtils.createRandomName(DISPATCHER_NAME), fencingToken);
 		checkNotNull(dispatcherServices);
 
@@ -217,9 +220,9 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 
 		startRecoveredJobs();
 		this.dispatcherBootstrap = this.dispatcherBootstrapFactory.create(
-				getSelfGateway(DispatcherGateway.class),
-				this.getRpcService().getScheduledExecutor() ,
-				this::onFatalError);
+			getSelfGateway(DispatcherGateway.class),
+			this.getRpcService().getScheduledExecutor() ,
+			this::onFatalError);
 	}
 
 	private void startDispatcherServices() throws Exception {
@@ -301,7 +304,7 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 			} else if (isPartialResourceConfigured(jobGraph)) {
 				return FutureUtils.completedExceptionally(
 					new JobSubmissionException(jobGraph.getJobID(), "Currently jobs is not supported if parts of the vertices have " +
-							"resources configured. The limitation will be removed in future versions."));
+						"resources configured. The limitation will be removed in future versions."));
 			} else {
 				return internalSubmitJob(jobGraph);
 			}
@@ -381,10 +384,10 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 		CompletableFuture<JobManagerRunner> jobManagerRunnerFuture = createJobManagerRunner(jobGraph, initializationTimestamp);
 
 		DispatcherJob dispatcherJob = DispatcherJob.createFor(
-				jobManagerRunnerFuture,
-				jobGraph.getJobID(),
-				jobGraph.getName(),
-				initializationTimestamp);
+			jobManagerRunnerFuture,
+			jobGraph.getJobID(),
+			jobGraph.getName(),
+			initializationTimestamp);
 		runningJobs.put(jobGraph.getJobID(), dispatcherJob);
 
 		final JobID jobId = jobGraph.getJobID();
@@ -558,8 +561,8 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 
 	@Override
 	public CompletableFuture<OperatorBackPressureStatsResponse> requestOperatorBackPressureStats(
-			final JobID jobId,
-			final JobVertexID jobVertexId) {
+		final JobID jobId,
+		final JobVertexID jobVertexId) {
 		return performOperationOnJobMasterGateway(jobId, gateway -> gateway.requestOperatorBackPressureStats(jobVertexId));
 	}
 
@@ -618,20 +621,20 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 
 	@Override
 	public CompletableFuture<String> triggerSavepoint(
-			final JobID jobId,
-			final String targetDirectory,
-			final boolean cancelJob,
-			final Time timeout) {
+		final JobID jobId,
+		final String targetDirectory,
+		final boolean cancelJob,
+		final Time timeout) {
 
 		return performOperationOnJobMasterGateway(jobId, gateway -> gateway.triggerSavepoint(targetDirectory, cancelJob, timeout));
 	}
 
 	@Override
 	public CompletableFuture<String> stopWithSavepoint(
-			final JobID jobId,
-			final String targetDirectory,
-			final boolean advanceToEndOfEventTime,
-			final Time timeout) {
+		final JobID jobId,
+		final String targetDirectory,
+		final boolean advanceToEndOfEventTime,
+		final Time timeout) {
 		return performOperationOnJobMasterGateway(jobId, gateway -> gateway.stopWithSavepoint(targetDirectory, advanceToEndOfEventTime, timeout));
 	}
 
@@ -648,10 +651,10 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 
 	@Override
 	public CompletableFuture<CoordinationResponse> deliverCoordinationRequestToCoordinator(
-			JobID jobId,
-			OperatorID operatorId,
-			SerializedValue<CoordinationRequest> serializedRequest,
-			Time timeout) {
+		JobID jobId,
+		OperatorID operatorId,
+		SerializedValue<CoordinationRequest> serializedRequest,
+		Time timeout) {
 		return performOperationOnJobMasterGateway(jobId, gateway -> gateway.deliverCoordinationRequestToCoordinator(operatorId, serializedRequest, timeout));
 	}
 
@@ -833,7 +836,7 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 
 		for (DispatcherJob job : runningJobs.values()) {
 			final CompletableFuture<Optional<T>> queryResult = queryFunction.apply(job)
-					.handle((T value, Throwable t) -> Optional.ofNullable(value));
+				.handle((T value, Throwable t) -> Optional.ofNullable(value));
 			optionalJobInformation.add(queryResult);
 		}
 		return optionalJobInformation;
@@ -873,5 +876,11 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 		return CompletableFuture.runAsync(
 			() -> terminateJob(jobId),
 			getMainThreadExecutor());
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> rescaleJob(JobID jobId, RescaleSignal.RescaleSignalType rescaleSignalType, int newGlobalParallelism, Map<String, Integer> parallelismList, Time timeout) {
+		return performOperationOnJobMasterGateway(jobId, gateway ->
+			gateway.triggerRescaling(rescaleSignalType, newGlobalParallelism, parallelismList, timeout));
 	}
 }

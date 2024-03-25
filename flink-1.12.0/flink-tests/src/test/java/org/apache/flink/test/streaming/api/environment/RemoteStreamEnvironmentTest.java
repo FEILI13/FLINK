@@ -38,6 +38,7 @@ import org.apache.flink.runtime.jobmaster.JobResult.Builder;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
 import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.streaming.api.environment.RemoteStreamEnvironment;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.graph.StreamGraph;
@@ -284,6 +285,11 @@ public class RemoteStreamEnvironmentTest extends TestLogger {
 				OperatorID operatorId,
 				CoordinationRequest request) {
 			return null;
+		}
+
+		@Override
+		public CompletableFuture<Acknowledge> triggerRescale(JobID jobId, RescaleSignal.RescaleSignalType rescaleSignalType, int globalParallelism, @Nullable Map<String, Integer> parallelismList) {
+			throw new UnsupportedOperationException("This method is not implemented for " + this.getClass());
 		}
 	}
 

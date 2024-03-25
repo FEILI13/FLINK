@@ -30,6 +30,8 @@ import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.runtime.execution.ExecutionState;
+import org.apache.flink.runtime.executiongraph.Execution;
+import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.ExecutionVertex;
 import org.apache.flink.runtime.executiongraph.TaskExecutionStateTransition;
@@ -47,8 +49,10 @@ import org.apache.flink.runtime.jobmanager.scheduler.SlotSharingGroup;
 import org.apache.flink.runtime.jobmaster.ExecutionDeploymentTracker;
 import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.jobmaster.slotpool.ThrowingSlotProvider;
+import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.metrics.groups.JobManagerJobMetricGroup;
 import org.apache.flink.runtime.operators.coordination.OperatorCoordinator;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.BackPressureStatsTracker;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingStrategy;
@@ -80,6 +84,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static org.apache.flink.runtime.rescale.RescaleSignal.RescaleSignalType.PREPARE;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -180,6 +185,28 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 	// ------------------------------------------------------------------------
 	// SchedulerNG
 	// ------------------------------------------------------------------------
+
+	@Override
+	public CompletableFuture<Acknowledge> rescale(int newGlobalParallelism, Map<String, Integer> parallelismList, RescaleSignal.RescaleSignalType rescaleSignalType) {
+		log.warn("Testing failure job {}, at stage {}.", this.getJobId(), rescaleSignalType);
+
+		try {
+			CompletableFuture<Acknowledge> future = new CompletableFuture<>();;
+			switch (rescaleSignalType) {
+				case PREPARE:
+					Map<ExecutionAttemptID, Execution> executions = this.getExecutionGraph().getRegisteredExecutions();
+					for(Map.Entry<ExecutionAttemptID, Execution> entry : executions.entrySet()) {
+						log.warn("Test failure job {}, at operator {}.", this.getJobId(), entry.getValue().getAttemptId());
+						System.out.println("Test failure job " + this.getJobId() +", at operator " + entry.getValue().getAttemptId());
+					}
+					return future;
+				default:
+					throw new UnsupportedOperationException();
+			}
+		} catch (Throwable e) {
+			return FutureUtils.completedExceptionally(e);
+		}
+	}
 
 	@Override
 	public void setMainThreadExecutor(ComponentMainThreadExecutor mainThreadExecutor) {

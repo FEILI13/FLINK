@@ -18,22 +18,28 @@
 
 package org.apache.flink.runtime.rest.handler.job.rescaling;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.messages.Acknowledge;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.runtime.rest.handler.HandlerRequest;
 import org.apache.flink.runtime.rest.handler.RestHandlerException;
 import org.apache.flink.runtime.rest.handler.async.AbstractAsynchronousOperationHandlers;
 import org.apache.flink.runtime.rest.handler.async.AsynchronousOperationInfo;
-import org.apache.flink.runtime.rest.handler.async.AsynchronousOperationResult;
-import org.apache.flink.runtime.rest.handler.async.TriggerResponse;
 import org.apache.flink.runtime.rest.handler.job.AsynchronousJobOperationKey;
 import org.apache.flink.runtime.rest.messages.EmptyRequestBody;
+import org.apache.flink.runtime.rest.messages.JobIDPathParameter;
+import org.apache.flink.runtime.rest.messages.TriggerId;
+import org.apache.flink.runtime.rest.messages.TriggerIdPathParameter;
+import org.apache.flink.runtime.rest.messages.job.rescaling.RescaleTriggerRequestBody;
+import org.apache.flink.runtime.rest.messages.job.rescaling.RescalingStatusHeaders;
+import org.apache.flink.runtime.rest.messages.job.rescaling.RescalingStatusMessageParameters;
+import org.apache.flink.runtime.rest.messages.job.rescaling.RescalingTriggerHeaders;
+import org.apache.flink.runtime.rest.messages.job.rescaling.RescalingTriggerMessageParameters;
+import org.apache.flink.runtime.rpc.RpcUtils;
 import org.apache.flink.runtime.webmonitor.RestfulGateway;
 import org.apache.flink.runtime.webmonitor.retriever.GatewayRetriever;
-
-import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus;
-
-import javax.annotation.Nonnull;
+import org.apache.flink.util.SerializedThrowable;
 
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -43,19 +49,15 @@ import java.util.concurrent.CompletableFuture;
  */
 public class RescalingHandlers extends AbstractAsynchronousOperationHandlers<AsynchronousJobOperationKey, Acknowledge> {
 
-	private static RestHandlerException featureDisabledException() {
-		return new RestHandlerException("Rescaling is temporarily disabled. See FLINK-12312.", HttpResponseStatus.SERVICE_UNAVAILABLE);
-	}
-
 	/**
 	 * Handler which triggers the rescaling of the specified job.
 	 */
-	public class RescalingTriggerHandler extends TriggerHandler<RestfulGateway, EmptyRequestBody, RescalingTriggerMessageParameters> {
+	public class RescalingTriggerHandler extends TriggerHandler<RestfulGateway, RescaleTriggerRequestBody, RescalingTriggerMessageParameters> {
 
 		public RescalingTriggerHandler(
-				GatewayRetriever<? extends RestfulGateway> leaderRetriever,
-				Time timeout,
-				Map<String, String> responseHeaders) {
+			GatewayRetriever<? extends RestfulGateway> leaderRetriever,
+			Time timeout,
+			Map<String, String> responseHeaders) {
 			super(
 				leaderRetriever,
 				timeout,
@@ -64,18 +66,31 @@ public class RescalingHandlers extends AbstractAsynchronousOperationHandlers<Asy
 		}
 
 		@Override
-		public CompletableFuture<TriggerResponse> handleRequest(@Nonnull final HandlerRequest<EmptyRequestBody, RescalingTriggerMessageParameters> request, @Nonnull final RestfulGateway gateway) throws RestHandlerException {
-			throw featureDisabledException();
+		protected CompletableFuture<Acknowledge> triggerOperation(HandlerRequest<RescaleTriggerRequestBody, RescalingTriggerMessageParameters> request, RestfulGateway gateway) throws RestHandlerException {
+			final JobID jobId = request.getPathParameter(JobIDPathParameter.class);
+			final RescaleSignal.RescaleSignalType rescaleSignalType = request.getRequestBody().getRescaleSignalType();
+			final int globalParallelism = request.getRequestBody().getGlobalParallelism();
+			final Map<String, Integer> parallelismList = request.getRequestBody().getParallelismList();
+//			final List<Integer> queryParameter = request.getQueryParameter(
+//				RescalingParallelismQueryParameter.class);
+
+			log.warn("test call trigger failure");
+			System.out.println("test call trigger failure");
+			final CompletableFuture<Acknowledge> rescalingFuture = gateway.rescaleJob(
+				jobId,
+				rescaleSignalType,
+				globalParallelism,
+				parallelismList,
+				RpcUtils.INF_TIMEOUT);
+
+			log.info("Get future from dispatcher: " + rescalingFuture.hashCode());
+			return rescalingFuture;
 		}
 
 		@Override
-		protected CompletableFuture<Acknowledge> triggerOperation(HandlerRequest<EmptyRequestBody, RescalingTriggerMessageParameters> request, RestfulGateway gateway) {
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		protected AsynchronousJobOperationKey createOperationKey(HandlerRequest<EmptyRequestBody, RescalingTriggerMessageParameters> request) {
-			throw new UnsupportedOperationException();
+		protected AsynchronousJobOperationKey createOperationKey(HandlerRequest<RescaleTriggerRequestBody, RescalingTriggerMessageParameters> request) {
+			final JobID jobId = request.getPathParameter(JobIDPathParameter.class);
+			return AsynchronousJobOperationKey.of(new TriggerId(), jobId);
 		}
 	}
 
@@ -96,23 +111,21 @@ public class RescalingHandlers extends AbstractAsynchronousOperationHandlers<Asy
 		}
 
 		@Override
-		public CompletableFuture<AsynchronousOperationResult<AsynchronousOperationInfo>> handleRequest(@Nonnull final HandlerRequest<EmptyRequestBody, RescalingStatusMessageParameters> request, @Nonnull final RestfulGateway gateway) throws RestHandlerException {
-			throw featureDisabledException();
-		}
-
-		@Override
 		protected AsynchronousJobOperationKey getOperationKey(HandlerRequest<EmptyRequestBody, RescalingStatusMessageParameters> request) {
-			throw new UnsupportedOperationException();
+			final JobID jobId = request.getPathParameter(JobIDPathParameter.class);
+			final TriggerId triggerId = request.getPathParameter(TriggerIdPathParameter.class);
+
+			return AsynchronousJobOperationKey.of(triggerId, jobId);
 		}
 
 		@Override
 		protected AsynchronousOperationInfo exceptionalOperationResultResponse(Throwable throwable) {
-			throw new UnsupportedOperationException();
+			return AsynchronousOperationInfo.completeExceptional(new SerializedThrowable(throwable));
 		}
 
 		@Override
 		protected AsynchronousOperationInfo operationResultResponse(Acknowledge operationResult) {
-			throw new UnsupportedOperationException();
+			return AsynchronousOperationInfo.complete();
 		}
 	}
 }

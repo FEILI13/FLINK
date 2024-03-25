@@ -33,6 +33,7 @@ import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.minicluster.MiniCluster;
 import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
 import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.SerializedValue;
 
@@ -163,9 +164,9 @@ public class MiniClusterClient implements ClusterClient<MiniClusterClient.MiniCl
 
 	@Override
 	public CompletableFuture<CoordinationResponse> sendCoordinationRequest(
-			JobID jobId,
-			OperatorID operatorId,
-			CoordinationRequest request) {
+		JobID jobId,
+		OperatorID operatorId,
+		CoordinationRequest request) {
 		try {
 			SerializedValue<CoordinationRequest> serializedRequest = new SerializedValue<>(request);
 			return miniCluster.deliverCoordinationRequestToCoordinator(jobId, operatorId, serializedRequest);
@@ -173,6 +174,12 @@ public class MiniClusterClient implements ClusterClient<MiniClusterClient.MiniCl
 			LOG.error("Error while sending coordination request", e);
 			return FutureUtils.completedExceptionally(e);
 		}
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> triggerRescale(JobID jobId, RescaleSignal.RescaleSignalType rescaleSignalType, int globalParallelism, @Nullable Map<String, Integer> parallelismList) {
+		// TODO: implement this
+		return null;
 	}
 
 	/**

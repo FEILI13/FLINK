@@ -48,6 +48,7 @@ import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.plugin.PluginUtils;
 import org.apache.flink.runtime.client.JobStatusMessage;
 import org.apache.flink.runtime.messages.Acknowledge;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.runtime.security.SecurityConfiguration;
 import org.apache.flink.runtime.security.SecurityUtils;
 import org.apache.flink.runtime.util.EnvironmentInformation;
@@ -56,8 +57,11 @@ import org.apache.flink.util.FlinkException;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.Options;
+import org.apache.commons.cli.UnrecognizedOptionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.annotation.Nullable;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -98,6 +102,7 @@ public class CliFrontend {
 	private static final String ACTION_CANCEL = "cancel";
 	private static final String ACTION_STOP = "stop";
 	private static final String ACTION_SAVEPOINT = "savepoint";
+	private static final String ACTION_RESCALE = "rescale";
 
 	// configuration dir parameters
 	private static final String CONFIG_DIRECTORY_FALLBACK_1 = "../conf";
@@ -118,15 +123,15 @@ public class CliFrontend {
 	private final ClusterClientServiceLoader clusterClientServiceLoader;
 
 	public CliFrontend(
-			Configuration configuration,
-			List<CustomCommandLine> customCommandLines) {
+		Configuration configuration,
+		List<CustomCommandLine> customCommandLines) {
 		this(configuration, new DefaultClusterClientServiceLoader(), customCommandLines);
 	}
 
 	public CliFrontend(
-			Configuration configuration,
-			ClusterClientServiceLoader clusterClientServiceLoader,
-			List<CustomCommandLine> customCommandLines) {
+		Configuration configuration,
+		ClusterClientServiceLoader clusterClientServiceLoader,
+		List<CustomCommandLine> customCommandLines) {
 		this.configuration = checkNotNull(configuration);
 		this.customCommandLines = checkNotNull(customCommandLines);
 		this.clusterClientServiceLoader = checkNotNull(clusterClientServiceLoader);
@@ -181,7 +186,7 @@ public class CliFrontend {
 		}
 
 		final CustomCommandLine activeCommandLine =
-				validateAndGetActiveCommandLine(checkNotNull(commandLine));
+			validateAndGetActiveCommandLine(checkNotNull(commandLine));
 
 		final ApplicationDeployer deployer =
 			new ApplicationClusterDeployer(clusterClientServiceLoader);
@@ -203,7 +208,7 @@ public class CliFrontend {
 		}
 
 		final ApplicationConfiguration applicationConfiguration =
-				new ApplicationConfiguration(programOptions.getProgramArgs(), programOptions.getEntryPointClassName());
+			new ApplicationConfiguration(programOptions.getProgramArgs(), programOptions.getEntryPointClassName());
 		deployer.run(effectiveConfiguration, applicationConfiguration);
 	}
 
@@ -225,14 +230,14 @@ public class CliFrontend {
 		}
 
 		final CustomCommandLine activeCommandLine =
-				validateAndGetActiveCommandLine(checkNotNull(commandLine));
+			validateAndGetActiveCommandLine(checkNotNull(commandLine));
 
 		final ProgramOptions programOptions = ProgramOptions.create(commandLine);
 
 		final List<URL> jobJars = getJobJarAndDependencies(programOptions);
 
 		final Configuration effectiveConfiguration = getEffectiveConfiguration(
-				activeCommandLine, commandLine, programOptions, jobJars);
+			activeCommandLine, commandLine, programOptions, jobJars);
 
 		LOG.debug("Effective executor configuration: {}", effectiveConfiguration);
 
@@ -261,8 +266,8 @@ public class CliFrontend {
 	}
 
 	private PackagedProgram getPackagedProgram(
-			ProgramOptions programOptions,
-			Configuration effectiveConfiguration) throws ProgramInvocationException, CliArgsException {
+		ProgramOptions programOptions,
+		Configuration effectiveConfiguration) throws ProgramInvocationException, CliArgsException {
 		PackagedProgram program;
 		try {
 			LOG.info("Building program from JAR file");
@@ -274,13 +279,13 @@ public class CliFrontend {
 	}
 
 	private <T> Configuration getEffectiveConfiguration(
-			final CustomCommandLine activeCustomCommandLine,
-			final CommandLine commandLine) throws FlinkException {
+		final CustomCommandLine activeCustomCommandLine,
+		final CommandLine commandLine) throws FlinkException {
 
 		final Configuration effectiveConfiguration = new Configuration(configuration);
 
 		final Configuration commandLineConfiguration =
-				checkNotNull(activeCustomCommandLine).toConfiguration(commandLine);
+			checkNotNull(activeCustomCommandLine).toConfiguration(commandLine);
 
 		effectiveConfiguration.addAll(commandLineConfiguration);
 
@@ -288,16 +293,16 @@ public class CliFrontend {
 	}
 
 	private <T> Configuration getEffectiveConfiguration(
-			final CustomCommandLine activeCustomCommandLine,
-			final CommandLine commandLine,
-			final ProgramOptions programOptions,
-			final List<T> jobJars) throws FlinkException {
+		final CustomCommandLine activeCustomCommandLine,
+		final CommandLine commandLine,
+		final ProgramOptions programOptions,
+		final List<T> jobJars) throws FlinkException {
 
 		final Configuration effectiveConfiguration = getEffectiveConfiguration(activeCustomCommandLine, commandLine);
 
 		final ExecutionConfigAccessor executionParameters = ExecutionConfigAccessor.fromProgramOptions(
-				checkNotNull(programOptions),
-				checkNotNull(jobJars));
+			checkNotNull(programOptions),
+			checkNotNull(jobJars));
 
 		executionParameters.applyToConfiguration(effectiveConfiguration);
 
@@ -340,10 +345,10 @@ public class CliFrontend {
 			LOG.info("Creating program plan dump");
 
 			final CustomCommandLine activeCommandLine =
-					validateAndGetActiveCommandLine(checkNotNull(commandLine));
+				validateAndGetActiveCommandLine(checkNotNull(commandLine));
 
 			final Configuration effectiveConfiguration = getEffectiveConfiguration(
-					activeCommandLine, commandLine, programOptions, getJobJarAndDependencies(programOptions));
+				activeCommandLine, commandLine, programOptions, getJobJarAndDependencies(programOptions));
 
 			program = buildProgram(programOptions, effectiveConfiguration);
 
@@ -420,10 +425,10 @@ public class CliFrontend {
 	}
 
 	private <ClusterID> void listJobs(
-			ClusterClient<ClusterID> clusterClient,
-			boolean showRunning,
-			boolean showScheduled,
-			boolean showAll) throws FlinkException {
+		ClusterClient<ClusterID> clusterClient,
+		boolean showRunning,
+		boolean showScheduled,
+		boolean showAll) throws FlinkException {
 		Collection<JobStatusMessage> jobDetails;
 		try {
 			CompletableFuture<Collection<JobStatusMessage>> jobDetailsFuture = clusterClient.listJobs();
@@ -516,12 +521,12 @@ public class CliFrontend {
 		final String[] cleanedArgs = stopOptions.getArgs();
 
 		final String targetDirectory = stopOptions.hasSavepointFlag() && cleanedArgs.length > 0
-				? stopOptions.getTargetDirectory()
-				: null; // the default savepoint location is going to be used in this case.
+			? stopOptions.getTargetDirectory()
+			: null; // the default savepoint location is going to be used in this case.
 
 		final JobID jobId = cleanedArgs.length != 0
-				? parseJobId(cleanedArgs[0])
-				: parseJobId(stopOptions.getTargetDirectory());
+			? parseJobId(cleanedArgs[0])
+			: parseJobId(stopOptions.getTargetDirectory());
 
 		final boolean advanceToEndOfEventTime = stopOptions.shouldAdvanceToEndOfEventTime();
 
@@ -735,6 +740,100 @@ public class CliFrontend {
 		logAndSysout("Savepoint '" + savepointPath + "' disposed.");
 	}
 
+	/**
+	 * Test.
+	 *
+	 * @param args Command line arguments for the list action.
+	 */
+	protected void rescale(String[] args) throws Exception {
+		LOG.info("Running 'rescale' command.");
+
+		final Options commandOptions = CliFrontendParser.getRescaleCommandOptions();
+
+		final Options commandLineOptions = CliFrontendParser.mergeOptions(commandOptions, customCommandLineOptions);
+
+		final CommandLine commandLine = CliFrontendParser.parse(commandLineOptions, args, false);
+
+		final RescaleOptions rescaleOptions = new RescaleOptions(commandLine);
+
+		int mode = rescaleOptions.getMode();
+		int globalParallelism = rescaleOptions.getGlobalParallelism();
+		Map<String, Integer> parallelismList;
+		try {
+			parallelismList = rescaleOptions.getParallelismList();
+		} catch (Exception e) {
+			throw new CliArgsException("Parallelism list option provided, but the arguments cannot be parsed.");
+		}
+
+		String[] cleanedArgs = rescaleOptions.getArgs();
+
+		final CustomCommandLine activeCommandLine = validateAndGetActiveCommandLine(commandLine);
+
+		final JobID jobId;
+
+		if (cleanedArgs.length >= 1) {
+			String jobIdString = cleanedArgs[0];
+
+			jobId = parseJobId(jobIdString);
+		} else {
+			throw new CliArgsException("Missing JobID. " +
+				"Specify a Job ID to trigger a rescale action.");
+		}
+
+		// Print superfluous arguments
+		if (cleanedArgs.length >= 2) {
+			logAndSysout("Provided more arguments than required. Ignoring not needed arguments.");
+		}
+
+		RescaleSignal.RescaleSignalType rescaleSignalType;
+		switch (mode) {
+			case -1:
+				rescaleSignalType = RescaleSignal.RescaleSignalType.PREPARE;
+				break;
+			case 0:
+				rescaleSignalType = RescaleSignal.RescaleSignalType.CREATE;
+				break;
+			case 1:
+				rescaleSignalType = RescaleSignal.RescaleSignalType.ALL_IN_ONCE_FETCH;
+				break;
+			case 2:
+				rescaleSignalType = RescaleSignal.RescaleSignalType.CLEAN;
+				break;
+			case 3:
+				rescaleSignalType = RescaleSignal.RescaleSignalType.ALL;
+				break;
+			default:
+				throw new UnrecognizedOptionException("mode " + mode + " cannot be parsed.");
+		}
+
+		runClusterAction(
+			activeCommandLine,
+			commandLine,
+			clusterClient -> triggerRescale(clusterClient, jobId, rescaleSignalType, globalParallelism, parallelismList));
+
+	}
+
+
+	/**
+	 * Sends a RescalingTriggerMessage to the job manager.
+	 */
+	private void triggerRescale(ClusterClient<?> clusterClient, JobID jobId, RescaleSignal.RescaleSignalType rescaleSignalType, int globalParallelism, @Nullable Map<String, Integer> parallelismList) throws FlinkException {
+		logAndSysout("Triggering scale for job " + jobId + '.');
+
+		CompletableFuture<Acknowledge> scaleResultFuture = clusterClient.triggerRescale(jobId, rescaleSignalType, globalParallelism, parallelismList);
+
+		logAndSysout("Waiting for response...");
+
+		try {
+			scaleResultFuture.get(clientTimeout.toMillis(), TimeUnit.MILLISECONDS);
+
+			logAndSysout("Scale completed.");
+		} catch (Exception e) {
+			Throwable cause = ExceptionUtils.stripExecutionException(e);
+			throw new FlinkException("Triggering scale for the job " + jobId + " failed.", cause);
+		}
+	}
+
 	// --------------------------------------------------------------------------------------------
 	//  Interaction with programs and JobManager
 	// --------------------------------------------------------------------------------------------
@@ -749,7 +848,7 @@ public class CliFrontend {
 	 * @return A PackagedProgram (upon success)
 	 */
 	PackagedProgram buildProgram(final ProgramOptions runOptions)
-			throws FileNotFoundException, ProgramInvocationException, CliArgsException {
+		throws FileNotFoundException, ProgramInvocationException, CliArgsException {
 		return buildProgram(runOptions, configuration);
 	}
 
@@ -988,6 +1087,9 @@ public class CliFrontend {
 				case ACTION_SAVEPOINT:
 					savepoint(params);
 					return 0;
+				case ACTION_RESCALE:
+					rescale(params);
+					return 0;
 				case "-h":
 				case "--help":
 					CliFrontendParser.printHelp(customCommandLines);
@@ -1044,7 +1146,7 @@ public class CliFrontend {
 
 			SecurityUtils.install(new SecurityConfiguration(cli.configuration));
 			int retCode = SecurityUtils.getInstalledContext()
-					.runSecured(() -> cli.parseAndRun(args));
+				.runSecured(() -> cli.parseAndRun(args));
 			System.exit(retCode);
 		}
 		catch (Throwable t) {
@@ -1079,7 +1181,7 @@ public class CliFrontend {
 		}
 		else {
 			throw new RuntimeException("The configuration directory was not specified. " +
-					"Please specify the directory containing the configuration file through the '" +
+				"Please specify the directory containing the configuration file through the '" +
 				ConfigConstants.ENV_FLINK_CONF_DIR + "' environment variable.");
 		}
 		return location;
@@ -1117,7 +1219,7 @@ public class CliFrontend {
 			try {
 				LOG.info("Loading FallbackYarnSessionCli");
 				customCommandLines.add(
-						loadCustomCommandLine(errorYarnSessionCLI, configuration));
+					loadCustomCommandLine(errorYarnSessionCLI, configuration));
 			} catch (Exception exception) {
 				LOG.warn("Could not load CLI class {}.", flinkYarnSessionCLI, e);
 			}

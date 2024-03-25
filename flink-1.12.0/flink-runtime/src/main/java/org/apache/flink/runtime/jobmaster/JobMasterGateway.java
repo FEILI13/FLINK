@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.jobmaster;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.time.Time;
@@ -43,6 +44,7 @@ import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.OperatorBackPressureStatsResponse;
 import org.apache.flink.runtime.rpc.FencedRpcGateway;
 import org.apache.flink.runtime.rpc.RpcTimeout;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorToJobManagerHeartbeatPayload;
 import org.apache.flink.runtime.taskexecutor.slot.SlotOffer;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
@@ -52,6 +54,7 @@ import org.apache.flink.util.SerializedValue;
 import javax.annotation.Nullable;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -79,7 +82,7 @@ public interface JobMasterGateway extends
 	 * @return Future flag of the task execution state update result
 	 */
 	CompletableFuture<Acknowledge> updateTaskExecutionState(
-			final TaskExecutionState taskExecutionState);
+		final TaskExecutionState taskExecutionState);
 
 	/**
 	 * Requests the next input split for the {@link ExecutionJobVertex}.
@@ -91,8 +94,8 @@ public interface JobMasterGateway extends
 	 * @return The future of the input split. If there is no further input split, will return an empty object.
 	 */
 	CompletableFuture<SerializedInputSplit> requestNextInputSplit(
-			final JobVertexID vertexID,
-			final ExecutionAttemptID executionAttempt);
+		final JobVertexID vertexID,
+		final ExecutionAttemptID executionAttempt);
 
 	/**
 	 * Requests the current state of the partition. The state of a
@@ -103,8 +106,8 @@ public interface JobMasterGateway extends
 	 * @return The future of the partition state
 	 */
 	CompletableFuture<ExecutionState> requestPartitionState(
-			final IntermediateDataSetID intermediateResultId,
-			final ResultPartitionID partitionId);
+		final IntermediateDataSetID intermediateResultId,
+		final ResultPartitionID partitionId);
 
 	/**
 	 * Notifies the JobManager about available data for a produced partition.
@@ -120,8 +123,8 @@ public interface JobMasterGateway extends
 	 * @return Future acknowledge of the schedule or update operation
 	 */
 	CompletableFuture<Acknowledge> scheduleOrUpdateConsumers(
-			final ResultPartitionID partitionID,
-			@RpcTimeout final Time timeout);
+		final ResultPartitionID partitionID,
+		@RpcTimeout final Time timeout);
 
 	/**
 	 * Disconnects the given {@link org.apache.flink.runtime.taskexecutor.TaskExecutor} from the
@@ -152,9 +155,9 @@ public interface JobMasterGateway extends
 	 * @return Future set of accepted slots.
 	 */
 	CompletableFuture<Collection<SlotOffer>> offerSlots(
-			final ResourceID taskManagerId,
-			final Collection<SlotOffer> slots,
-			@RpcTimeout final Time timeout);
+		final ResourceID taskManagerId,
+		final Collection<SlotOffer> slots,
+		@RpcTimeout final Time timeout);
 
 	/**
 	 * Fails the slot with the given allocation id and cause.
@@ -164,8 +167,8 @@ public interface JobMasterGateway extends
 	 * @param cause         of the failing
 	 */
 	void failSlot(final ResourceID taskManagerId,
-			final AllocationID allocationId,
-			final Exception cause);
+				  final AllocationID allocationId,
+				  final Exception cause);
 
 	/**
 	 * Registers the task manager at the job manager.
@@ -176,9 +179,9 @@ public interface JobMasterGateway extends
 	 * @return Future registration response indicating whether the registration was successful or not
 	 */
 	CompletableFuture<RegistrationResponse> registerTaskManager(
-			final String taskManagerRpcAddress,
-			final UnresolvedTaskManagerLocation unresolvedTaskManagerLocation,
-			@RpcTimeout final Time timeout);
+		final String taskManagerRpcAddress,
+		final UnresolvedTaskManagerLocation unresolvedTaskManagerLocation,
+		@RpcTimeout final Time timeout);
 
 	/**
 	 * Sends the heartbeat to job manager from task manager.
@@ -290,4 +293,22 @@ public interface JobMasterGateway extends
 		OperatorID operatorId,
 		SerializedValue<CoordinationRequest> serializedRequest,
 		@RpcTimeout Time timeout);
+
+	/**
+	 * Triggers rescaling of the executed job.
+	 *
+	 * @param rescaleSignalType rescaling mode
+	 * @param newGlobalParallelism new parallelism of the job
+	 * @param parallelismList new parallelism of each operator in the job
+	 * @param timeout of this operation
+	 * @return Future which is completed with {@link Acknowledge} once the rescaling was successful
+	 */
+	default CompletableFuture<Acknowledge> triggerRescaling(
+		RescaleSignal.RescaleSignalType rescaleSignalType,
+		int newGlobalParallelism,
+		Map<String, Integer> parallelismList,
+		@RpcTimeout final Time timeout) {
+		throw new UnsupportedOperationException();
+	}
+
 }

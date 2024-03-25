@@ -41,25 +41,25 @@ import java.util.stream.Collectors;
 public class CliFrontendParser {
 
 	static final Option HELP_OPTION = new Option("h", "help", false,
-			"Show the help message for the CLI Frontend or the action.");
+		"Show the help message for the CLI Frontend or the action.");
 
 	static final Option JAR_OPTION = new Option("j", "jarfile", true, "Flink program JAR file.");
 
 	static final Option CLASS_OPTION = new Option("c", "class", true,
-			"Class with the program entry point (\"main()\" method). Only needed if the " +
+		"Class with the program entry point (\"main()\" method). Only needed if the " +
 			"JAR file does not specify the class in its manifest.");
 
 	static final Option CLASSPATH_OPTION = new Option("C", "classpath", true, "Adds a URL to each user code " +
-			"classloader  on all nodes in the cluster. The paths must specify a protocol (e.g. file://) and be " +
-					"accessible on all nodes (e.g. by means of a NFS share). You can use this option multiple " +
-					"times for specifying more than one URL. The protocol must be supported by the " +
-					"{@link java.net.URLClassLoader}.");
+		"classloader  on all nodes in the cluster. The paths must specify a protocol (e.g. file://) and be " +
+		"accessible on all nodes (e.g. by means of a NFS share). You can use this option multiple " +
+		"times for specifying more than one URL. The protocol must be supported by the " +
+		"{@link java.net.URLClassLoader}.");
 
 	public static final Option PARALLELISM_OPTION = new Option("p", "parallelism", true,
-			"The parallelism with which to run the program. Optional flag to override the default value " +
+		"The parallelism with which to run the program. Optional flag to override the default value " +
 			"specified in the configuration.");
 	public static final Option DETACHED_OPTION = new Option("d", "detached", false, "If present, runs " +
-			"the job in detached mode");
+		"the job in detached mode");
 
 	public static final Option SHUTDOWN_IF_ATTACHED_OPTION = new Option(
 		"sae", "shutdownOnAttachedExit", false,
@@ -74,49 +74,49 @@ public class CliFrontendParser {
 		"the job in detached mode (deprecated; use non-YARN specific option instead)");
 
 	public static final Option ARGS_OPTION = new Option("a", "arguments", true,
-			"Program arguments. Arguments can also be added without -a, simply as trailing parameters.");
+		"Program arguments. Arguments can also be added without -a, simply as trailing parameters.");
 
 	public static final Option ADDRESS_OPTION = new Option("m", "jobmanager", true,
-			"Address of the JobManager to which to connect. " +
+		"Address of the JobManager to which to connect. " +
 			"Use this flag to connect to a different JobManager than the one specified in the configuration.");
 
 	public static final Option SAVEPOINT_PATH_OPTION = new Option("s", "fromSavepoint", true,
-			"Path to a savepoint to restore the job from (for example hdfs:///flink/savepoint-1537).");
+		"Path to a savepoint to restore the job from (for example hdfs:///flink/savepoint-1537).");
 
 	public static final Option SAVEPOINT_ALLOW_NON_RESTORED_OPTION = new Option("n", "allowNonRestoredState", false,
-			"Allow to skip savepoint state that cannot be restored. " +
-					"You need to allow this if you removed an operator from your " +
-					"program that was part of the program when the savepoint was triggered.");
+		"Allow to skip savepoint state that cannot be restored. " +
+			"You need to allow this if you removed an operator from your " +
+			"program that was part of the program when the savepoint was triggered.");
 
 	static final Option SAVEPOINT_DISPOSE_OPTION = new Option("d", "dispose", true,
-			"Path of savepoint to dispose.");
+		"Path of savepoint to dispose.");
 
 	// list specific options
 	static final Option RUNNING_OPTION = new Option("r", "running", false,
-			"Show only running programs and their JobIDs");
+		"Show only running programs and their JobIDs");
 
 	static final Option SCHEDULED_OPTION = new Option("s", "scheduled", false,
-			"Show only scheduled programs and their JobIDs");
+		"Show only scheduled programs and their JobIDs");
 
 	static final Option ALL_OPTION = new Option("a", "all", false,
 		"Show all programs and their JobIDs");
 
 	static final Option ZOOKEEPER_NAMESPACE_OPTION = new Option("z", "zookeeperNamespace", true,
-			"Namespace to create the Zookeeper sub-paths for high availability mode");
+		"Namespace to create the Zookeeper sub-paths for high availability mode");
 
 	static final Option CANCEL_WITH_SAVEPOINT_OPTION = new Option(
-			"s", "withSavepoint", true, "**DEPRECATION WARNING**: " +
-			"Cancelling a job with savepoint is deprecated. Use \"stop\" instead. \n Trigger" +
-			" savepoint and cancel job. The target directory is optional. If no directory is " +
-			"specified, the configured default directory (" +
-			CheckpointingOptions.SAVEPOINT_DIRECTORY.key() + ") is used.");
+		"s", "withSavepoint", true, "**DEPRECATION WARNING**: " +
+		"Cancelling a job with savepoint is deprecated. Use \"stop\" instead. \n Trigger" +
+		" savepoint and cancel job. The target directory is optional. If no directory is " +
+		"specified, the configured default directory (" +
+		CheckpointingOptions.SAVEPOINT_DIRECTORY.key() + ") is used.");
 
 	public static final Option STOP_WITH_SAVEPOINT_PATH = new Option("p", "savepointPath", true,
-			"Path to the savepoint (for example hdfs:///flink/savepoint-1537). " +
-					"If no directory is specified, the configured default will be used (\"" + CheckpointingOptions.SAVEPOINT_DIRECTORY.key() + "\").");
+		"Path to the savepoint (for example hdfs:///flink/savepoint-1537). " +
+			"If no directory is specified, the configured default will be used (\"" + CheckpointingOptions.SAVEPOINT_DIRECTORY.key() + "\").");
 
 	public static final Option STOP_AND_DRAIN = new Option("d", "drain", false,
-			"Send MAX_WATERMARK before taking the savepoint and stopping the pipelne.");
+		"Send MAX_WATERMARK before taking the savepoint and stopping the pipelne.");
 
 	public static final Option PY_OPTION = new Option("py", "python", true,
 		"Python script with the program entry point. " +
@@ -159,6 +159,18 @@ public class CliFrontendParser {
 			"The python UDF worker depends on Python 3.5+, Apache Beam (version == 2.23.0), " +
 			"Pip (version >= 7.1.0) and SetupTools (version >= 37.0.0). " +
 			"Please ensure that the specified environment meets the above requirements.");
+
+	static final Option RESCALE_MODE_OPTION = new Option("rmd", "rescaleMode", true,
+		"Rescale mode (for test only).");
+
+	static final Option RESCALE_PARALLELISM_OPTION = new Option("rp", "rescaleParallelism", true,
+		"Rescale global parallelism (for test only)." +
+			"If this is provided, rescaleParallelismList option is disabled.");
+
+	static final Option RESCALE_PARALLELISM_LIST_OPTION = new Option("rpl", "rescaleParallelismList", true,
+		"Rescale parallelism list (for test only)." +
+			"Surrounded by '<>' and each operator separated by ';'" +
+			".e.g. \"-rpl [source, 1; map, 2]\"");
 
 	static {
 		HELP_OPTION.setRequired(false);
@@ -291,14 +303,22 @@ public class CliFrontendParser {
 
 	static Options getStopCommandOptions() {
 		return buildGeneralOptions(new Options())
-				.addOption(STOP_WITH_SAVEPOINT_PATH)
-				.addOption(STOP_AND_DRAIN);
+			.addOption(STOP_WITH_SAVEPOINT_PATH)
+			.addOption(STOP_AND_DRAIN);
 	}
 
 	static Options getSavepointCommandOptions() {
 		Options options = buildGeneralOptions(new Options());
 		options.addOption(SAVEPOINT_DISPOSE_OPTION);
 		return options.addOption(JAR_OPTION);
+	}
+
+	static Options getRescaleCommandOptions() {
+		Options options = buildGeneralOptions(new Options());
+		options.addOption(RESCALE_MODE_OPTION);
+		options.addOption(RESCALE_PARALLELISM_OPTION);
+		options.addOption(RESCALE_PARALLELISM_LIST_OPTION);
+		return options;
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -330,8 +350,8 @@ public class CliFrontendParser {
 
 	private static Options getStopOptionsWithoutDeprecatedOptions(Options options) {
 		return options
-				.addOption(STOP_WITH_SAVEPOINT_PATH)
-				.addOption(STOP_AND_DRAIN);
+			.addOption(STOP_WITH_SAVEPOINT_PATH)
+			.addOption(STOP_AND_DRAIN);
 	}
 
 	private static Options getSavepointOptionsWithoutDeprecatedOptions(Options options) {
@@ -386,9 +406,9 @@ public class CliFrontendParser {
 		// Only GenericCLI works with application mode, the other CLIs will be phased out
 		// in the future
 		List<CustomCommandLine> filteredCommandLines = customCommandLines
-				.stream()
-				.filter((cli) -> cli instanceof GenericCLI)
-				.collect(Collectors.toList());
+			.stream()
+			.filter((cli) -> cli instanceof GenericCLI)
+			.collect(Collectors.toList());
 
 		printCustomCliOptions(filteredCommandLines, formatter, true);
 		System.out.println();
@@ -473,9 +493,9 @@ public class CliFrontendParser {
 	 * @param runOptions True if the run options should be printed, False to print only general options
 	 */
 	private static void printCustomCliOptions(
-			Collection<CustomCommandLine> customCommandLines,
-			HelpFormatter formatter,
-			boolean runOptions) {
+		Collection<CustomCommandLine> customCommandLines,
+		HelpFormatter formatter,
+		boolean runOptions) {
 		// prints options from all available command-line classes
 		for (CustomCommandLine cli: customCommandLines) {
 			formatter.setSyntaxPrefix("  Options for " + cli.getId() + " mode:");

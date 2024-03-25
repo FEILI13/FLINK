@@ -35,12 +35,14 @@ import org.apache.flink.runtime.messages.webmonitor.MultipleJobsDetails;
 import org.apache.flink.runtime.metrics.dump.MetricQueryService;
 import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
 import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
+import org.apache.flink.runtime.rescale.RescaleSignal;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.OperatorBackPressureStatsResponse;
 import org.apache.flink.runtime.rpc.RpcGateway;
 import org.apache.flink.runtime.rpc.RpcTimeout;
 import org.apache.flink.util.SerializedValue;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -122,10 +124,10 @@ public interface RestfulGateway extends RpcGateway {
 	 * the savepoint.
 	 */
 	default CompletableFuture<String> triggerSavepoint(
-			JobID jobId,
-			String targetDirectory,
-			boolean cancelJob,
-			@RpcTimeout Time timeout) {
+		JobID jobId,
+		String targetDirectory,
+		boolean cancelJob,
+		@RpcTimeout Time timeout) {
 		throw new UnsupportedOperationException();
 	}
 
@@ -141,10 +143,10 @@ public interface RestfulGateway extends RpcGateway {
 	 * @return Future which is completed with the savepoint path once completed
 	 */
 	default CompletableFuture<String> stopWithSavepoint(
-			final JobID jobId,
-			final String targetDirectory,
-			final boolean advanceToEndOfEventTime,
-			@RpcTimeout final Time timeout) {
+		final JobID jobId,
+		final String targetDirectory,
+		final boolean advanceToEndOfEventTime,
+		@RpcTimeout final Time timeout) {
 		throw new UnsupportedOperationException();
 	}
 
@@ -156,8 +158,8 @@ public interface RestfulGateway extends RpcGateway {
 	 * @return A future acknowledge if the disposal succeeded
 	 */
 	default CompletableFuture<Acknowledge> disposeSavepoint(
-			final String savepointPath,
-			@RpcTimeout final Time timeout) {
+		final String savepointPath,
+		@RpcTimeout final Time timeout) {
 		throw new UnsupportedOperationException();
 	}
 
@@ -169,8 +171,8 @@ public interface RestfulGateway extends RpcGateway {
 	 * @return A future to the {@link JobStatus} of the given job
 	 */
 	default CompletableFuture<JobStatus> requestJobStatus(
-			JobID jobId,
-			@RpcTimeout Time timeout) {
+		JobID jobId,
+		@RpcTimeout Time timeout) {
 		throw new UnsupportedOperationException();
 	}
 
@@ -182,8 +184,8 @@ public interface RestfulGateway extends RpcGateway {
 	 * @return A Future to the {@link OperatorBackPressureStatsResponse}.
 	 */
 	default CompletableFuture<OperatorBackPressureStatsResponse> requestOperatorBackPressureStats(
-			JobID jobId,
-			JobVertexID jobVertexId) {
+		JobID jobId,
+		JobVertexID jobVertexId) {
 		throw new UnsupportedOperationException();
 	}
 
@@ -204,10 +206,29 @@ public interface RestfulGateway extends RpcGateway {
 	 *         or the coordinator cannot handle client events.
 	 */
 	default CompletableFuture<CoordinationResponse> deliverCoordinationRequestToCoordinator(
-			JobID jobId,
-			OperatorID operatorId,
-			SerializedValue<CoordinationRequest> serializedRequest,
-			@RpcTimeout Time timeout) {
+		JobID jobId,
+		OperatorID operatorId,
+		SerializedValue<CoordinationRequest> serializedRequest,
+		@RpcTimeout Time timeout) {
+		throw new UnsupportedOperationException();
+	}
+
+	/**
+	 * Trigger rescaling of the given job.
+	 *
+	 * @param jobId specifying the job to rescale
+	 * @param rescaleSignalType
+	 * @param newGlobalParallelism new parallelism of the job
+	 * @param parallelismList new parallelism of each operator in the job
+	 * @param timeout of this operation
+	 * @return Future which is completed with {@link Acknowledge} once the rescaling was successful
+	 */
+	default CompletableFuture<Acknowledge> rescaleJob(
+		JobID jobId,
+		RescaleSignal.RescaleSignalType rescaleSignalType,
+		int newGlobalParallelism,
+		Map<String, Integer> parallelismList,
+		@RpcTimeout Time timeout) {
 		throw new UnsupportedOperationException();
 	}
 }
