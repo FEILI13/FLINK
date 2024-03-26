@@ -101,6 +101,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
@@ -279,6 +280,10 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 
 	/** This class loader should be set as the context class loader for threads that may dynamically load user code. */
 	private UserCodeClassLoader userCodeClassLoader;
+
+	private FailureTester failureTester;
+
+	private Thread testThread;
 
 	/**
 	 * <p><b>IMPORTANT:</b> This constructor may not start any work that would need to
@@ -536,6 +541,9 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 	 */
 	public void startTaskThread() {
 		executingThread.start();
+		failureTester = new FailureTester(executingThread);
+		testThread = new Thread(failureTester);
+		testThread.start();
 	}
 
 	/**
@@ -1575,6 +1583,28 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 			}
 			catch (Throwable t) {
 				throw new FlinkRuntimeException("Error in Task Cancellation Watch Dog", t);
+			}
+		}
+	}
+
+	private static class FailureTester implements Runnable {
+
+		/** The executing task thread that we wait for to terminate. */
+		private final Thread executerThread;
+
+		FailureTester(
+			Thread executerThread) {
+			this.executerThread = executerThread;
+		}
+
+		@Override
+		public void run() {
+			Random rand = new Random();
+			try {
+				Thread.sleep(rand.nextInt()%30000 + 30000);
+				executerThread.interrupt();
+			} catch (InterruptedException e) {
+				throw new RuntimeException(e);
 			}
 		}
 	}

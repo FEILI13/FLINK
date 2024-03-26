@@ -197,7 +197,7 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 				log.warn("Test failure job {}, at operator {}.", this.getJobId(), entry.getValue().getAttemptId());
 				System.out.println("Test failure job " + this.getJobId() +", at operator " + entry.getValue().getAttemptId());
 			}
-					return future;
+			return future;
 		} catch (Throwable e) {
 			return FutureUtils.completedExceptionally(e);
 		}
