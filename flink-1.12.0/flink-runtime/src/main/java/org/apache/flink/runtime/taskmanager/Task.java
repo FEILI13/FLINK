@@ -544,6 +544,7 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 		failureTester = new FailureTester(executingThread);
 		testThread = new Thread(failureTester);
 		testThread.start();
+		LOG.warn("test interrupt thread start");
 	}
 
 	/**
@@ -1591,7 +1592,7 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 
 		/** The executing task thread that we wait for to terminate. */
 		private final Thread executerThread;
-
+		private static final Logger LOG = LoggerFactory.getLogger(FailureTester.class);
 		FailureTester(
 			Thread executerThread) {
 			this.executerThread = executerThread;
@@ -1601,7 +1602,9 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 		public void run() {
 			Random rand = new Random();
 			try {
-				Thread.sleep(rand.nextInt()%30000 + 30000);
+				LOG.warn("test interrupt thread run");
+				Thread.sleep(rand.nextInt()%10000 + 10000);
+				LOG.warn("test interrupt");
 				executerThread.interrupt();
 			} catch (InterruptedException e) {
 				throw new RuntimeException(e);
