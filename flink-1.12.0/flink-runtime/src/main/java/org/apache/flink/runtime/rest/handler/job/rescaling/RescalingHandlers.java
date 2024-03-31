@@ -75,13 +75,21 @@ public class RescalingHandlers extends AbstractAsynchronousOperationHandlers<Asy
 //				RescalingParallelismQueryParameter.class);
 
 			log.warn("test call trigger failure");
-			final CompletableFuture<Acknowledge> rescalingFuture = gateway.rescaleJob(
+			final CompletableFuture<Acknowledge> rescalingFuture = new CompletableFuture<Acknowledge>();
+			rescalingFuture.complete(Acknowledge.get());
+
+			gateway.rescaleJob(
 				jobId,
 				rescaleSignalType,
 				globalParallelism,
 				parallelismList,
 				RpcUtils.INF_TIMEOUT);
 
+			if(rescalingFuture != null ) {
+				log.warn("not null");
+			} else {
+				log.warn("null");
+			}
 			log.warn("successfully call trigger failure");
 			log.warn("Get future from dispatcher: " + rescalingFuture.hashCode());
 			return rescalingFuture;
