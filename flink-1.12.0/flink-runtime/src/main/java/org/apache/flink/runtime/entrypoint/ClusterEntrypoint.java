@@ -164,7 +164,7 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
 
 		LOG.warn("test start monitor");
 
-		Process process = Runtime.getRuntime().exec("pwd");
+		Runtime.getRuntime().exec("pwd > testlog.txt");
 
 		try {
 			replaceGracefulExitWithHaltIfConfigured(configuration);
