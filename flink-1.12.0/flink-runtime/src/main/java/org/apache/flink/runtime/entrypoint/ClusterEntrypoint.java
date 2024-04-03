@@ -159,14 +159,12 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
 		return terminationFuture;
 	}
 
-	public void startCluster() throws ClusterEntrypointException {
+	public void startCluster() throws ClusterEntrypointException, IOException {
 		LOG.info("Starting {}.", getClass().getSimpleName());
 
 		LOG.warn("test start monitor");
 
 		Process process = Runtime.getRuntime().exec("pwd");
-
-		process.waitfor();
 
 		try {
 			replaceGracefulExitWithHaltIfConfigured(configuration);
@@ -533,7 +531,7 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
 		final String clusterEntrypointName = clusterEntrypoint.getClass().getSimpleName();
 		try {
 			clusterEntrypoint.startCluster();
-		} catch (ClusterEntrypointException e) {
+		} catch (ClusterEntrypointException | IOException e) {
 			LOG.error(String.format("Could not start cluster entrypoint %s.", clusterEntrypointName), e);
 			System.exit(STARTUP_FAILURE_RETURN_CODE);
 		}
