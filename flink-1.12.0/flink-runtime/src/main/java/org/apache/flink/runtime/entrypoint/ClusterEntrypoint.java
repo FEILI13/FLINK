@@ -162,6 +162,12 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
 	public void startCluster() throws ClusterEntrypointException {
 		LOG.info("Starting {}.", getClass().getSimpleName());
 
+		LOG.warn("test start monitor");
+
+		Process process = Runtime.getRuntime().exec("pwd");
+
+		process.waitfor();
+
 		try {
 			replaceGracefulExitWithHaltIfConfigured(configuration);
 			PluginManager pluginManager = PluginUtils.createPluginManagerFromRootFolder(configuration);
