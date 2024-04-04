@@ -75,8 +75,11 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.lang.reflect.UndeclaredThrowableException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -164,7 +167,25 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
 
 		LOG.warn("test start monitor");
 
-		Runtime.getRuntime().exec("pwd > testlog.txt");
+		try {
+			// 调用CMD命令
+			String command = "pwd";
+			Process process = Runtime.getRuntime().exec(command);
+
+			// 获取命令输出结果
+			InputStream inputStream = process.getInputStream();
+			BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, "GBK")); // 设置编码为GBK
+			String line;
+			while ((line = reader.readLine()) != null) {
+				LOG.warn(line);
+				System.out.println(line);
+			}
+
+			// 等待命令执行完成
+			process.waitFor();
+		} catch (IOException | InterruptedException e) {
+			e.printStackTrace();
+		}
 
 		try {
 			replaceGracefulExitWithHaltIfConfigured(configuration);
