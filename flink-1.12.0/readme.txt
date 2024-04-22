@@ -1,0 +1,1 @@
+这是一个无断点的原生flink，编译前需要把setting和structure中的java都设置成1.8，将clonos移植到到1.12的半成品。基本逻辑实现，但仍有bug
