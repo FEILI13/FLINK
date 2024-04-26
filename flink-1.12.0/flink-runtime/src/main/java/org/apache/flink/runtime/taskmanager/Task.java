@@ -420,7 +420,9 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 			resultPartitionConsumableNotifier);
 
 		LOG.warn("Test");
-		
+		String text1 = "" + resultPartitionWriters.length;
+		String text2 = "" + consumableNotifyingPartitionWriters.length;
+		LOG.warn(text1 + " " + text2);
 
 		// consumed intermediate result partitions
 		final IndexedInputGate[] gates = shuffleEnvironment.createInputGates(
