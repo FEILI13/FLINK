@@ -419,6 +419,9 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 			jobId,
 			resultPartitionConsumableNotifier);
 
+		LOG.warn("Test");
+		
+
 		// consumed intermediate result partitions
 		final IndexedInputGate[] gates = shuffleEnvironment.createInputGates(
 				taskShuffleContext,

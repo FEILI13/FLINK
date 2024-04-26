@@ -11,7 +11,7 @@ Learn more about Flink at [https://flink.apache.org/](https://flink.apache.org/)
 
 * Elegant and fluent APIs in Java and Scala
 
-* A runtime that supports very high throughput and low event latency at the same time
+* A runtime that supports very higTh throughput and low event latency at the same time
 
 * Support for *event time* and *out-of-order* processing in the DataStream API, based on the *Dataflow Model*
 
