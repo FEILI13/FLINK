@@ -73,4 +73,8 @@ public interface BufferPool extends BufferProvider, BufferRecycler {
 	int bestEffortGetNumOfUsedBuffers();
 
 	BufferRecycler[] getSubpartitionBufferRecyclers();
+
+    default void updateForRescale(int newNumSubpartitions){
+		throw new UnsupportedOperationException();
+	}
 }

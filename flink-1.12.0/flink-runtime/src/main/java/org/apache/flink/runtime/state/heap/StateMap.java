@@ -25,6 +25,7 @@ import org.apache.flink.runtime.state.internal.InternalKvState;
 
 import javax.annotation.Nonnull;
 
+import java.util.Map;
 import java.util.stream.Stream;
 
 /**
@@ -162,4 +163,12 @@ public abstract class StateMap<K, N, S> implements Iterable<StateEntry<K, N, S>>
 
 	@VisibleForTesting
 	public abstract int sizeOfNamespace(Object namespace);
+
+
+	/**
+	 * 合并状态表
+	 * @param nMapMap	待合并状态表
+	 */
+	public void merge(Map<N, Map<K, S>> nMapMap) {
+	}
 }

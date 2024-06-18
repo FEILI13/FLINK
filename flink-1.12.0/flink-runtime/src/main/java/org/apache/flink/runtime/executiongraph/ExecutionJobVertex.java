@@ -46,6 +46,7 @@ import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.runtime.jobmanager.scheduler.SlotSharingGroup;
 import org.apache.flink.runtime.operators.coordination.OperatorCoordinator;
 import org.apache.flink.runtime.operators.coordination.OperatorCoordinatorHolder;
+import org.apache.flink.runtime.reConfig.utils.RescaleState;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.types.Either;
 import org.apache.flink.util.IOUtils;
@@ -92,13 +93,13 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 
 	private final JobVertex jobVertex;
 
-	private final ExecutionVertex[] taskVertices;
+	private ExecutionVertex[] taskVertices;
 
 	private final IntermediateResult[] producedDataSets;
 
 	private final List<IntermediateResult> inputs;
 
-	private final int parallelism;
+	private int parallelism;
 
 	private final SlotSharingGroup slotSharingGroup;
 
@@ -123,6 +124,10 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 	private final Collection<OperatorCoordinatorHolder> operatorCoordinators;
 
 	private InputSplitAssigner splitAssigner;
+
+	private RescaleState rescaleState = RescaleState.NONE;
+
+	List<ExecutionVertex> removedVertices = new ArrayList<>();
 
 	ExecutionJobVertex(
 			ExecutionGraph graph,
@@ -567,6 +572,59 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		else {
 			// all else collapses under created
 			return ExecutionState.CREATED;
+		}
+	}
+
+    public void modifyForRescale(JobVertex jobVertex) {
+		if(jobVertex.getParallelism() == this.parallelism)
+			return;
+
+		if(jobVertex.getParallelism() > this.parallelism){// 扩大并行度
+			this.parallelism = jobVertex.getParallelism();
+			this.rescaleState = RescaleState.MODIFIED;
+			for(int i=0;i<producedDataSets.length;i++){
+				producedDataSets[i] = producedDataSets[i].getModifiedInstanceForRescale(this.parallelism);
+			}
+			ExecutionVertex[] newTaskVertices = Arrays.copyOf(this.taskVertices, this.parallelism);
+			for(int i = this.taskVertices.length;i<this.parallelism;i++){
+				newTaskVertices[i] = newTaskVertices[0].getModifiedInstanceForRescale(i, producedDataSets);
+			}
+			this.taskVertices = newTaskVertices;
+		}else{// 缩小并行度
+			this.parallelism = jobVertex.getParallelism();
+			this.rescaleState = RescaleState.MODIFIED;
+			for(int i=0;i<producedDataSets.length;i++){
+				producedDataSets[i] = producedDataSets[i].getModifiedInstanceForRescale(this.parallelism);
+			}
+			for(int i = this.parallelism;i<this.taskVertices.length;i++){
+				this.taskVertices[i].rescaleState = RescaleState.REMOVED;
+				this.removedVertices.add(this.taskVertices[i]);
+				this.graph.addRemovedVertex(this.taskVertices[i]);
+			}
+			this.taskVertices = Arrays.copyOf(this.taskVertices, this.parallelism);
+		}
+
+		this.taskInformationOrBlobKey = null;//有什么用？？
+    }
+
+	public void connectToPredecessorsForRescale(Map<IntermediateDataSetID, IntermediateResult> intermediateDataSets) {
+		List<JobEdge> inputs = jobVertex.getInputs();
+
+		for(int num=0; num<inputs.size(); num++){
+			JobEdge edge = inputs.get(num);
+
+			IntermediateResult ires = intermediateDataSets.get(edge.getSourceId());
+			ires.registerConsumerForRescale();
+
+			for(int i=0; i<parallelism;i++){
+				ExecutionVertex ev = taskVertices[i];
+				ev.checkRemovedConsumerEdges(num, this.inputs.get(num), edge, 0);
+				ev.connectSourceForRescale(num, this.inputs.get(num), edge, 0);
+			}
+
+			for(ExecutionVertex ev:this.removedVertices){
+				ev.disConnectSourceForRescale(num, this.inputs.get(num), edge, 0);
+			}
 		}
 	}
 }

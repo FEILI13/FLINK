@@ -67,6 +67,8 @@ import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguratio
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
 import org.apache.flink.runtime.query.KvStateLocationRegistry;
+import org.apache.flink.runtime.reConfig.Controller;
+import org.apache.flink.runtime.reConfig.utils.RescaleState;
 import org.apache.flink.runtime.scheduler.InternalFailuresListener;
 import org.apache.flink.runtime.scheduler.adapter.DefaultExecutionTopology;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
@@ -105,6 +107,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -317,6 +320,14 @@ public class ExecutionGraph implements AccessExecutionGraph {
 
 	private final ExecutionDeploymentListener executionDeploymentListener;
 	private final ExecutionStateUpdateListener executionStateUpdateListener;
+	/** 重配置器 */
+	private Controller reConfigController;
+
+	private List<JobVertex> topologicallySortedJobVertices;
+
+	public List<ExecutionVertex> removeExecutionVertices = new ArrayList<>();
+
+	private Set<Execution> canceledAttempts = new HashSet<>();
 
 	// --------------------------------------------------------------------------------------------
 	//   Constructors
@@ -813,6 +824,8 @@ public class ExecutionGraph implements AccessExecutionGraph {
 			topologiallySorted.size(),
 			tasks.size(),
 			intermediateResults.size());
+
+		topologicallySortedJobVertices = topologiallySorted;
 
 		final ArrayList<ExecutionJobVertex> newExecJobVertices = new ArrayList<>(topologiallySorted.size());
 		final long createTimestamp = System.currentTimeMillis();
@@ -1762,5 +1775,117 @@ public class ExecutionGraph implements AccessExecutionGraph {
 
 	ExecutionDeploymentListener getExecutionDeploymentListener() {
 		return executionDeploymentListener;
+	}
+
+	/**
+	 * 启用重配置器
+	 * @param triggerVertices
+	 * @param ackVertices
+	 * @param confirmVertices
+	 */
+	public void enableReConfig(List<ExecutionJobVertex> triggerVertices,
+							   List<ExecutionJobVertex> ackVertices,
+							   List<ExecutionJobVertex> confirmVertices) {
+		ExecutionVertex[] tasksToTrigger = collectExecutionVertices(triggerVertices);
+		ExecutionVertex[] tasksToWaitFor = collectExecutionVertices(ackVertices);
+		ExecutionVertex[] tasksToCommitTo = collectExecutionVertices(confirmVertices);
+
+		ExecutionVertex[] upStreamExecutionVertex;
+		ExecutionVertex[] reConfigExecutionVertex;
+		List<ExecutionVertex> tmp1 = new ArrayList<>();
+		List<ExecutionVertex> tmp2 = new ArrayList<>();
+		for(ExecutionVertex ev:tasksToWaitFor){
+			if(ev.getTaskName().contains("upStream")){
+				tmp1.add(ev);
+			}
+			if(ev.getTaskName().contains("ReConfig")){
+				tmp2.add(ev);
+			}
+		}
+
+		upStreamExecutionVertex = tmp1.toArray(new ExecutionVertex[0]);
+		reConfigExecutionVertex = tmp2.toArray(new ExecutionVertex[0]);
+
+		reConfigController = new Controller(
+			getJobID(),
+			tasksToTrigger,
+			tasksToWaitFor,
+			tasksToCommitTo,
+			upStreamExecutionVertex,
+			reConfigExecutionVertex
+		);
+	}
+
+	public Controller getReConfigController(){
+		return reConfigController;
+	}
+
+	public JobVertexID changeTopo(String taskName, int newParallelism) {
+		JobVertexID ans = null;
+		for(Map.Entry<JobVertexID, ExecutionJobVertex> entry : tasks.entrySet()){
+			ExecutionJobVertex ejv = entry.getValue();
+			String operatorName = ejv.getJobVertex().getName();
+			if(!operatorName.contains(taskName)) {
+				continue;
+			}
+			JobVertex jv = (JobVertex) this.topologicallySortedJobVertices
+				.stream()
+				.filter(jobVertex -> jobVertex.getID() == ejv.getJobVertexId())
+				.toArray()[0];
+			jv.setParallelism(newParallelism);// 修改JobVertex并行度
+			ans = entry.getKey();
+		}
+
+		System.out.println("JobVertex newParallelism have been changed");
+
+		List<JobVertex> topologicallySorted = this.topologicallySortedJobVertices;
+		printTopo();
+		final ArrayList<ExecutionJobVertex> newExecJobVertices = new ArrayList<>(topologicallySorted.size());
+
+		for(JobVertex jobVertex : topologicallySorted){
+			ExecutionJobVertex ejv = this.tasks.get(jobVertex.getID());
+			ejv.modifyForRescale(jobVertex);
+			ejv.connectToPredecessorsForRescale(this.intermediateResults);
+
+			for(IntermediateResult intermediateResult : ejv.getProducedDataSets()){
+				this.intermediateResults.put(intermediateResult.getId(), intermediateResult);
+			}
+			for(ExecutionVertex ev : this.removeExecutionVertices){
+				if(ev.rescaleState == RescaleState.REMOVED){
+					this.canceledAttempts.add(ev.getCurrentExecutionAttempt());
+				}
+			}
+
+		}
+		printTopo();
+		executionTopology = DefaultExecutionTopology.fromExecutionGraph(this);
+
+		failoverStrategy.notifyNewVertices(newExecJobVertices);
+
+		partitionReleaseStrategy = partitionReleaseStrategyFactory.createInstance(getSchedulingTopology());
+
+		return ans;
+	}
+
+	public void printTopo(){
+		int i=0;
+		System.out.println("========================");
+		for(JobVertex jobVertex : topologicallySortedJobVertices){
+			System.out.println(i+" : "+jobVertex+" parallelism:"+jobVertex.getParallelism());
+			i++;
+		}
+		System.out.println("------------------------");
+		i=0;
+		for(JobVertex jobVertex : topologicallySortedJobVertices){
+			for(ExecutionVertex executionVertex : this.tasks.get(jobVertex.getID()).getTaskVertices()) {
+				System.out.println(i+" : "+executionVertex);
+				i++;
+			}
+		}
+		System.out.println("========================");
+	}
+
+	void addRemovedVertex(ExecutionVertex executionVertex) {
+		removeExecutionVertices.add(executionVertex);
 	}
 }

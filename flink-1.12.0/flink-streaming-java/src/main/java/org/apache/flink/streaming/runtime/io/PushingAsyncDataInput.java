@@ -43,6 +43,14 @@ public interface PushingAsyncDataInput<T> extends AvailabilityProvider {
 	 */
 	InputStatus emitNext(DataOutput<T> output) throws Exception;
 
+    default void block(){
+		throw new UnsupportedOperationException();
+	}
+
+	default void unBlock(){
+		throw new UnsupportedOperationException();
+	}
+
 	/**
 	 * Basic data output interface used in emitting the next element from data input.
 	 *

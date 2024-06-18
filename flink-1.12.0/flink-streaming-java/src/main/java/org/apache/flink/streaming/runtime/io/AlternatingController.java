@@ -22,6 +22,7 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.runtime.checkpoint.CheckpointException;
 import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
+import org.apache.flink.runtime.io.network.partition.consumer.CheckpointableInput;
 
 import java.io.IOException;
 
@@ -88,5 +89,10 @@ public class AlternatingController implements CheckpointBarrierBehaviourControll
 
 	private CheckpointBarrierBehaviourController chooseController(CheckpointBarrier barrier) {
 		return isAligned(barrier) ? alignedController : unalignedController;
+	}
+
+	@Override
+	public CheckpointableInput[] getInputs() {
+		return CheckpointBarrierBehaviourController.super.getInputs();
 	}
 }

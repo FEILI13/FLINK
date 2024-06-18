@@ -24,12 +24,16 @@ import org.apache.flink.runtime.checkpoint.CheckpointFailureReason;
 import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
+import org.apache.flink.runtime.io.network.partition.consumer.CheckpointableInput;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
+
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayDeque;
 
 /**
@@ -71,10 +75,19 @@ public class CheckpointBarrierTracker extends CheckpointBarrierHandler {
 	/** The highest checkpoint ID encountered so far. */
 	private long latestPendingCheckpointID = -1;
 
+	private CheckpointableInput[] inputs;
+
 	public CheckpointBarrierTracker(int totalNumberOfInputChannels, AbstractInvokable toNotifyOnCheckpoint) {
 		super(toNotifyOnCheckpoint);
 		this.totalNumberOfInputChannels = totalNumberOfInputChannels;
 		this.pendingCheckpoints = new ArrayDeque<>();
+	}
+
+	public CheckpointBarrierTracker(int totalNumberOfInputChannels, AbstractInvokable toNotifyOnCheckpoint, CheckpointableInput[] inputs){
+		super(toNotifyOnCheckpoint);
+		this.totalNumberOfInputChannels = totalNumberOfInputChannels;
+		this.pendingCheckpoints = new ArrayDeque<>();
+		this.inputs = inputs;
 	}
 
 	public void processBarrier(CheckpointBarrier receivedBarrier, InputChannelInfo channelInfo) throws IOException {
@@ -267,5 +280,19 @@ public class CheckpointBarrierTracker extends CheckpointBarrierHandler {
 				String.format("checkpointID=%d - ABORTED", checkpointId) :
 				String.format("checkpointID=%d, count=%d", checkpointId, barrierCount);
 		}
+	}
+
+	@Override
+	public void block(InputChannelInfo channelInfo) {
+		CheckpointableInput input = inputs[channelInfo.getGateIdx()];
+		System.out.println(input.getClass());
+		input.blockConsumption(channelInfo);
+	}
+
+	@Override
+	public void processReConfigBarrier(
+		ReConfigSignal receivedBarrier,
+		InputChannelInfo channelInfo) throws IOException {
+			throw new UnsupportedEncodingException();
 	}
 }

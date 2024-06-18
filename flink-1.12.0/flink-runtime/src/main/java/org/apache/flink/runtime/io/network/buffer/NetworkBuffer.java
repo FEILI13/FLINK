@@ -640,7 +640,7 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 
 	@Override
 	public void setDataType(DataType dataType) {
-		ensureAccessible();
+		//ensureAccessible();
 
 		this.dataType = dataType;
 	}

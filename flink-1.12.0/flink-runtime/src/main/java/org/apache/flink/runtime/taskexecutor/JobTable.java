@@ -24,6 +24,7 @@ import org.apache.flink.runtime.execution.librarycache.LibraryCacheManager;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionConsumableNotifier;
 import org.apache.flink.runtime.jobmaster.JobMasterGateway;
 import org.apache.flink.runtime.jobmaster.JobMasterId;
+import org.apache.flink.runtime.reConfig.RpcReConfigResponder;
 import org.apache.flink.runtime.taskmanager.CheckpointResponder;
 import org.apache.flink.runtime.taskmanager.TaskManagerActions;
 import org.apache.flink.util.function.SupplierWithException;
@@ -160,7 +161,8 @@ public interface JobTable extends AutoCloseable {
 			CheckpointResponder checkpointResponder,
 			GlobalAggregateManager aggregateManager,
 			ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
-			PartitionProducerStateChecker partitionStateChecker);
+			PartitionProducerStateChecker partitionStateChecker,
+			RpcReConfigResponder reConfigResponder);
 
 		/**
 		 * Closes this job and removes it from the owning {@link JobTable}.
@@ -205,7 +207,9 @@ public interface JobTable extends AutoCloseable {
 		JobID getJobId();
 
 		ResourceID getResourceId();
-	}
+
+        RpcReConfigResponder getReConfigResponder();
+    }
 
 	/**
 	 * Services associated with a job. The services need to provide a

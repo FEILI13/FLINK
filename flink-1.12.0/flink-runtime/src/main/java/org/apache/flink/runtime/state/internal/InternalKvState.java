@@ -23,6 +23,7 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.runtime.state.StateEntry;
 
 import java.util.Collection;
+import java.util.Map;
 
 /**
  * The {@code InternalKvState} is the root of the internal state type hierarchy, similar to the
@@ -118,6 +119,30 @@ public interface InternalKvState<K, N, V> extends State {
 	 * @return global iterator over state entries
 	 */
 	StateIncrementalVisitor<K, N, V> getStateIncrementalVisitor(int recommendedMaxNumberOfReturnedRecords);
+
+    default void migrate(int keyGroupIndex, int batch, int splitNum){
+		throw new UnsupportedOperationException();
+	}
+
+	default void fetchState(int keyGroupIndex, int batch, int splitNum){
+		throw new UnsupportedOperationException();
+	}
+
+	default Map<Integer, Integer> getFrequencyWindowInfo(){
+		throw new UnsupportedOperationException();
+	}
+
+	default Map<Integer, Long> getSizeWindowInfo(boolean isALL){
+		throw new UnsupportedOperationException();
+	}
+
+	default void cleanStateWindow(){
+		throw new UnsupportedOperationException();
+	}
+
+	default void cleanState(){
+		throw new UnsupportedOperationException();
+	}
 
 	/**
 	 * The state entry visitor which supports remove and update of the last returned entries.

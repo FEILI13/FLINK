@@ -27,6 +27,7 @@ public class WordCountData {
 
 	public static final String[] WORDS = new String[] {
 		"To be, or not to be,--that is the question:--",
+		"To be, or not to be,--that is the question:--",
 		"Whether 'tis nobler in the mind to suffer",
 		"The slings and arrows of outrageous fortune",
 		"Or to take arms against a sea of troubles,",
@@ -37,6 +38,9 @@ public class WordCountData {
 		"Devoutly to be wish'd. To die,--to sleep;--",
 		"To sleep! perchance to dream:--ay, there's the rub;",
 		"For in that sleep of death what dreams may come,",
+		"When we have shuffled off this mortal coil,",
+		"When we have shuffled off this mortal coil,",
+		"When we have shuffled off this mortal coil,",
 		"When we have shuffled off this mortal coil,",
 		"Must give us pause: there's the respect",
 		"That makes calamity of so long life;",

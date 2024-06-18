@@ -1,0 +1,48 @@
+@startuml
+class Controller {
+    - partitionManager: PartitionManager
+    - rescaleManager: RescaleManager
+    - reConfigResultCollector: ReConfigResultCollector
+    - loadBalancer: LoadBalancer
+    + handle(signal: ReConfigSignal)
+    + mayBeRescale()
+    + mayBeMigrate()
+    + cleanStage()
+}
+
+class LoadBalancer {
+    - sizeWindowInfo: Map<Integer, Long>
+    - frequencyWindowInfo: Map<Integer, Integer>
+    - keyGroupMap: Map<Integer, Integer>
+    + computeMigratePlan()
+}
+
+class PartitionManager {
+    +migrate(sourceTask: int, targetTask: int, keyGroupIndex: int, batch: int, splitNum: int, version: long)
+}
+
+class MigratePlan {
+    -source: LoadBalancer
+    -migratePlanEntries: List<MigratePlanEntry>
+    +addEntry(entry: MigratePlanEntry)
+    +getEntries(): List<MigratePlanEntry>
+}
+
+class MigratePlanEntry {
+    -sourceKeyGroup: int
+    -targetInstance: int
+    -dataSize: long
+}
+
+class RescaleManager {
+    +rescale(taskName: String, newParallelism: int)
+}
+
+' Relationships
+Controller ..> LoadBalancer : uses >
+Controller ..> PartitionManager : uses >
+Controller ..> RescaleManager : uses >
+LoadBalancer ..> MigratePlan : creates >
+MigratePlan *-- "many" MigratePlanEntry : contains >
+@enduml
+

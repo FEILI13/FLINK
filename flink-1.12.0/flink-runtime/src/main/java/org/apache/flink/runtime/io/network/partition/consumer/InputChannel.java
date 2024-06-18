@@ -293,6 +293,9 @@ public abstract class InputChannel {
 		return 0;
 	}
 
+	public void block(long barrierId) {
+	}
+
 	// ------------------------------------------------------------------------
 
 	/**

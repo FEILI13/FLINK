@@ -38,6 +38,7 @@ import org.apache.flink.runtime.jobmanager.scheduler.CoLocationConstraint;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.runtime.jobmanager.scheduler.LocationPreferenceConstraint;
 import org.apache.flink.runtime.jobmaster.LogicalSlot;
+import org.apache.flink.runtime.reConfig.utils.RescaleState;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.runtime.util.EvictingBoundedList;
@@ -98,6 +99,14 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 	private final ArrayList<InputSplit> inputSplits;
 
+	private long initialGlobalModVersion;
+
+	private long createTimestamp;
+
+	int maxPriorExecutionHistoryLength;
+
+	public RescaleState rescaleState = RescaleState.NONE;
+
 	// --------------------------------------------------------------------------------------------
 
 	/**
@@ -126,6 +135,10 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		this.executionVertexId = new ExecutionVertexID(jobVertex.getJobVertexId(), subTaskIndex);
 		this.taskNameWithSubtask = String.format("%s (%d/%d)",
 				jobVertex.getJobVertex().getName(), subTaskIndex + 1, jobVertex.getParallelism());
+
+		this.initialGlobalModVersion = initialGlobalModVersion;
+		this.createTimestamp = createTimestamp;
+		this.maxPriorExecutionHistoryLength = maxPriorExecutionHistoryLength;
 
 		this.resultPartitions = new LinkedHashMap<>(producedDataSets.length, 1);
 
@@ -904,5 +917,87 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 	public boolean isLegacyScheduling() {
 		return getExecutionGraph().isLegacyScheduling();
+	}
+
+	public ExecutionVertex getModifiedInstanceForRescale(int subTaskIndex, IntermediateResult[] producedDataSets) {
+		ExecutionVertex ev = new ExecutionVertex(this.jobVertex, subTaskIndex, producedDataSets, timeout, initialGlobalModVersion, createTimestamp, maxPriorExecutionHistoryLength);
+		ev.rescaleState = RescaleState.NEW;
+		ev.resultPartitions.values().forEach(consumer -> consumer.rescaleState = RescaleState.NEW);
+		return ev;
+	}
+
+	public void checkRemovedConsumerEdges(int inputNumber, IntermediateResult intermediateResult, JobEdge edge, int i) {
+		if(inputEdges[inputNumber] == null)
+			return;
+		for(ExecutionEdge ee : inputEdges[inputNumber]){
+			if(ee.getSource().rescaleState == RescaleState.REMOVED){
+				trySetVertexAsModified(ee.getTarget());
+			}
+		}
+	}
+
+	public void disConnectSourceForRescale(int inputNumber, IntermediateResult source, JobEdge edge, int consumerNumber){
+		for(ExecutionEdge ee : inputEdges[inputNumber]){
+			if(this.rescaleState == RescaleState.REMOVED){
+				ee.getSource().removeConsumer(ee, consumerNumber);
+				trySetVertexAsModified(ee.getSource().getProducer());
+				ee.getSource().getProducer().currentExecution.getProducedPartitions()
+					.get(ee.getSource().getPartitionId())
+					.changeNumberOfSubpartitions(-1);
+			}
+		}
+	}
+
+	private boolean trySetVertexAsModified(ExecutionVertex ev){
+		if(ev.rescaleState == RescaleState.NONE){
+			ev.rescaleState = RescaleState.MODIFIED;
+			return true;
+		}else{
+			return false;
+		}
+	}
+
+	public void connectSourceForRescale(int inputNumber, IntermediateResult source, JobEdge edge, int consumerNumber){
+		final DistributionPattern pattern = edge.getDistributionPattern();
+		final IntermediateResultPartition[] sourcePartitions = source.getPartitions();
+		ExecutionEdge[] edges;
+
+		switch(pattern){
+			case POINTWISE:
+				edges = connectPointwise(sourcePartitions, inputNumber);
+				break;
+			case ALL_TO_ALL:
+				edges = connectAllToAll(sourcePartitions, inputNumber);
+				break;
+			default:
+				throw new RuntimeException("Unrecognized distribution pattern.");
+		}
+
+		inputEdges[inputNumber] = edges;
+
+		for(ExecutionEdge ee : edges){
+			if(ee.getSource().containsEdge(ee)){
+				System.out.println("removing edge :" + ee);
+				ee.getSource().removeEdge(ee);
+				System.out.println("adding edge :"+ ee);
+				ee.getSource().addConsumer(ee, consumerNumber);
+			}
+			System.out.println(this+" now: "+ee.getSource().getConsumers().get(0).size());// IntermediateResultPartition似乎没更新consumer edge
+			if(this.rescaleState == RescaleState.NEW || ee.getSource().rescaleState == RescaleState.NEW){
+				System.out.println(this+" before: "+ee.getSource().getConsumers().get(0).size());
+				ee.getSource().addConsumer(ee, consumerNumber);
+				System.out.println(this+" after: "+ee.getSource().getConsumers().get(0).size());
+				if(this.rescaleState == RescaleState.NEW){
+					trySetVertexAsModified(ee.getSource().getProducer());
+
+					if(ee.getSource().getProducer().rescaleState == RescaleState.MODIFIED){
+						ee.getSource().getProducer().currentExecution.getProducedPartitions().get(ee.getSource().getPartitionId()).changeNumberOfSubpartitions(1);
+					}
+				}
+				if(ee.getSource().rescaleState == RescaleState.NEW){
+					trySetVertexAsModified(ee.getTarget());
+				}
+			}
+		}
 	}
 }

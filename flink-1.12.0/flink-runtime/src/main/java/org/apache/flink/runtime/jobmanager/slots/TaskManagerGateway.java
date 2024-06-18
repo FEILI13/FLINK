@@ -23,6 +23,7 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
+import org.apache.flink.runtime.event.RuntimeEvent;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
@@ -30,6 +31,7 @@ import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.TaskBackPressureResponse;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
 import org.apache.flink.runtime.rpc.RpcTimeout;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorOperatorEventGateway;
 import org.apache.flink.util.SerializedValue;
@@ -170,4 +172,12 @@ public interface TaskManagerGateway extends TaskExecutorOperatorEventGateway {
 		ExecutionAttemptID task,
 		OperatorID operator,
 		SerializedValue<OperatorEvent> evt);
+
+    default void triggerReConfig(ExecutionAttemptID attemptId, JobID jobId, ReConfigSignal signal){
+		throw new UnsupportedOperationException();
+	}
+
+	default CompletableFuture<Acknowledge> modifyForRescale(TaskDeploymentDescriptor tdd, Time timeout){
+		throw new UnsupportedOperationException();
+	}
 }

@@ -93,4 +93,18 @@ public class MultipleRecordWriters<T extends IOReadableWritable> implements Reco
 			recordWriter.close();
 		}
 	}
+
+	@Override
+	public void updateControl(int keyGroupIndex, int targetIndex, int batch, int splitNum) {
+		for(RecordWriter recordWriter:recordWriters){
+			recordWriter.updateControl(keyGroupIndex, targetIndex, batch, splitNum);
+		}
+	}
+
+	@Override
+	public void cleanRouting() {
+		for(RecordWriter recordWriter:recordWriters){
+			recordWriter.cleanRouting();
+		}
+	}
 }

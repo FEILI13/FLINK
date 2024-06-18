@@ -38,6 +38,7 @@ import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptorFactory;
+import org.apache.flink.runtime.event.RuntimeEvent;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.instance.SlotSharingGroupId;
 import org.apache.flink.runtime.io.network.partition.JobMasterPartitionTracker;
@@ -57,6 +58,8 @@ import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.TaskBackPressureResponse;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.operators.coordination.TaskNotRunningException;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
+import org.apache.flink.runtime.reConfig.utils.RedisUtil;
 import org.apache.flink.runtime.shuffle.NettyShuffleMaster;
 import org.apache.flink.runtime.shuffle.PartitionDescriptor;
 import org.apache.flink.runtime.shuffle.ProducerDescriptor;
@@ -77,6 +80,7 @@ import org.slf4j.Logger;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -1727,5 +1731,58 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 	private void assertRunningInJobMasterMainThread() {
 		vertex.getExecutionGraph().assertRunningInJobMasterMainThread();
+	}
+
+    public void triggerReConfig(ReConfigSignal signal) {
+		final LogicalSlot slot = assignedResource;
+
+		if (slot != null) {
+			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+
+			taskManagerGateway.triggerReConfig(attemptId, getVertex().getJobId(), signal);
+		} else {
+			LOG.debug("The execution has no slot assigned. This indicates that the execution is no longer running.");
+		}
+    }
+
+	public Map<IntermediateResultPartitionID, ResultPartitionDeploymentDescriptor> getProducedPartitions() {
+		return producedPartitions;
+	}
+
+	public void deployForRescale() {
+		try{
+			final LogicalSlot slot = assignedResource;
+			final TaskDeploymentDescriptor deployment;//部署task所需的信息
+			final ComponentMainThreadExecutor jobMasterMainThreadExecutor = vertex.getExecutionGraph()
+				.getJobMasterMainThreadExecutor();
+
+			deployment = TaskDeploymentDescriptorFactory.fromExecutionVertex(vertex, attemptNumber).createDeploymentDescriptor(
+				slot.getAllocationId(),
+				slot.getPhysicalSlotNumber(),
+				taskRestore,
+				producedPartitions.values()
+			);
+
+			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+			CompletableFuture.supplyAsync(() -> taskManagerGateway.modifyForRescale(deployment, rpcTimeout), executor)
+				.thenCompose(Function.identity())
+				.whenCompleteAsync(
+					(ack, failure) -> {
+						if (failure != null) {
+							failure.printStackTrace();
+						} else {
+//							LOG.info("deploy for rescale completed " + this.vertex.getTaskName());
+//							RescaleCoordinator rescaleCoordinator = this.vertex.getExecutionGraph().getRescaleCoordinator();
+//							if (rescaleCoordinator != null) {
+//								rescaleCoordinator.notifyRescaleDeploymentCompleted(this.vertex);
+//							}
+						}
+					},
+					jobMasterMainThreadExecutor
+				);
+		}catch (IOException e){
+			System.out.println(this.vertex.getTaskName()+" ERROR!!!");
+			e.printStackTrace();
+		}
 	}
 }

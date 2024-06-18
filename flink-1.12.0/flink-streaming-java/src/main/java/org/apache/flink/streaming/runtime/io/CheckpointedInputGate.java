@@ -21,6 +21,7 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.event.AbstractEvent;
+import org.apache.flink.runtime.event.RuntimeEvent;
 import org.apache.flink.runtime.io.PullingAsyncDataInput;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
@@ -30,7 +31,11 @@ import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.EndOfChannelStateEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.reConfig.message.MigrateSignal;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
 import org.apache.flink.streaming.api.operators.MailboxExecutor;
+
+import org.apache.flink.streaming.runtime.tasks.StreamTask;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +46,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.apache.flink.runtime.concurrent.FutureUtils.assertNoException;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -64,6 +70,10 @@ public class CheckpointedInputGate implements PullingAsyncDataInput<BufferOrEven
 
 	/** Indicate end of the input. */
 	private boolean isFinished;
+
+	private StreamTask streamTask;
+
+	private AtomicBoolean isTriggerResume = new AtomicBoolean(false);
 
 	/**
 	 * Creates a new checkpoint stream aligner.
@@ -167,6 +177,10 @@ public class CheckpointedInputGate implements PullingAsyncDataInput<BufferOrEven
 		return next;
 	}
 
+	public void setStreamTask(StreamTask streamTask) {
+		this.streamTask = streamTask;
+	}
+
 	private Optional<BufferOrEvent> handleEvent(BufferOrEvent bufferOrEvent) throws IOException, InterruptedException {
 		Class<? extends AbstractEvent> eventClass = bufferOrEvent.getEvent().getClass();
 		if (eventClass == CheckpointBarrier.class) {
@@ -188,8 +202,36 @@ public class CheckpointedInputGate implements PullingAsyncDataInput<BufferOrEven
 				announcedEvent);
 			CheckpointBarrier announcedBarrier = (CheckpointBarrier) announcedEvent;
 			barrierHandler.processBarrierAnnouncement(announcedBarrier, eventAnnouncement.getSequenceNumber(), bufferOrEvent.getChannelInfo());
-		}
-		else if (bufferOrEvent.getEvent().getClass() == EndOfChannelStateEvent.class) {
+		} else if (eventClass == ReConfigSignal.class) {
+			if(((ReConfigSignal)(bufferOrEvent.getEvent())).getType()== ReConfigSignal.ReConfigSignalType.MIGRATE
+				&& streamTask.getName().contains("ReConfig")){
+				System.out.println(streamTask.getName()+" received " + bufferOrEvent.getChannelInfo().getInputChannelIdx());
+
+				//barrierHandler.block(((ReConfigSignal) (bufferOrEvent.getEvent())).getVersion());
+				if(streamTask.getCurrentNumberOfSubtasks()<8) {
+					ReConfigSignal reConfigSignal = (ReConfigSignal) bufferOrEvent.getEvent();
+					barrierHandler.processReConfigBarrier(
+						reConfigSignal,
+						bufferOrEvent.getChannelInfo());
+				}
+			}
+//			else {
+//			if(((ReConfigSignal) (bufferOrEvent.getEvent())).getType() == ReConfigSignal.ReConfigSignalType.TEST && streamTask.getName().contains("ReConfig")){
+//				barrierHandler.block(((ReConfigSignal) (bufferOrEvent.getEvent())).getVersion());
+//			}else {
+				this.mailboxExecutor.execute(
+					() -> {
+						//System.out.println(this.streamTask.getName()+" "+barrierHandler.getClass());
+						//System.out.println(this.streamTask.getClass());
+						this.streamTask.handleReConfigSignal(
+							(ReConfigSignal) (bufferOrEvent.getEvent()),
+							bufferOrEvent.getChannelInfo());
+					},
+					"handleReConfigSingalEvent"
+				);
+//			}
+//		}
+		} else if (bufferOrEvent.getEvent().getClass() == EndOfChannelStateEvent.class) {
 			upstreamRecoveryTracker.handleEndOfRecovery(bufferOrEvent.getChannelInfo());
 			if (!upstreamRecoveryTracker.allChannelsRecovered()) {
 				return pollNext();

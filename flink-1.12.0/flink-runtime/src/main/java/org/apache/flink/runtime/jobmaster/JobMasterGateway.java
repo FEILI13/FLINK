@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.jobmaster;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.time.Time;
@@ -38,6 +39,9 @@ import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.webmonitor.JobDetails;
 import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
 import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
+import org.apache.flink.runtime.reConfig.utils.InstanceState;
+import org.apache.flink.runtime.reConfig.message.ReConfigStage;
 import org.apache.flink.runtime.registration.RegistrationResponse;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.OperatorBackPressureStatsResponse;
@@ -290,4 +294,16 @@ public interface JobMasterGateway extends
 		OperatorID operatorId,
 		SerializedValue<CoordinationRequest> serializedRequest,
 		@RpcTimeout Time timeout);
+
+    default void acknowledgeReConfig(JobID jobID, ExecutionAttemptID executionAttemptID, String taskName, ReConfigStage stage){
+		throw new UnsupportedOperationException();
+	}
+
+	default void acknowledgeReConfig(JobID jobID, ExecutionAttemptID executionAttemptID, String taskName, InstanceState state){
+		throw new UnsupportedOperationException();
+	}
+
+	default void acknowledgeReConfig(JobID jobID, ExecutionAttemptID executionAttemptID, String taskName, ReConfigSignal signal){
+		throw new UnsupportedOperationException();
+	}
 }

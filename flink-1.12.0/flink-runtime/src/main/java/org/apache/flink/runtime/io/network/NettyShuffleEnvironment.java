@@ -44,6 +44,7 @@ import org.apache.flink.runtime.shuffle.NettyShuffleDescriptor;
 import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
 import org.apache.flink.runtime.shuffle.ShuffleEnvironment;
 import org.apache.flink.runtime.shuffle.ShuffleIOOwnerContext;
+import org.apache.flink.runtime.taskmanager.InputGateWithMetrics;
 import org.apache.flink.runtime.taskmanager.NettyShuffleEnvironmentConfiguration;
 import org.apache.flink.util.Preconditions;
 
@@ -53,6 +54,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -99,6 +101,8 @@ public class NettyShuffleEnvironment implements ShuffleEnvironment<ResultPartiti
 	private final Executor ioExecutor;
 
 	private boolean isClosed;
+
+	private final Map<InputGateID, InputChannelMetrics> inputGateChannelMetrics = new HashMap<>();
 
 	NettyShuffleEnvironment(
 			ResourceID taskExecutorResourceId,
@@ -233,6 +237,7 @@ public class NettyShuffleEnvironment implements ShuffleEnvironment<ResultPartiti
 					inputChannelMetrics);
 				InputGateID id = new InputGateID(igdd.getConsumedResultId(), ownerContext.getExecutionAttemptID());
 				inputGatesById.put(id, inputGate);
+				inputGateChannelMetrics.put(id, inputChannelMetrics);
 				inputGate.getCloseFuture().thenRun(() -> inputGatesById.remove(id));
 				inputGates[gateIndex] = inputGate;
 			}
@@ -278,6 +283,30 @@ public class NettyShuffleEnvironment implements ShuffleEnvironment<ResultPartiti
 			shuffleDescriptor.getClass().getName());
 		inputGate.updateInputChannel(taskExecutorResourceId, (NettyShuffleDescriptor) shuffleDescriptor);
 		return true;
+	}
+
+	@Override
+	public void modifyInputGateForRescale(
+		ShuffleIOOwnerContext ownerContext,
+		InputGate inputGate,
+		InputGateDeploymentDescriptor inputGateDeploymentDescriptor) {
+		synchronized (lock){
+			if(inputGate instanceof InputGateWithMetrics){
+				inputGate = ((InputGateWithMetrics)inputGate).getInputGate();
+			}
+			checkArgument(inputGate instanceof SingleInputGate);
+
+			int previousNumChannels = inputGate.getNumberOfInputChannels();
+			inputGate.modifyForRescale(inputGateDeploymentDescriptor);//修改InputChannel
+			InputGateID id = new InputGateID(inputGateDeploymentDescriptor.getConsumedResultId(), ownerContext.getExecutionAttemptID());
+			singleInputGateFactory.modifyInputChannelsForRescale(
+				(SingleInputGate) inputGate,
+				inputGateDeploymentDescriptor,
+				previousNumChannels,
+				ownerContext.getOwnerName(),
+				inputGateChannelMetrics.get(id)
+			);//追加inputChannel，实际创建InputChannel
+		}
 	}
 
 	/*

@@ -54,4 +54,14 @@ public class NonRecordWriter<T extends IOReadableWritable> implements RecordWrit
 	@Override
 	public void close() {
 	}
+
+	@Override
+	public void updateControl(int keyGroupIndex, int targetIndex, int batch, int splitNum) {
+
+	}
+
+	@Override
+	public void cleanRouting() {
+
+	}
 }

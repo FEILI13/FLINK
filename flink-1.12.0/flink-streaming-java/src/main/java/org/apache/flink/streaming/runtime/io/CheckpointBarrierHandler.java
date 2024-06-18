@@ -27,6 +27,7 @@ import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -169,4 +170,17 @@ public abstract class CheckpointBarrierHandler implements Closeable {
 	private boolean isDuringAlignment() {
 		return startOfAlignmentTimestamp > OUTSIDE_OF_ALIGNMENT;
 	}
+
+	public void block(InputChannelInfo channelInfo) {
+	}
+
+	public void block(long barrierId){
+		throw new UnsupportedOperationException();
+	}
+
+	public void resumeConsumption(InputChannelInfo channelInfo) throws IOException {
+		throw new UnsupportedOperationException();
+	}
+
+	public abstract void processReConfigBarrier(ReConfigSignal receivedBarrier, InputChannelInfo channelInfo) throws IOException;
 }

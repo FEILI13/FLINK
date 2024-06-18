@@ -22,6 +22,8 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.runtime.checkpoint.CheckpointException;
 import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
+import org.apache.flink.runtime.io.network.partition.consumer.CheckpointableInput;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
 
 import java.io.IOException;
 
@@ -36,12 +38,20 @@ public interface CheckpointBarrierBehaviourController {
 	 */
 	void barrierReceived(InputChannelInfo channelInfo, CheckpointBarrier barrier);
 
+	default void barrierReceived(InputChannelInfo channelInfo, ReConfigSignal barrier){
+		throw new UnsupportedOperationException();
+	}
+
 	/**
 	 * Invoked once per checkpoint, before the first invocation of
 	 * {@link #barrierReceived(InputChannelInfo, CheckpointBarrier)} for that given checkpoint.
 	 * @return {@code true} if checkpoint should be triggered.
 	 */
 	boolean preProcessFirstBarrier(InputChannelInfo channelInfo, CheckpointBarrier barrier) throws IOException, CheckpointException;
+
+	default boolean preProcessFirstBarrier(InputChannelInfo channelInfo,ReConfigSignal barrier){
+		throw new UnsupportedOperationException();
+	}
 
 	/**
 	 * Invoked once per checkpoint, after the last invocation of
@@ -50,7 +60,23 @@ public interface CheckpointBarrierBehaviourController {
 	 */
 	boolean postProcessLastBarrier(InputChannelInfo channelInfo, CheckpointBarrier barrier) throws IOException;
 
+	default boolean postProcessLastBarrier(InputChannelInfo channelInfo, ReConfigSignal barrier) throws IOException {
+		throw new UnsupportedOperationException();
+	}
+
 	void abortPendingCheckpoint(long cancelledId, CheckpointException exception) throws IOException;
 
 	void obsoleteBarrierReceived(InputChannelInfo channelInfo, CheckpointBarrier barrier) throws IOException;
+
+	default void obsoleteBarrierReceived(InputChannelInfo channelInfo, ReConfigSignal barrier) throws IOException {
+		throw new UnsupportedOperationException();
+	}
+
+	default CheckpointableInput[] getInputs(){
+		throw new UnsupportedOperationException();
+	}
+
+	default void blockConsumption(long barrierId){throw new UnsupportedOperationException();}
+
+	default void resumeConsumption(InputChannelInfo channelInfo) throws IOException { throw new UnsupportedOperationException();}
 }

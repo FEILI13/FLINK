@@ -36,6 +36,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 public final class ChannelSelectorRecordWriter<T extends IOReadableWritable> extends RecordWriter<T> {
 
 	private final ChannelSelector<T> channelSelector;
+	private int messageCount = 0;//测试使用，处理记录数量
 
 	ChannelSelectorRecordWriter(
 			ResultPartitionWriter writer,
@@ -50,6 +51,7 @@ public final class ChannelSelectorRecordWriter<T extends IOReadableWritable> ext
 
 	@Override
 	public void emit(T record) throws IOException {
+		messageCount++;//测试功能阶段保留
 		emit(record, channelSelector.selectChannel(record));
 	}
 
@@ -69,5 +71,20 @@ public final class ChannelSelectorRecordWriter<T extends IOReadableWritable> ext
 		if (flushAlways) {
 			flushAll();
 		}
+	}
+
+	@Override
+	public int getMessageCount() {
+		return messageCount;
+	}
+
+	@Override
+	public void updateControl(int keyGroupIndex, int targetIndex, int batch, int splitNum) {
+		this.channelSelector.updateControl(keyGroupIndex, targetIndex, batch, splitNum);
+	}
+
+	@Override
+	public void cleanRouting() {
+		this.channelSelector.cleanRouting();
 	}
 }

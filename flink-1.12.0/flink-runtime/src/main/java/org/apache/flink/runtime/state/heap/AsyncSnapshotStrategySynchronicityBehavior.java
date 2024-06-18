@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.state.heap;
 
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.runtime.reConfig.state.ReconfigurableStateTable;
 import org.apache.flink.runtime.state.RegisteredKeyValueStateBackendMetaInfo;
 
 /**
@@ -38,6 +39,7 @@ class AsyncSnapshotStrategySynchronicityBehavior<K> implements SnapshotStrategyS
 		InternalKeyContext<K> keyContext,
 		RegisteredKeyValueStateBackendMetaInfo<N, V> newMetaInfo,
 		TypeSerializer<K> keySerializer) {
-		return new CopyOnWriteStateTable<>(keyContext, newMetaInfo, keySerializer);
+		return new ReconfigurableStateTable<>(keyContext, newMetaInfo, keySerializer);//创建可重配置状态表
+		//return new CopyOnWriteStateTable<>(keyContext, newMetaInfo, keySerializer);
 	}
 }

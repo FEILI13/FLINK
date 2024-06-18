@@ -30,6 +30,7 @@ import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
@@ -106,9 +107,9 @@ class LocalBufferPool implements BufferPool {
 	private final int maxBuffersPerChannel;
 
 	@GuardedBy("availableMemorySegments")
-	private final int[] subpartitionBuffersCount;
+	private int[] subpartitionBuffersCount;
 
-	private final BufferRecycler[] subpartitionBufferRecyclers;
+	private BufferRecycler[] subpartitionBufferRecyclers;
 
 	@GuardedBy("availableMemorySegments")
 	private int unavailableSubpartitionsCount = 0;
@@ -628,6 +629,22 @@ class LocalBufferPool implements BufferPool {
 	@Override
 	public BufferRecycler[] getSubpartitionBufferRecyclers() {
 		return subpartitionBufferRecyclers;
+	}
+
+	@Override
+	public void updateForRescale(int newNumSubpartitions) {
+		int previousNumSubpartitions = subpartitionBuffersCount.length;
+		checkArgument(previousNumSubpartitions != newNumSubpartitions);
+		if(previousNumSubpartitions < newNumSubpartitions){
+			subpartitionBuffersCount = Arrays.copyOf(subpartitionBuffersCount, newNumSubpartitions);
+			subpartitionBufferRecyclers = Arrays.copyOf(subpartitionBufferRecyclers, newNumSubpartitions);
+			for(int i=previousNumSubpartitions;i<newNumSubpartitions;i++){
+				subpartitionBufferRecyclers[i] = new SubpartitionBufferRecycler(i, this);
+			}
+		}else{
+			subpartitionBuffersCount = Arrays.copyOf(subpartitionBuffersCount, newNumSubpartitions);
+			subpartitionBufferRecyclers = Arrays.copyOf(subpartitionBufferRecyclers, newNumSubpartitions);
+		}
 	}
 
 	private static class SubpartitionBufferRecycler implements BufferRecycler {

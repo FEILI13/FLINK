@@ -40,6 +40,10 @@ import org.apache.flink.runtime.jobgraph.tasks.TaskOperatorEventGateway;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
+import org.apache.flink.runtime.reConfig.RpcReConfigResponder;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
+import org.apache.flink.runtime.reConfig.utils.InstanceState;
+import org.apache.flink.runtime.reConfig.message.ReConfigStage;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.taskexecutor.GlobalAggregateManager;
 import org.apache.flink.util.UserCodeClassLoader;
@@ -93,6 +97,8 @@ public class RuntimeEnvironment implements Environment {
 
 	private final Task containingTask;
 
+	private final RpcReConfigResponder reConfigResponder;
+
 	// ------------------------------------------------------------------------
 
 	public RuntimeEnvironment(
@@ -117,6 +123,7 @@ public class RuntimeEnvironment implements Environment {
 			IndexedInputGate[] inputGates,
 			TaskEventDispatcher taskEventDispatcher,
 			CheckpointResponder checkpointResponder,
+			RpcReConfigResponder reConfigResponder,
 			TaskOperatorEventGateway operatorEventGateway,
 			TaskManagerRuntimeInfo taskManagerInfo,
 			TaskMetricGroup metrics,
@@ -144,6 +151,8 @@ public class RuntimeEnvironment implements Environment {
 		this.inputGates = checkNotNull(inputGates);
 		this.taskEventDispatcher = checkNotNull(taskEventDispatcher);
 		this.checkpointResponder = checkNotNull(checkpointResponder);
+		this.reConfigResponder = checkNotNull(reConfigResponder);
+		reConfigResponder.setTaskName(taskInfo.getTaskName());
 		this.operatorEventGateway = checkNotNull(operatorEventGateway);
 		this.taskManagerInfo = checkNotNull(taskManagerInfo);
 		this.containingTask = containingTask;
@@ -307,5 +316,31 @@ public class RuntimeEnvironment implements Environment {
 	@Override
 	public void failExternally(Throwable cause) {
 		this.containingTask.failExternally(cause);
+	}
+
+	@Override
+	public void acknowledgeReConfig(
+		JobID jobID,
+		ExecutionAttemptID executionId,
+		String taskNameWithSubtasks, ReConfigStage stage) {
+		this.reConfigResponder.acknowledgeReConfig(jobID, executionId, taskNameWithSubtasks, stage);
+	}
+
+	@Override
+	public void acknowledgeReConfig(
+		JobID jobID,
+		ExecutionAttemptID executionId,
+		String taskNameWithSubtasks,
+		InstanceState state) {
+		this.reConfigResponder.acknowledgeReConfig(jobID, executionId, taskNameWithSubtasks, state);
+	}
+
+	@Override
+	public void acknowledgeReConfig(
+		JobID jobID,
+		ExecutionAttemptID executionId,
+		String taskNameWithSubtasks,
+		ReConfigSignal signal) {
+		this.reConfigResponder.acknowledgeReConfig(jobID, executionId, taskNameWithSubtasks, signal);
 	}
 }

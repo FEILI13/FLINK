@@ -209,6 +209,14 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 		}
 	}
 
+	public void updateControl(int keyGroupIndex, int targetIndex, int batch, int splitNum) {
+		System.out.println("should not reach here");
+	}
+
+	public void cleanRouting() {
+		System.out.println("should not reach here");
+	}
+
 	// ------------------------------------------------------------------------
 
 	/**
@@ -260,5 +268,9 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 	@VisibleForTesting
 	ResultPartitionWriter getTargetPartition() {
 		return targetPartition;
+	}
+
+	int getMessageCount(){
+		throw new UnsupportedOperationException();
 	}
 }

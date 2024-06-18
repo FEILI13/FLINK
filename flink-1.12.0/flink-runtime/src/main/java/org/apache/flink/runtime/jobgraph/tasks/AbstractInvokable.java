@@ -23,11 +23,14 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetricsBuilder;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
+import org.apache.flink.runtime.event.RuntimeEvent;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.SerializedValue;
+import org.apache.flink.util.function.ThrowingRunnable;
 
 import java.io.IOException;
 import java.util.concurrent.Future;
@@ -276,5 +279,13 @@ public abstract class AbstractInvokable {
 
 	public void dispatchOperatorEvent(OperatorID operator, SerializedValue<OperatorEvent> event) throws FlinkException {
 		throw new UnsupportedOperationException("dispatchOperatorEvent not supported by " + getClass().getName());
+	}
+
+	public void triggerReConfig(ReConfigSignal signal) {
+		throw new UnsupportedOperationException();
+	}
+
+	public void modifyUpperStreamChannelsForRescale(int previousNumChannels, ThrowingRunnable<? extends Exception> command, String description) {
+		throw new UnsupportedOperationException();
 	}
 }

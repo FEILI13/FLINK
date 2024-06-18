@@ -41,14 +41,18 @@ import org.apache.flink.runtime.executiongraph.restart.ThrowingRestartStrategy;
 import org.apache.flink.runtime.io.network.partition.JobMasterPartitionTracker;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.runtime.jobgraph.JobVertexID;
+import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroupDesc;
 import org.apache.flink.runtime.jobmanager.scheduler.NoResourceAvailableException;
 import org.apache.flink.runtime.jobmanager.scheduler.SlotSharingGroup;
 import org.apache.flink.runtime.jobmaster.ExecutionDeploymentTracker;
 import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.jobmaster.slotpool.ThrowingSlotProvider;
+import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.metrics.groups.JobManagerJobMetricGroup;
 import org.apache.flink.runtime.operators.coordination.OperatorCoordinator;
+import org.apache.flink.runtime.reConfig.utils.RescaleState;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.BackPressureStatsTracker;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingStrategy;
@@ -64,6 +68,7 @@ import javax.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -71,6 +76,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -98,13 +104,16 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 
 	private final ScheduledExecutor delayExecutor;
 
-	private final SchedulingStrategy schedulingStrategy;
+	private SchedulingStrategy schedulingStrategy;
 
 	private final ExecutionVertexOperations executionVertexOperations;
 
 	private final Set<ExecutionVertexID> verticesWaitingForRestart;
 
 	private final Consumer<ComponentMainThreadExecutor> startUpAction;
+
+	private final SchedulingStrategyFactory schedulingStrategyFactory;
+	private final ExecutionSlotAllocatorFactory executionSlotAllocatorFactory;
 
 	DefaultScheduler(
 		final Logger log,
@@ -168,6 +177,9 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 			getSchedulingTopology(),
 			failoverStrategy,
 			restartBackoffTimeStrategy);
+		this.schedulingStrategyFactory = schedulingStrategyFactory;
+		this.executionSlotAllocatorFactory = executionSlotAllocatorFactory;
+
 		this.schedulingStrategy = schedulingStrategyFactory.createInstance(this, getSchedulingTopology());
 
 		this.executionSlotAllocator = checkNotNull(executionSlotAllocatorFactory)
@@ -565,6 +577,107 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 		@Override
 		public Optional<TaskManagerLocation> getStateLocation(ExecutionVertexID executionVertexId) {
 			return stateLocationRetriever.getStateLocation(executionVertexId);
+		}
+	}
+
+	@Override
+	public void changeTopo(String taskName, int newParallelism) {
+		JobVertexID jobVertexID = this.executionGraph.changeTopo(taskName, newParallelism);
+		super.schedulingTopology = executionGraph.getSchedulingTopology();
+		this.schedulingStrategy = schedulingStrategyFactory.createInstance(this, getSchedulingTopology());
+		ExecutionSlotAllocator newExecutionSlotAllocator = checkNotNull(executionSlotAllocatorFactory)
+			.createInstance(new DefaultExecutionSlotAllocationContext());
+		this.executionSlotAllocator.updateForRescale(newExecutionSlotAllocator);
+		this.schedulingStrategy.startSchedulingForRescale();
+
+
+		ExecutionJobVertex jobVertex = executionGraph.getJobVertex(jobVertexID);
+
+		List<ExecutionVertex> tmp1 = new ArrayList<>();
+		for(ExecutionVertex ev:jobVertex.getTaskVertices()){
+//			if(ev.getTaskName().contains("upStream")){
+//				tmp1.add(ev);
+//			}
+//			if(ev.getTaskName().contains("ReConfig")){
+				tmp1.add(ev);
+//			}
+		}
+		this.executionGraph.getReConfigController().updateReConfigVertex(tmp1.toArray(new ExecutionVertex[0]));
+	}
+
+	@Override
+	public void allocateSlotsAndDeployForRescale(List<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions) {
+		//每个pipelineRegion内部的Vertex逐个调度
+		for(ExecutionVertexDeploymentOption evdo: executionVertexDeploymentOptions){
+			List<ExecutionVertexDeploymentOption> singleList = Collections.singletonList(evdo);
+			if(getExecutionVertex(evdo.getExecutionVertexId()).rescaleState == RescaleState.NEW){
+				System.out.println("now start new vertex deploy:"+getExecutionGraph().getJobVertex(evdo.getExecutionVertexId()
+					.getJobVertexId()).getName() + "_"+evdo.getExecutionVertexId().getSubtaskIndex());
+				deployNewDeploymentsAndWaitUntilDone(singleList);//部署到slot中，调用Flink原有代码
+			}
+			else{
+				System.out.println("now start modify vertex deploy:"+getExecutionGraph().getJobVertex(evdo.getExecutionVertexId()
+					.getJobVertexId()).getName() + "_"+evdo.getExecutionVertexId().getSubtaskIndex());
+				updateModifiedVertices(singleList);
+			}
+		}
+	}
+
+	public void deployNewDeploymentsAndWaitUntilDone(List<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions){
+		final Map<ExecutionVertexID, ExecutionVertexDeploymentOption> deploymentOptionsByVertex =
+			groupDeploymentOptionsByVertexId(executionVertexDeploymentOptions);
+
+		final List<ExecutionVertexID> verticesToDeploy = executionVertexDeploymentOptions.stream()
+			.map(ExecutionVertexDeploymentOption::getExecutionVertexId)
+			.collect(Collectors.toList());
+
+		final Map<ExecutionVertexID, ExecutionVertexVersion> requiredVersionByVertex =
+			executionVertexVersioner.recordVertexModifications(verticesToDeploy);
+
+		transitionToScheduled(verticesToDeploy);//Execution生命周期至SCHEDULED（CREATED->SCHEDULED）
+
+		final List<SlotExecutionVertexAssignment> slotExecutionVertexAssignments =
+			allocateSlots(executionVertexDeploymentOptions);
+
+		final List<DeploymentHandle> deploymentHandles = createDeploymentHandles(
+			requiredVersionByVertex,
+			deploymentOptionsByVertex,
+			slotExecutionVertexAssignments);
+
+		waitForAllSlotsAndDeployToBeDone(deploymentHandles);
+	}
+
+	private void updateModifiedVertices(List<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions){
+		List<ExecutionVertex> deployingExecutionVertices = new ArrayList<>();
+
+		executionVertexDeploymentOptions.forEach(executionVertexDeploymentOption -> {
+			ExecutionVertex ev = getExecutionVertex(executionVertexDeploymentOption.getExecutionVertexId());
+			if(ev.rescaleState == RescaleState.MODIFIED){
+				System.out.println("now is :"+getClass().getName()+" updateModifiedVertices 1");
+				getExecutionVertex(executionVertexDeploymentOption.getExecutionVertexId())
+					.getCurrentExecutionAttempt()
+					.deployForRescale();
+				System.out.println("now is :"+getClass().getName()+" updateModifiedVertices 2");
+				deployingExecutionVertices.add(ev);
+			}
+		});
+
+//		if(!deployingExecutionVertices.isEmpty()){
+//			try {
+//				CompletableFuture<Acknowledge> future = getExecutionGraph().getReConfigController().notifyStartAsyncDeploymentForRescale(deployingExecutionVertices);
+//				future.get();
+//			}catch (InterruptedException | ExecutionException e){
+//				e.printStackTrace();
+//			}
+//		}
+	}
+
+	private void waitForAllSlotsAndDeployToBeDone(final List<DeploymentHandle> deploymentHandles){
+		CompletableFuture<Void> future = assignAllResources(deploymentHandles).handle(deployAll(deploymentHandles));
+		try {
+			future.get();
+		}catch (InterruptedException | ExecutionException e){
+			e.printStackTrace();
 		}
 	}
 }

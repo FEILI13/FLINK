@@ -24,6 +24,8 @@ import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.io.PushingAsyncDataInput.DataOutput;
 import org.apache.flink.util.Preconditions;
 
+import java.util.Arrays;
+
 import static org.apache.flink.util.Preconditions.checkArgument;
 
 /**
@@ -43,7 +45,7 @@ public class StatusWatermarkValve {
 	 * Array of current status of all input channels. Changes as watermarks & stream statuses are
 	 * fed into the valve.
 	 */
-	private final InputChannelStatus[] channelStatuses;
+	private InputChannelStatus[] channelStatuses;
 
 	/** The last watermark emitted from the valve. */
 	private long lastOutputWatermark;
@@ -187,7 +189,23 @@ public class StatusWatermarkValve {
 		}
 	}
 
-	/**
+	public void updateStatusWatermarkValve(int parallelism){
+		int preParallelism = channelStatuses.length;
+		if(parallelism > preParallelism){// increase
+			this.channelStatuses = Arrays.copyOf(channelStatuses, parallelism);
+			for(int i = preParallelism; i<parallelism; i++){
+				channelStatuses[i] = new InputChannelStatus();
+				channelStatuses[i].watermark = Long.MIN_VALUE;
+				channelStatuses[i].streamStatus = StreamStatus.ACTIVE;
+				channelStatuses[i].isWatermarkAligned = true;
+			}
+		}else if(parallelism < preParallelism){// decrease
+			//this.channelStatuses = Arrays.copyOf(channelStatuses, parallelism);
+			//TODO mark decrease
+		}
+	}
+
+    /**
 	 * An {@code InputChannelStatus} keeps track of an input channel's last watermark, stream
 	 * status, and whether or not the channel's current watermark is aligned with the overall
 	 * watermark output from the valve.

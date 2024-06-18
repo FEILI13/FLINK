@@ -23,6 +23,8 @@ import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.partition.consumer.EndOfChannelStateEvent;
 
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
+
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBufAllocator;
 
@@ -275,6 +277,8 @@ public interface Buffer {
 		 */
 		ALIGNED_CHECKPOINT_BARRIER(false, true, true, false, false),
 
+		RECONFIG_BARRIER(false, true, true, false, false),
+
 		/**
 		 * {@link #TIMEOUTABLE_ALIGNED_CHECKPOINT_BARRIER} indicates that this buffer represents a
 		 * serialized checkpoint barrier of aligned exactly-once checkpoint mode, that can be time-out'ed
@@ -341,6 +345,9 @@ public interface Buffer {
 		}
 
 		public static DataType getDataType(AbstractEvent event, boolean hasPriority) {
+//			if(event instanceof ReConfigSignal && ((ReConfigSignal)event).getType() == ReConfigSignal.ReConfigSignalType.MIGRATE){
+//				return RECONFIG_BARRIER;
+//			}
 			if (hasPriority) {
 				return PRIORITIZED_EVENT_BUFFER;
 			}

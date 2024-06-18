@@ -175,4 +175,8 @@ public interface ShuffleEnvironment<P extends ResultPartitionWriter, G extends I
 	boolean updatePartitionInfo(
 		ExecutionAttemptID consumerID,
 		PartitionInfo partitionInfo) throws IOException, InterruptedException;
+
+    default void modifyInputGateForRescale(ShuffleIOOwnerContext taskShuffleContext, InputGate inputGate, InputGateDeploymentDescriptor inputGateDeploymentDescriptor){
+		throw new UnsupportedOperationException();
+	}
 }

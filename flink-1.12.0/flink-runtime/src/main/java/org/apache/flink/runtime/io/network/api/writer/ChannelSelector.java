@@ -53,4 +53,12 @@ public interface ChannelSelector<T extends IOReadableWritable> {
 	 * @return true if the selector is for broadcast mode.
 	 */
 	boolean isBroadcast();
+
+    default void updateControl(int keyGroupIndex, int targetIndex, int batch, int splitNum){
+		throw new UnsupportedOperationException();
+	}
+
+	default void cleanRouting(){
+		throw new UnsupportedOperationException();
+	}
 }

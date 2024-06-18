@@ -242,4 +242,9 @@ class SlotSharingExecutionSlotAllocator implements ExecutionSlotAllocator {
 			});
 		}
 	}
+
+	@Override
+	public void updateForRescale(ExecutionSlotAllocator executionSlotAllocator) {
+		this.slotSharingStrategy.updateForRescale(((SlotSharingExecutionSlotAllocator)executionSlotAllocator).slotSharingStrategy);
+	}
 }
