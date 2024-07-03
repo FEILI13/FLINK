@@ -59,9 +59,11 @@ public interface SinkFunction<IN> extends Function, Serializable {
 	 * <p>The context is only valid for the duration of a
 	 * {@link SinkFunction#invoke(Object, Context)} call. Do not store the context and use
 	 * afterwards!
+	 *
+	 * @param <T> The type of elements accepted by the sink.
 	 */
 	@Public // Interface might be extended in the future with additional methods.
-	interface Context {
+	interface Context<T> {
 
 		/** Returns the current processing time. */
 		long currentProcessingTime();

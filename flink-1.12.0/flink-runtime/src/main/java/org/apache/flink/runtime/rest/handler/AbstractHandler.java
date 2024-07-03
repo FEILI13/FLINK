@@ -20,9 +20,7 @@ package org.apache.flink.runtime.rest.handler;
 
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.concurrent.FutureUtils;
-import org.apache.flink.runtime.entrypoint.ClusterEntryPointExceptionUtils;
 import org.apache.flink.runtime.rest.FileUploadHandler;
-import org.apache.flink.runtime.rest.FlinkHttpObjectAggregator;
 import org.apache.flink.runtime.rest.handler.router.RoutedRequest;
 import org.apache.flink.runtime.rest.handler.util.HandlerUtils;
 import org.apache.flink.runtime.rest.messages.ErrorResponseBody;
@@ -36,7 +34,6 @@ import org.apache.flink.util.AutoCloseableAsync;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.Preconditions;
 
-import org.apache.flink.shaded.guava18.com.google.common.base.Ascii;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonParseException;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.JsonMappingException;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
@@ -54,11 +51,9 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Function;
 
 /**
  * Super class for netty-based handlers that work with {@link RequestBody}.
@@ -69,17 +64,11 @@ import java.util.function.Function;
  * @param <R> type of the incoming request
  * @param <M> type of the message parameters
  */
-public abstract class AbstractHandler<T extends RestfulGateway, R extends RequestBody, M extends MessageParameters> extends LeaderRetrievalHandler<T> implements AutoCloseableAsync {
+public abstract class AbstractHandler<T extends RestfulGateway, R extends RequestBody, M extends MessageParameters> extends RedirectHandler<T> implements AutoCloseableAsync {
 
 	protected final Logger log = LoggerFactory.getLogger(getClass());
 
 	protected static final ObjectMapper MAPPER = RestMapperUtils.getStrictObjectMapper();
-
-	/**
-	 * Other response payload overhead (in bytes).
-	 * If we truncate response payload, we should leave enough buffer for this overhead.
-	 */
-	private static final int OTHER_RESP_PAYLOAD_OVERHEAD = 1024;
 
 	private final UntypedResponseMessageHeaders<R, M> untypedResponseMessageHeaders;
 
@@ -88,22 +77,13 @@ public abstract class AbstractHandler<T extends RestfulGateway, R extends Reques
 	 */
 	private final InFlightRequestTracker inFlightRequestTracker;
 
-	/**
-	 * CompletableFuture object that ensures calls to {@link #closeAsync()} idempotent.
-	 */
-	private CompletableFuture<Void> terminationFuture;
-
-	/**
-	 * Lock object to prevent concurrent calls to {@link #closeAsync()}.
-	 */
-	private final Object lock = new Object();
-
 	protected AbstractHandler(
+			@Nonnull CompletableFuture<String> localAddressFuture,
 			@Nonnull GatewayRetriever<? extends T> leaderRetriever,
 			@Nonnull Time timeout,
 			@Nonnull Map<String, String> responseHeaders,
 			@Nonnull UntypedResponseMessageHeaders<R, M> untypedResponseMessageHeaders) {
-		super(leaderRetriever, timeout, responseHeaders);
+		super(localAddressFuture, leaderRetriever, timeout, responseHeaders);
 
 		this.untypedResponseMessageHeaders = Preconditions.checkNotNull(untypedResponseMessageHeaders);
 		this.inFlightRequestTracker = new InFlightRequestTracker();
@@ -118,12 +98,7 @@ public abstract class AbstractHandler<T extends RestfulGateway, R extends Reques
 
 		FileUploads uploadedFiles = null;
 		try {
-			if (!inFlightRequestTracker.registerRequest()) {
-				log.debug("The handler instance for {} had already been closed.", untypedResponseMessageHeaders.getTargetRestEndpointURL());
-				ctx.channel().close();
-				return;
-			}
-
+			inFlightRequestTracker.registerRequest();
 			if (!(httpRequest instanceof FullHttpRequest)) {
 				// The RestServerEndpoint defines a HttpObjectAggregator in the pipeline that always returns
 				// FullHttpRequests.
@@ -148,7 +123,7 @@ public abstract class AbstractHandler<T extends RestfulGateway, R extends Reques
 				}
 			} else {
 				try {
-					InputStream in = new ByteBufInputStream(msgContent);
+					ByteBufInputStream in = new ByteBufInputStream(msgContent);
 					request = MAPPER.readValue(in, untypedResponseMessageHeaders.getRequestClass());
 				} catch (JsonParseException | JsonMappingException je) {
 					throw new RestHandlerException(
@@ -184,17 +159,13 @@ public abstract class AbstractHandler<T extends RestfulGateway, R extends Reques
 
 			final FileUploads finalUploadedFiles = uploadedFiles;
 			requestProcessingFuture
-				.handle((Void ignored, Throwable throwable) -> {
-					if (throwable != null) {
-						return handleException(ExceptionUtils.stripCompletionException(throwable), ctx, httpRequest);
-					}
-					return CompletableFuture.<Void>completedFuture(null);
-				}).thenCompose(Function.identity())
 				.whenComplete((Void ignored, Throwable throwable) -> {
 					if (throwable != null) {
-						log.warn("An exception occurred while handling another exception.", throwable);
+						handleException(ExceptionUtils.stripCompletionException(throwable), ctx, httpRequest)
+							.whenComplete((Void ignored2, Throwable throwable2) -> finalizeRequestProcessing(finalUploadedFiles));
+					} else {
+						finalizeRequestProcessing(finalUploadedFiles);
 					}
-					finalizeRequestProcessing(finalUploadedFiles);
 				});
 		} catch (Throwable e) {
 			final FileUploads finalUploadedFiles = uploadedFiles;
@@ -209,38 +180,27 @@ public abstract class AbstractHandler<T extends RestfulGateway, R extends Reques
 	}
 
 	private CompletableFuture<Void> handleException(Throwable throwable, ChannelHandlerContext ctx, HttpRequest httpRequest) {
-		ClusterEntryPointExceptionUtils.tryEnrichClusterEntryPointError(throwable);
-
-		FlinkHttpObjectAggregator flinkHttpObjectAggregator = ctx.pipeline().get(FlinkHttpObjectAggregator.class);
-		if (flinkHttpObjectAggregator == null) {
-			log.warn("The connection was unexpectedly closed by the client.");
-			return CompletableFuture.completedFuture(null);
-		}
-		int maxLength = flinkHttpObjectAggregator.maxContentLength() - OTHER_RESP_PAYLOAD_OVERHEAD;
 		if (throwable instanceof RestHandlerException) {
 			RestHandlerException rhe = (RestHandlerException) throwable;
-			String stackTrace = ExceptionUtils.stringifyException(rhe);
-			String truncatedStackTrace = Ascii.truncate(stackTrace, maxLength, "...");
 			if (log.isDebugEnabled()) {
 				log.error("Exception occurred in REST handler.", rhe);
-			} else if (rhe.logException()) {
+			} else {
 				log.error("Exception occurred in REST handler: {}", rhe.getMessage());
 			}
 			return HandlerUtils.sendErrorResponse(
 				ctx,
 				httpRequest,
-				new ErrorResponseBody(truncatedStackTrace),
+				new ErrorResponseBody(rhe.getMessage()),
 				rhe.getHttpResponseStatus(),
 				responseHeaders);
 		} else {
-			log.error("Unhandled exception.", throwable);
+			log.error("Implementation error: Unhandled exception.", throwable);
 			String stackTrace = String.format("<Exception on server side:%n%s%nEnd of exception on server side>",
 				ExceptionUtils.stringifyException(throwable));
-			String truncatedStackTrace = Ascii.truncate(stackTrace, maxLength, "...");
 			return HandlerUtils.sendErrorResponse(
 				ctx,
 				httpRequest,
-				new ErrorResponseBody(Arrays.asList("Internal server error.", truncatedStackTrace)),
+				new ErrorResponseBody(Arrays.asList("Internal server error.", stackTrace)),
 				HttpResponseStatus.INTERNAL_SERVER_ERROR,
 				responseHeaders);
 		}
@@ -248,14 +208,7 @@ public abstract class AbstractHandler<T extends RestfulGateway, R extends Reques
 
 	@Override
 	public final CompletableFuture<Void> closeAsync() {
-		synchronized (lock) {
-			if (terminationFuture == null) {
-				this.terminationFuture = FutureUtils.composeAfterwards(closeHandlerAsync(), inFlightRequestTracker::awaitAsync);
-			} else {
-				log.warn("The handler instance for {} had already been closed, but another attempt at closing it was made.", untypedResponseMessageHeaders.getTargetRestEndpointURL());
-			}
-			return this.terminationFuture;
-		}
+		return FutureUtils.composeAfterwards(closeHandlerAsync(), inFlightRequestTracker::awaitAsync);
 	}
 
 	protected CompletableFuture<Void> closeHandlerAsync() {

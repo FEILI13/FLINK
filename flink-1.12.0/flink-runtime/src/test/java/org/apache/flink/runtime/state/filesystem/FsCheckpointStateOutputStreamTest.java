@@ -32,8 +32,6 @@ import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
 import org.mockito.ArgumentCaptor;
 
 import java.io.DataInputStream;
@@ -42,8 +40,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Random;
 import java.util.function.Supplier;
 
@@ -53,7 +49,6 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.junit.Assume.assumeTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyBoolean;
 import static org.mockito.Matchers.eq;
@@ -67,16 +62,7 @@ import static org.mockito.Mockito.when;
 /**
  * Tests for the {@link FsCheckpointStateOutputStream}.
  */
-@RunWith(Parameterized.class)
 public class FsCheckpointStateOutputStreamTest {
-
-	@Parameterized.Parameters(name = "relativePaths = {0}")
-	public static List<Boolean> parameters() {
-		return Arrays.asList(true, false);
-	}
-
-	@Parameterized.Parameter
-	public boolean relativePaths;
 
 	@Rule
 	public final TemporaryFolder tempDir = new TemporaryFolder();
@@ -85,22 +71,22 @@ public class FsCheckpointStateOutputStreamTest {
 	public void testWrongParameters() throws Exception {
 		// this should fail
 		new FsCheckpointStreamFactory.FsCheckpointStateOutputStream(
-			Path.fromLocalFile(tempDir.newFolder()), FileSystem.getLocalFileSystem(), 4000, 5000, relativePaths);
+			Path.fromLocalFile(tempDir.newFolder()), FileSystem.getLocalFileSystem(), 4000, 5000);
 	}
 
 	@Test
 	public void testEmptyState() throws Exception {
 		FsCheckpointStreamFactory.CheckpointStateOutputStream stream =
 				new FsCheckpointStreamFactory.FsCheckpointStateOutputStream(
-						Path.fromLocalFile(tempDir.newFolder()), FileSystem.getLocalFileSystem(), 1024, 512, relativePaths);
+						Path.fromLocalFile(tempDir.newFolder()), FileSystem.getLocalFileSystem(), 1024, 512);
 
 		StreamStateHandle handle = stream.closeAndGetHandle();
-		assertNull(handle);
+		assertTrue(handle == null);
 	}
 
 	@Test
 	public void testStateBelowMemThreshold() throws Exception {
-		runTest(999, 1024, 1000, false);
+		runTest(222, 999, 512, false);
 	}
 
 	@Test
@@ -122,7 +108,7 @@ public class FsCheckpointStateOutputStreamTest {
 	public void testGetPos() throws Exception {
 		FsCheckpointStreamFactory.CheckpointStateOutputStream stream =
 				new FsCheckpointStreamFactory.FsCheckpointStateOutputStream(
-						Path.fromLocalFile(tempDir.newFolder()), FileSystem.getLocalFileSystem(), 31, 17, relativePaths);
+						Path.fromLocalFile(tempDir.newFolder()), FileSystem.getLocalFileSystem(), 31, 17);
 
 		for (int i = 0; i < 64; ++i) {
 			Assert.assertEquals(i, stream.getPos());
@@ -134,7 +120,7 @@ public class FsCheckpointStateOutputStreamTest {
 		// ----------------------------------------------------
 
 		stream = new FsCheckpointStreamFactory.FsCheckpointStateOutputStream(
-				Path.fromLocalFile(tempDir.newFolder()), FileSystem.getLocalFileSystem(), 31, 17, relativePaths);
+				Path.fromLocalFile(tempDir.newFolder()), FileSystem.getLocalFileSystem(), 31, 17);
 
 		byte[] data = "testme!".getBytes(ConfigConstants.DEFAULT_CHARSET);
 
@@ -164,8 +150,7 @@ public class FsCheckpointStateOutputStreamTest {
 			Path.fromLocalFile(tempDir.newFolder()),
 			fs,
 			4,
-			0,
-			relativePaths);
+			0);
 
 		// this should create the underlying file stream
 		stream.write(new byte[] {1, 2, 3, 4, 5});
@@ -194,8 +179,7 @@ public class FsCheckpointStateOutputStreamTest {
 			Path.fromLocalFile(tempDir.newFolder()),
 			fs,
 			4,
-			0,
-			relativePaths);
+			0);
 
 		// this should create the underlying file stream
 		stream.write(new byte[] {1, 2, 3, 4, 5});
@@ -215,7 +199,7 @@ public class FsCheckpointStateOutputStreamTest {
 	private void runTest(int numBytes, int bufferSize, int threshold, boolean expectFile) throws Exception {
 		FsCheckpointStreamFactory.CheckpointStateOutputStream stream =
 			new FsCheckpointStreamFactory.FsCheckpointStateOutputStream(
-					Path.fromLocalFile(tempDir.newFolder()), FileSystem.getLocalFileSystem(), bufferSize, threshold, relativePaths);
+					Path.fromLocalFile(tempDir.newFolder()), FileSystem.getLocalFileSystem(), bufferSize, threshold);
 
 		Random rnd = new Random();
 		byte[] original = new byte[numBytes];
@@ -232,8 +216,7 @@ public class FsCheckpointStateOutputStreamTest {
 				stream.write(bytes[pos++]);
 			}
 			else {
-				int num = rnd.nextBoolean() ?
-					(bytes.length - pos) : rnd.nextInt(bytes.length - pos);
+				int num = rnd.nextInt(Math.min(10, bytes.length - pos));
 				stream.write(bytes, pos, num);
 				pos += num;
 			}
@@ -264,7 +247,7 @@ public class FsCheckpointStateOutputStreamTest {
 	@Test
 	public void testWriteFailsFastWhenClosed() throws Exception {
 		FsCheckpointStateOutputStream stream = new FsCheckpointStateOutputStream(
-				Path.fromLocalFile(tempDir.newFolder()), FileSystem.getLocalFileSystem(), 1024, 512, relativePaths);
+				Path.fromLocalFile(tempDir.newFolder()), FileSystem.getLocalFileSystem(), 1024, 512);
 
 		assertFalse(stream.isClosed());
 
@@ -303,7 +286,7 @@ public class FsCheckpointStateOutputStreamTest {
 		final Path basePath = Path.fromLocalFile(directory);
 
 		final Supplier<CheckpointStateOutputStream> factory = () ->
-				new FsCheckpointStateOutputStream(basePath, FileSystem.getLocalFileSystem(), 1024, 15, relativePaths);
+				new FsCheckpointStateOutputStream(basePath, FileSystem.getLocalFileSystem(), 1024, 15);
 
 		CheckpointStateOutputStream stream1 = factory.get();
 		CheckpointStateOutputStream stream2 = factory.get();
@@ -366,18 +349,16 @@ public class FsCheckpointStateOutputStreamTest {
 		final File directory = tempDir.newFolder();
 
 		// prevent creation of files in that directory
-		// this operation does not work reliably on Windows, so we use an "assume" to skip the test
-		// is this prerequisite operation is not supported.
-		assumeTrue(directory.setWritable(false, true));
+		assertTrue(directory.setWritable(false, true));
 		checkDirectoryNotWritable(directory);
 
 		FileSystem fs = spy(FileSystem.getLocalFileSystem());
 
 		FsCheckpointStateOutputStream stream1 = new FsCheckpointStateOutputStream(
-				Path.fromLocalFile(directory), fs, 1024, 1, relativePaths);
+				Path.fromLocalFile(directory), fs, 1024, 1);
 
 		FsCheckpointStateOutputStream stream2 = new FsCheckpointStateOutputStream(
-				Path.fromLocalFile(directory), fs, 1024, 1, relativePaths);
+				Path.fromLocalFile(directory), fs, 1024, 1);
 
 		stream1.write(new byte[61]);
 		stream2.write(new byte[61]);

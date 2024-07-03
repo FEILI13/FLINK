@@ -19,6 +19,7 @@
 
 package org.apache.flink.graph.types.valuearray;
 
+import org.apache.flink.api.common.typeutils.SerializerTestBase;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.types.CharValue;
 
@@ -27,7 +28,7 @@ import java.util.Random;
 /**
  * A test for the {@link CharValueArraySerializer}.
  */
-public class CharValueArraySerializerTest extends ValueArraySerializerTestBase<CharValueArray> {
+public class CharValueArraySerializerTest extends SerializerTestBase<CharValueArray> {
 
 	@Override
 	protected TypeSerializer<CharValueArray> createSerializer() {

@@ -21,7 +21,6 @@ package org.apache.flink.runtime.rest.handler.job;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.MetricOptions;
 import org.apache.flink.runtime.accumulators.StringifiedAccumulatorResult;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.execution.ExecutionState;
@@ -32,9 +31,8 @@ import org.apache.flink.runtime.executiongraph.IOMetrics;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.rest.handler.HandlerRequest;
 import org.apache.flink.runtime.rest.handler.RestHandlerConfiguration;
-import org.apache.flink.runtime.rest.handler.legacy.DefaultExecutionGraphCache;
+import org.apache.flink.runtime.rest.handler.legacy.ExecutionGraphCache;
 import org.apache.flink.runtime.rest.handler.legacy.metrics.MetricFetcher;
-import org.apache.flink.runtime.rest.handler.legacy.metrics.MetricFetcherImpl;
 import org.apache.flink.runtime.rest.messages.EmptyRequestBody;
 import org.apache.flink.runtime.rest.messages.JobIDPathParameter;
 import org.apache.flink.runtime.rest.messages.JobVertexIdPathParameter;
@@ -51,6 +49,7 @@ import org.junit.Test;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.concurrent.CompletableFuture;
 
 import static org.junit.Assert.assertEquals;
 
@@ -70,16 +69,23 @@ public class SubtaskCurrentAttemptDetailsHandlerTest extends TestLogger {
 		final long deployingTs = System.currentTimeMillis() - 1024;
 		final long finishedTs = System.currentTimeMillis();
 
-		final long bytesIn = 1L;
+		final long bytesInLocal = 1L;
+		final long bytesInRemote = 2L;
 		final long bytesOut = 10L;
 		final long recordsIn = 20L;
 		final long recordsOut = 30L;
 
 		final IOMetrics ioMetrics = new IOMetrics(
-			bytesIn,
+			bytesInLocal,
+			bytesInRemote,
 			bytesOut,
 			recordsIn,
-			recordsOut);
+			recordsOut,
+			0.0,
+			0.0,
+			0.0,
+			0.0,
+			0.0);
 
 		final long[] timestamps = new long[ExecutionState.values().length];
 		timestamps[ExecutionState.DEPLOYING.ordinal()] = deployingTs;
@@ -113,19 +119,19 @@ public class SubtaskCurrentAttemptDetailsHandlerTest extends TestLogger {
 		// Instance the handler.
 		final RestHandlerConfiguration restHandlerConfiguration = RestHandlerConfiguration.fromConfiguration(new Configuration());
 
-		final MetricFetcher metricFetcher = new MetricFetcherImpl<>(
+		final MetricFetcher<?> metricFetcher = new MetricFetcher<>(
 			() -> null,
-			address -> null,
+			path -> null,
 			TestingUtils.defaultExecutor(),
-			Time.milliseconds(1000L),
-			MetricOptions.METRIC_FETCHER_UPDATE_INTERVAL.defaultValue());
+			Time.milliseconds(1000L));
 
 		final SubtaskCurrentAttemptDetailsHandler handler = new SubtaskCurrentAttemptDetailsHandler(
+			CompletableFuture.completedFuture("127.0.0.1:9527"),
 			() -> null,
 			Time.milliseconds(100),
 			Collections.emptyMap(),
 			SubtaskCurrentAttemptDetailsHeaders.getInstance(),
-			new DefaultExecutionGraphCache(
+			new ExecutionGraphCache(
 				restHandlerConfiguration.getTimeout(),
 				Time.milliseconds(restHandlerConfiguration.getRefreshInterval())),
 			TestingUtils.defaultExecutor(),
@@ -146,7 +152,7 @@ public class SubtaskCurrentAttemptDetailsHandlerTest extends TestLogger {
 
 		// Verify
 		final IOMetricsInfo ioMetricsInfo = new IOMetricsInfo(
-			bytesIn,
+			bytesInLocal + bytesInRemote,
 			true,
 			bytesOut,
 			true,
@@ -164,8 +170,7 @@ public class SubtaskCurrentAttemptDetailsHandlerTest extends TestLogger {
 			deployingTs,
 			finishedTs,
 			finishedTs - deployingTs,
-			ioMetricsInfo,
-			assignedResourceLocation.getResourceID().getResourceIdString()
+			ioMetricsInfo
 		);
 
 		assertEquals(expectedDetailsInfo, detailsInfo);

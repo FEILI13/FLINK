@@ -18,24 +18,23 @@
 
 package org.apache.flink.runtime.resourcemanager;
 
-import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.clusterframework.ApplicationStatus;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
+import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.entrypoint.ClusterInformation;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
-import org.apache.flink.runtime.io.network.partition.ResourceManagerPartitionTrackerFactory;
-import org.apache.flink.runtime.metrics.groups.ResourceManagerMetricGroup;
+import org.apache.flink.runtime.metrics.MetricRegistry;
+import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
 import org.apache.flink.runtime.resourcemanager.exceptions.ResourceManagerException;
 import org.apache.flink.runtime.resourcemanager.slotmanager.SlotManager;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
-import org.apache.flink.util.Preconditions;
 
 import javax.annotation.Nullable;
 
-import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
+import java.util.Collection;
+import java.util.Collections;
 
 /**
  * A standalone implementation of the resource manager. Used when the system is started in
@@ -45,37 +44,30 @@ import java.util.concurrent.TimeUnit;
  */
 public class StandaloneResourceManager extends ResourceManager<ResourceID> {
 
-	/** The duration of the startup period. A duration of zero means there is no startup period. */
-	private final Time startupPeriodTime;
-
 	public StandaloneResourceManager(
 			RpcService rpcService,
+			String resourceManagerEndpointId,
 			ResourceID resourceId,
 			HighAvailabilityServices highAvailabilityServices,
 			HeartbeatServices heartbeatServices,
 			SlotManager slotManager,
-			ResourceManagerPartitionTrackerFactory clusterPartitionTrackerFactory,
+			MetricRegistry metricRegistry,
 			JobLeaderIdService jobLeaderIdService,
 			ClusterInformation clusterInformation,
 			FatalErrorHandler fatalErrorHandler,
-			ResourceManagerMetricGroup resourceManagerMetricGroup,
-			Time startupPeriodTime,
-			Time rpcTimeout,
-			Executor ioExecutor) {
+			JobManagerMetricGroup jobManagerMetricGroup) {
 		super(
 			rpcService,
+			resourceManagerEndpointId,
 			resourceId,
 			highAvailabilityServices,
 			heartbeatServices,
 			slotManager,
-			clusterPartitionTrackerFactory,
+			metricRegistry,
 			jobLeaderIdService,
 			clusterInformation,
 			fatalErrorHandler,
-			resourceManagerMetricGroup,
-			rpcTimeout,
-			ioExecutor);
-		this.startupPeriodTime = Preconditions.checkNotNull(startupPeriodTime);
+			jobManagerMetricGroup);
 	}
 
 	@Override
@@ -84,17 +76,12 @@ public class StandaloneResourceManager extends ResourceManager<ResourceID> {
 	}
 
 	@Override
-	protected void terminate() {
-		// noop
-	}
-
-	@Override
 	protected void internalDeregisterApplication(ApplicationStatus finalStatus, @Nullable String diagnostics) {
 	}
 
 	@Override
-	public boolean startNewWorker(WorkerResourceSpec workerResourceSpec) {
-		return false;
+	public Collection<ResourceProfile> startNewWorker(ResourceProfile resourceProfile) {
+		return Collections.emptyList();
 	}
 
 	@Override
@@ -108,22 +95,4 @@ public class StandaloneResourceManager extends ResourceManager<ResourceID> {
 		return resourceID;
 	}
 
-	@Override
-	protected void onLeadership() {
-		startStartupPeriod();
-	}
-
-	private void startStartupPeriod() {
-		setFailUnfulfillableRequest(false);
-
-		final long startupPeriodMillis = startupPeriodTime.toMilliseconds();
-
-		if (startupPeriodMillis > 0) {
-			scheduleRunAsync(
-				() -> setFailUnfulfillableRequest(true),
-				startupPeriodMillis,
-				TimeUnit.MILLISECONDS
-			);
-		}
-	}
 }

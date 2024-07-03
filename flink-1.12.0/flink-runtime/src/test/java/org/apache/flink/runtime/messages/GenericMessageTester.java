@@ -19,8 +19,8 @@
 package org.apache.flink.runtime.messages;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.core.testutils.CommonTestUtils;
+import org.apache.flink.runtime.jobgraph.JobStatus;
 
 import java.io.Serializable;
 import java.lang.reflect.Constructor;
@@ -29,9 +29,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.*;
 
 public class GenericMessageTester {
 

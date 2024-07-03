@@ -26,12 +26,12 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-queryable-state</artifactId>
-		<version>1.12.0</version>
+		<version>1.7-CLONOS-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 
-	<artifactId>flink-queryable-state-client-java</artifactId>
-	<name>Flink : Queryable state : Client Java</name>
+	<artifactId>flink-queryable-state-client-java_${scala.binary.version}</artifactId>
+	<name>flink-queryable-state-client-java</name>
 	<packaging>jar</packaging>
 
 	<dependencies>

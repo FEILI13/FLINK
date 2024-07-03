@@ -19,46 +19,74 @@
 package org.apache.flink.cep.nfa.sharedbuffer;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.api.common.typeutils.CompositeTypeSerializerSnapshot;
+import org.apache.flink.api.common.typeutils.CompositeSerializerSnapshot;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.api.common.typeutils.TypeSerializerSchemaCompatibility;
 import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
+import org.apache.flink.core.memory.DataInputView;
+import org.apache.flink.core.memory.DataOutputView;
+import org.apache.flink.util.Preconditions;
+
+import java.io.IOException;
+
+import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * A {@link TypeSerializerSnapshot} for the {@link Lockable.LockableTypeSerializer}.
  */
 @Internal
-public class LockableTypeSerializerSnapshot<E> extends CompositeTypeSerializerSnapshot<Lockable<E>, Lockable.LockableTypeSerializer<E>> {
+public class LockableTypeSerializerSnapshot<E> implements TypeSerializerSnapshot<Lockable<E>> {
 
 	private static final int CURRENT_VERSION = 1;
+
+	private CompositeSerializerSnapshot nestedElementSerializerSnapshot;
 
 	/**
 	 * Constructor for read instantiation.
 	 */
-	public LockableTypeSerializerSnapshot() {
-		super(Lockable.LockableTypeSerializer.class);
-	}
+	public LockableTypeSerializerSnapshot() {}
 
 	/**
 	 * Constructor to create the snapshot for writing.
 	 */
-	public LockableTypeSerializerSnapshot(Lockable.LockableTypeSerializer<E> lockableTypeSerializer) {
-		super(lockableTypeSerializer);
+	public LockableTypeSerializerSnapshot(TypeSerializer<E> elementSerializer) {
+		this.nestedElementSerializerSnapshot = new CompositeSerializerSnapshot(Preconditions.checkNotNull(elementSerializer));
 	}
 
 	@Override
-	public int getCurrentOuterSnapshotVersion() {
+	public int getCurrentVersion() {
 		return CURRENT_VERSION;
 	}
 
 	@Override
-	protected Lockable.LockableTypeSerializer<E> createOuterSerializerWithNestedSerializers(TypeSerializer<?>[] nestedSerializers) {
-		@SuppressWarnings("unchecked")
-		TypeSerializer<E> elementSerializer = (TypeSerializer<E>) nestedSerializers[0];
-		return new Lockable.LockableTypeSerializer<>(elementSerializer);
+	public TypeSerializer<Lockable<E>> restoreSerializer() {
+		return new Lockable.LockableTypeSerializer<>(nestedElementSerializerSnapshot.getRestoreSerializer(0));
 	}
 
 	@Override
-	protected TypeSerializer<?>[] getNestedSerializers(Lockable.LockableTypeSerializer<E> outerSerializer) {
-		return new TypeSerializer<?>[] { outerSerializer.getElementSerializer() };
+	public TypeSerializerSchemaCompatibility<Lockable<E>> resolveSchemaCompatibility(TypeSerializer<Lockable<E>> newSerializer) {
+		checkState(nestedElementSerializerSnapshot != null);
+
+		if (newSerializer instanceof Lockable.LockableTypeSerializer) {
+			Lockable.LockableTypeSerializer<E> serializer = (Lockable.LockableTypeSerializer<E>) newSerializer;
+
+			return nestedElementSerializerSnapshot.resolveCompatibilityWithNested(
+				TypeSerializerSchemaCompatibility.compatibleAsIs(),
+				serializer.getElementSerializer());
+		}
+		else {
+			return TypeSerializerSchemaCompatibility.incompatible();
+		}
 	}
+
+	@Override
+	public void writeSnapshot(DataOutputView out) throws IOException {
+		nestedElementSerializerSnapshot.writeCompositeSnapshot(out);
+	}
+
+	@Override
+	public void readSnapshot(int readVersion, DataInputView in, ClassLoader userCodeClassLoader) throws IOException {
+		this.nestedElementSerializerSnapshot = CompositeSerializerSnapshot.readCompositeSnapshot(in, userCodeClassLoader);
+	}
+
 }

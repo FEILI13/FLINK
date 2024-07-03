@@ -26,7 +26,6 @@ import org.apache.flink.api.common.typeutils.base.IntSerializer;
 import org.apache.flink.api.common.typeutils.base.LongSerializer;
 import org.apache.flink.api.common.typeutils.base.StringSerializer;
 import org.apache.flink.api.common.typeutils.base.array.BytePrimitiveArraySerializer;
-import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.metrics.groups.UnregisteredMetricsGroup;
 import org.apache.flink.queryablestate.KvStateID;
 import org.apache.flink.queryablestate.client.VoidNamespace;
@@ -65,7 +64,6 @@ import org.apache.flink.shaded.netty4.io.netty.handler.codec.LengthFieldBasedFra
 
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.net.InetAddress;
@@ -80,9 +78,6 @@ import static org.junit.Assert.assertTrue;
 /**
  * Tests for {@link KvStateServerHandler}.
  */
-@Ignore("KvStateServerHandlerTest is unstable. See FLINK-13553 for more information. Since the community "
-		+ "does not have time to work on QS, we decided to temporarily ignore this test case in order"
-		+ "to maintain build stability.")
 public class KvStateServerHandlerTest extends TestLogger {
 
 	private static KvStateServerImpl testServer;
@@ -93,7 +88,7 @@ public class KvStateServerHandlerTest extends TestLogger {
 	public static void setup() {
 		try {
 			testServer = new KvStateServerImpl(
-					InetAddress.getLocalHost().getHostName(),
+					InetAddress.getLocalHost(),
 					Collections.singletonList(0).iterator(),
 					1,
 					1,
@@ -174,7 +169,6 @@ public class KvStateServerHandlerTest extends TestLogger {
 		assertEquals(MessageType.REQUEST_RESULT, MessageSerializer.deserializeHeader(buf));
 		long deserRequestId = MessageSerializer.getRequestId(buf);
 		KvStateResponse response = serializer.deserializeResponse(buf);
-		buf.release();
 
 		assertEquals(requestId, deserRequestId);
 
@@ -222,7 +216,6 @@ public class KvStateServerHandlerTest extends TestLogger {
 		// Verify the response
 		assertEquals(MessageType.REQUEST_FAILURE, MessageSerializer.deserializeHeader(buf));
 		RequestFailure response = MessageSerializer.deserializeRequestFailure(buf);
-		buf.release();
 
 		assertEquals(requestId, response.getRequestId());
 
@@ -284,7 +277,6 @@ public class KvStateServerHandlerTest extends TestLogger {
 		// Verify the response
 		assertEquals(MessageType.REQUEST_FAILURE, MessageSerializer.deserializeHeader(buf));
 		RequestFailure response = MessageSerializer.deserializeRequestFailure(buf);
-		buf.release();
 
 		assertEquals(requestId, response.getRequestId());
 
@@ -341,11 +333,6 @@ public class KvStateServerHandlerTest extends TestLogger {
 					}
 
 					@Override
-					public StateIncrementalVisitor<Integer, VoidNamespace, Long> getStateIncrementalVisitor(int recommendedMaxNumberOfReturnedRecords) {
-						throw new UnsupportedOperationException();
-					}
-
-					@Override
 					public void clear() {
 
 					}
@@ -370,7 +357,6 @@ public class KvStateServerHandlerTest extends TestLogger {
 		// Verify the response
 		assertEquals(MessageType.REQUEST_FAILURE, MessageSerializer.deserializeHeader(buf));
 		RequestFailure response = MessageSerializer.deserializeRequestFailure(buf);
-		buf.release();
 
 		assertTrue(response.getCause().getMessage().contains("Expected test Exception"));
 
@@ -400,7 +386,6 @@ public class KvStateServerHandlerTest extends TestLogger {
 		// Verify the response
 		assertEquals(MessageType.SERVER_FAILURE, MessageSerializer.deserializeHeader(buf));
 		Throwable response = MessageSerializer.deserializeServerFailure(buf);
-		buf.release();
 
 		assertTrue(response.getMessage().contains("Expected test Exception"));
 
@@ -417,7 +402,7 @@ public class KvStateServerHandlerTest extends TestLogger {
 		AtomicKvStateRequestStats stats = new AtomicKvStateRequestStats();
 
 		KvStateServerImpl localTestServer = new KvStateServerImpl(
-				InetAddress.getLocalHost().getHostName(),
+				InetAddress.getLocalHost(),
 				Collections.singletonList(0).iterator(),
 				1,
 				1,
@@ -463,7 +448,6 @@ public class KvStateServerHandlerTest extends TestLogger {
 		// Verify the response
 		assertEquals(MessageType.REQUEST_FAILURE, MessageSerializer.deserializeHeader(buf));
 		RequestFailure response = MessageSerializer.deserializeRequestFailure(buf);
-		buf.release();
 
 		assertTrue(response.getCause().getMessage().contains("RejectedExecutionException"));
 
@@ -500,7 +484,6 @@ public class KvStateServerHandlerTest extends TestLogger {
 		// Verify the response
 		assertEquals(MessageType.SERVER_FAILURE, MessageSerializer.deserializeHeader(buf));
 		Throwable response = MessageSerializer.deserializeServerFailure(buf);
-		buf.release();
 
 		assertEquals(0L, stats.getNumRequests());
 		assertEquals(0L, stats.getNumFailed());
@@ -516,7 +499,6 @@ public class KvStateServerHandlerTest extends TestLogger {
 		// Verify the response
 		assertEquals(MessageType.SERVER_FAILURE, MessageSerializer.deserializeHeader(buf));
 		response = MessageSerializer.deserializeServerFailure(buf);
-		buf.release();
 
 		assertTrue("Unexpected failure cause " + response.getClass().getName(), response instanceof IllegalArgumentException);
 
@@ -556,7 +538,6 @@ public class KvStateServerHandlerTest extends TestLogger {
 
 		channel.writeInbound(unexpected);
 		assertEquals("Buffer not recycled", 0L, unexpected.refCnt());
-		channel.finishAndReleaseAll();
 	}
 
 	/**
@@ -623,7 +604,6 @@ public class KvStateServerHandlerTest extends TestLogger {
 		// Verify the response
 		assertEquals(MessageType.REQUEST_FAILURE, MessageSerializer.deserializeHeader(buf));
 		RequestFailure response = MessageSerializer.deserializeRequestFailure(buf);
-		buf.release();
 		assertEquals(182828L, response.getRequestId());
 		assertTrue(response.getCause().getMessage().contains("IOException"));
 
@@ -640,7 +620,6 @@ public class KvStateServerHandlerTest extends TestLogger {
 		// Verify the response
 		assertEquals(MessageType.REQUEST_FAILURE, MessageSerializer.deserializeHeader(buf));
 		response = MessageSerializer.deserializeRequestFailure(buf);
-		buf.release();
 		assertEquals(182829L, response.getRequestId());
 		assertTrue(response.getCause().getMessage().contains("IOException"));
 
@@ -711,7 +690,6 @@ public class KvStateServerHandlerTest extends TestLogger {
 
 		Object msg = readInboundBlocking(channel);
 		assertTrue("Not ChunkedByteBuf", msg instanceof ChunkedByteBuf);
-		((ChunkedByteBuf) msg).close();
 	}
 
 	// ------------------------------------------------------------------------
@@ -787,8 +765,6 @@ public class KvStateServerHandlerTest extends TestLogger {
 			new KeyGroupRange(0, 0),
 			registry.createTaskRegistry(dummyEnv.getJobID(), dummyEnv.getJobVertexId()),
 			TtlTimeProvider.DEFAULT,
-			new UnregisteredMetricsGroup(),
-			Collections.emptyList(),
-			new CloseableRegistry());
+			new UnregisteredMetricsGroup());
 	}
 }

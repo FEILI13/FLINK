@@ -27,11 +27,10 @@ import org.apache.flink.api.java.typeutils.TypeExtractor;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.co.BroadcastProcessFunction;
 import org.apache.flink.streaming.api.functions.co.KeyedBroadcastProcessFunction;
-import org.apache.flink.streaming.api.operators.SimpleOperatorFactory;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.api.operators.co.CoBroadcastWithKeyedOperator;
 import org.apache.flink.streaming.api.operators.co.CoBroadcastWithNonKeyedOperator;
-import org.apache.flink.streaming.api.transformations.BroadcastStateTransformation;
+import org.apache.flink.streaming.api.transformations.TwoInputTransformation;
 import org.apache.flink.util.Preconditions;
 
 import java.util.List;
@@ -58,8 +57,8 @@ import static java.util.Objects.requireNonNull;
 public class BroadcastConnectedStream<IN1, IN2> {
 
 	private final StreamExecutionEnvironment environment;
-	private final DataStream<IN1> nonBroadcastStream;
-	private final BroadcastStream<IN2> broadcastStream;
+	private final DataStream<IN1> inputStream1;
+	private final BroadcastStream<IN2> inputStream2;
 	private final List<MapStateDescriptor<?, ?>> broadcastStateDescriptors;
 
 	protected BroadcastConnectedStream(
@@ -68,8 +67,8 @@ public class BroadcastConnectedStream<IN1, IN2> {
 			final BroadcastStream<IN2> input2,
 			final List<MapStateDescriptor<?, ?>> broadcastStateDescriptors) {
 		this.environment = requireNonNull(env);
-		this.nonBroadcastStream = requireNonNull(input1);
-		this.broadcastStream = requireNonNull(input2);
+		this.inputStream1 = requireNonNull(input1);
+		this.inputStream2 = requireNonNull(input2);
 		this.broadcastStateDescriptors = requireNonNull(broadcastStateDescriptors);
 	}
 
@@ -83,7 +82,7 @@ public class BroadcastConnectedStream<IN1, IN2> {
 	 * @return The stream which, by convention, is not broadcasted.
 	 */
 	public DataStream<IN1> getFirstInput() {
-		return nonBroadcastStream;
+		return inputStream1;
 	}
 
 	/**
@@ -92,7 +91,7 @@ public class BroadcastConnectedStream<IN1, IN2> {
 	 * @return The stream which, by convention, is the broadcast one.
 	 */
 	public BroadcastStream<IN2> getSecondInput() {
-		return broadcastStream;
+		return inputStream2;
 	}
 
 	/**
@@ -101,7 +100,7 @@ public class BroadcastConnectedStream<IN1, IN2> {
 	 * @return The type of the first input
 	 */
 	public TypeInformation<IN1> getType1() {
-		return nonBroadcastStream.getType();
+		return inputStream1.getType();
 	}
 
 	/**
@@ -110,7 +109,7 @@ public class BroadcastConnectedStream<IN1, IN2> {
 	 * @return The type of the second input
 	 */
 	public TypeInformation<IN2> getType2() {
-		return broadcastStream.getType();
+		return inputStream2.getType();
 	}
 
 	/**
@@ -156,7 +155,7 @@ public class BroadcastConnectedStream<IN1, IN2> {
 			final TypeInformation<OUT> outTypeInfo) {
 
 		Preconditions.checkNotNull(function);
-		Preconditions.checkArgument(nonBroadcastStream instanceof KeyedStream,
+		Preconditions.checkArgument(inputStream1 instanceof KeyedStream,
 				"A KeyedBroadcastProcessFunction can only be used on a keyed stream.");
 
 		TwoInputStreamOperator<IN1, IN2, OUT> operator =
@@ -205,7 +204,7 @@ public class BroadcastConnectedStream<IN1, IN2> {
 			final TypeInformation<OUT> outTypeInfo) {
 
 		Preconditions.checkNotNull(function);
-		Preconditions.checkArgument(!(nonBroadcastStream instanceof KeyedStream),
+		Preconditions.checkArgument(!(inputStream1 instanceof KeyedStream),
 				"A BroadcastProcessFunction can only be used on a non-keyed stream.");
 
 		TwoInputStreamOperator<IN1, IN2, OUT> operator =
@@ -220,42 +219,30 @@ public class BroadcastConnectedStream<IN1, IN2> {
 			final TwoInputStreamOperator<IN1, IN2, OUT> operator) {
 
 		// read the output type of the input Transforms to coax out errors about MissingTypeInfo
-		nonBroadcastStream.getType();
-		broadcastStream.getType();
+		inputStream1.getType();
+		inputStream2.getType();
 
-		final BroadcastStateTransformation<IN1, IN2, OUT> transformation =
-				getBroadcastStateTransformation(functionName, outTypeInfo, operator);
+		TwoInputTransformation<IN1, IN2, OUT> transform = new TwoInputTransformation<>(
+				inputStream1.getTransformation(),
+				inputStream2.getTransformation(),
+				functionName,
+				operator,
+				outTypeInfo,
+				environment.getParallelism());
 
-		@SuppressWarnings({"unchecked", "rawtypes"})
-		final SingleOutputStreamOperator<OUT> returnStream =
-				new SingleOutputStreamOperator(environment, transformation);
-
-		getExecutionEnvironment().addOperator(transformation);
-		return returnStream;
-	}
-
-	private <OUT> BroadcastStateTransformation<IN1, IN2, OUT> getBroadcastStateTransformation(
-			final String functionName,
-			final TypeInformation<OUT> outTypeInfo,
-			final TwoInputStreamOperator<IN1, IN2, OUT> operator) {
-
-		if (nonBroadcastStream instanceof KeyedStream) {
-			return BroadcastStateTransformation.forKeyedStream(
-					functionName,
-					(KeyedStream<IN1, ?>) nonBroadcastStream,
-					broadcastStream,
-					SimpleOperatorFactory.of(operator),
-					outTypeInfo,
-					environment.getParallelism());
-		} else {
-			return BroadcastStateTransformation.forNonKeyedStream(
-					functionName,
-					nonBroadcastStream,
-					broadcastStream,
-					SimpleOperatorFactory.of(operator),
-					outTypeInfo,
-					environment.getParallelism());
+		if (inputStream1 instanceof KeyedStream) {
+			KeyedStream<IN1, ?> keyedInput1 = (KeyedStream<IN1, ?>) inputStream1;
+			TypeInformation<?> keyType1 = keyedInput1.getKeyType();
+			transform.setStateKeySelectors(keyedInput1.getKeySelector(), null);
+			transform.setStateKeyType(keyType1);
 		}
+
+		@SuppressWarnings({ "unchecked", "rawtypes" })
+		SingleOutputStreamOperator<OUT> returnStream = new SingleOutputStreamOperator(environment, transform);
+
+		getExecutionEnvironment().addOperator(transform);
+
+		return returnStream;
 	}
 
 	protected <F> F clean(F f) {

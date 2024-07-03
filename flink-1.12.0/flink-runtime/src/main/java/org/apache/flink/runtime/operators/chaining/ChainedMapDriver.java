@@ -34,6 +34,7 @@ public class ChainedMapDriver<IT, OT> extends ChainedDriver<IT, OT> {
 
 	@Override
 	public void setup(AbstractInvokable parent) {
+		@SuppressWarnings("unchecked")
 		final MapFunction<IT, OT> mapper =
 			BatchTask.instantiateUserCode(this.config, userCodeClassLoader, MapFunction.class);
 		this.mapper = mapper;
@@ -56,7 +57,6 @@ public class ChainedMapDriver<IT, OT> extends ChainedDriver<IT, OT> {
 		try {
 			FunctionUtils.closeFunction(this.mapper);
 		} catch (Throwable t) {
-			// Ignore exception.
 		}
 	}
 

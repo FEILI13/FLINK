@@ -19,10 +19,8 @@
 package org.apache.flink.api.scala.typeutils;
 
 import org.apache.flink.api.common.typeutils.CompositeTypeSerializerConfigSnapshot;
-import org.apache.flink.api.common.typeutils.CompositeTypeSerializerUtil;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.TypeSerializerConfigSnapshot;
-import org.apache.flink.api.common.typeutils.TypeSerializerSchemaCompatibility;
 
 import scala.util.Try;
 
@@ -33,7 +31,6 @@ import scala.util.Try;
  * allow calling different base class constructors from subclasses, while we need that
  * for the default empty constructor.
  */
-@Deprecated
 public class ScalaTrySerializerConfigSnapshot<E> extends CompositeTypeSerializerConfigSnapshot<Try<E>> {
 
 	private static final int VERSION = 1;
@@ -51,15 +48,5 @@ public class ScalaTrySerializerConfigSnapshot<E> extends CompositeTypeSerializer
 	@Override
 	public int getVersion() {
 		return VERSION;
-	}
-
-	@Override
-	public TypeSerializerSchemaCompatibility<Try<E>> resolveSchemaCompatibility(TypeSerializer<Try<E>> newSerializer) {
-
-		return CompositeTypeSerializerUtil.delegateCompatibilityCheckToNewSnapshot(
-			newSerializer,
-			new ScalaTrySerializerSnapshot<>(),
-			getNestedSerializersAndConfigs().get(0).f1,
-			getNestedSerializersAndConfigs().get(1).f1);
 	}
 }

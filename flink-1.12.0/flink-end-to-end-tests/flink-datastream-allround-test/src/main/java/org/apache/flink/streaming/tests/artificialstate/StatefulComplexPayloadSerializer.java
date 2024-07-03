@@ -18,8 +18,10 @@
 
 package org.apache.flink.streaming.tests.artificialstate;
 
-import org.apache.flink.api.common.typeutils.SimpleTypeSerializerSnapshot;
+import org.apache.flink.api.common.typeutils.CompatibilityResult;
+import org.apache.flink.api.common.typeutils.ParameterlessTypeSerializerConfig;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.api.common.typeutils.TypeSerializerConfigSnapshot;
 import org.apache.flink.api.java.typeutils.runtime.DataInputViewStream;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
@@ -131,23 +133,38 @@ public class StatefulComplexPayloadSerializer extends TypeSerializer<ComplexPayl
 	}
 
 	@Override
+	public boolean canEqual(Object obj) {
+		return getClass().equals(obj.getClass());
+	}
+
+	@Override
 	public int hashCode() {
 		return 42;
 	}
 
 	@Override
-	public Snapshot snapshotConfiguration() {
-		return new Snapshot();
+	public TypeSerializerConfigSnapshot<ComplexPayload> snapshotConfiguration() {
+		// type serializer singletons should always be parameter-less
+		return new ParameterlessTypeSerializerConfig<>(getSerializationFormatIdentifier());
 	}
 
-	// ----------------------------------------------------------------------------------------
+	@Override
+	public CompatibilityResult<ComplexPayload> ensureCompatibility(TypeSerializerConfigSnapshot<?> configSnapshot) {
+		if (configSnapshot instanceof ParameterlessTypeSerializerConfig
+			&& isCompatibleSerializationFormatIdentifier(
+			((ParameterlessTypeSerializerConfig<?>) configSnapshot).getSerializationFormatIdentifier())) {
 
-	/**
-	 * Snapshot for the {@link StatefulComplexPayloadSerializer}.
-	 */
-	public static class Snapshot extends SimpleTypeSerializerSnapshot<ComplexPayload> {
-		public Snapshot() {
-			super(StatefulComplexPayloadSerializer::new);
+			return CompatibilityResult.compatible();
+		} else {
+			return CompatibilityResult.requiresMigration();
 		}
+	}
+
+	private boolean isCompatibleSerializationFormatIdentifier(String identifier) {
+		return identifier.equals(getSerializationFormatIdentifier());
+	}
+
+	private String getSerializationFormatIdentifier() {
+		return getClass().getCanonicalName();
 	}
 }

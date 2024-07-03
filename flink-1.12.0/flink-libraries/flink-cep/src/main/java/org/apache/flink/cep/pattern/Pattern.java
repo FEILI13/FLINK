@@ -18,16 +18,14 @@
 
 package org.apache.flink.cep.pattern;
 
-import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.java.ClosureCleaner;
 import org.apache.flink.cep.nfa.NFA;
 import org.apache.flink.cep.nfa.aftermatch.AfterMatchSkipStrategy;
 import org.apache.flink.cep.pattern.Quantifier.ConsumingStrategy;
 import org.apache.flink.cep.pattern.Quantifier.Times;
-import org.apache.flink.cep.pattern.conditions.BooleanConditions;
+import org.apache.flink.cep.pattern.conditions.AndCondition;
 import org.apache.flink.cep.pattern.conditions.IterativeCondition;
-import org.apache.flink.cep.pattern.conditions.RichAndCondition;
-import org.apache.flink.cep.pattern.conditions.RichOrCondition;
+import org.apache.flink.cep.pattern.conditions.OrCondition;
 import org.apache.flink.cep.pattern.conditions.SubtypeCondition;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.util.Preconditions;
@@ -107,11 +105,7 @@ public class Pattern<T, F extends T> {
 	}
 
 	public IterativeCondition<F> getCondition() {
-		if (condition != null) {
-			return condition;
-		} else {
-			return BooleanConditions.trueFunction();
-		}
+		return condition;
 	}
 
 	public IterativeCondition<F> getUntilCondition() {
@@ -156,11 +150,11 @@ public class Pattern<T, F extends T> {
 	public Pattern<T, F> where(IterativeCondition<F> condition) {
 		Preconditions.checkNotNull(condition, "The condition cannot be null.");
 
-		ClosureCleaner.clean(condition, ExecutionConfig.ClosureCleanerLevel.RECURSIVE, true);
+		ClosureCleaner.clean(condition, true);
 		if (this.condition == null) {
 			this.condition = condition;
 		} else {
-			this.condition = new RichAndCondition<>(this.condition, condition);
+			this.condition = new AndCondition<>(this.condition, condition);
 		}
 		return this;
 	}
@@ -178,12 +172,12 @@ public class Pattern<T, F extends T> {
 	public Pattern<T, F> or(IterativeCondition<F> condition) {
 		Preconditions.checkNotNull(condition, "The condition cannot be null.");
 
-		ClosureCleaner.clean(condition, ExecutionConfig.ClosureCleanerLevel.RECURSIVE, true);
+		ClosureCleaner.clean(condition, true);
 
 		if (this.condition == null) {
 			this.condition = condition;
 		} else {
-			this.condition = new RichOrCondition<>(this.condition, condition);
+			this.condition = new OrCondition<>(this.condition, condition);
 		}
 		return this;
 	}
@@ -202,7 +196,7 @@ public class Pattern<T, F extends T> {
 		if (condition == null) {
 			this.condition = new SubtypeCondition<F>(subtypeClass);
 		} else {
-			this.condition = new RichAndCondition<>(condition, new SubtypeCondition<F>(subtypeClass));
+			this.condition = new AndCondition<>(condition, new SubtypeCondition<F>(subtypeClass));
 		}
 
 		@SuppressWarnings("unchecked")
@@ -228,7 +222,7 @@ public class Pattern<T, F extends T> {
 			throw new MalformedPatternException("The until condition is only applicable to looping states.");
 		}
 
-		ClosureCleaner.clean(untilCondition, ExecutionConfig.ClosureCleanerLevel.RECURSIVE, true);
+		ClosureCleaner.clean(untilCondition, true);
 		this.untilCondition = untilCondition;
 
 		return this;

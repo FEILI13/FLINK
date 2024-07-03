@@ -18,47 +18,37 @@
 package org.apache.flink.contrib.streaming.state;
 
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.configuration.CheckpointingOptions;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.IllegalConfigurationException;
-import org.apache.flink.configuration.ReadableConfig;
-import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.runtime.execution.Environment;
-import org.apache.flink.runtime.memory.OpaqueMemoryResource;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.AbstractKeyedStateBackend;
-import org.apache.flink.runtime.state.AbstractManagedMemoryStateBackend;
 import org.apache.flink.runtime.state.AbstractStateBackend;
-import org.apache.flink.runtime.state.CheckpointStorageAccess;
+import org.apache.flink.runtime.state.CheckpointStorage;
 import org.apache.flink.runtime.state.CompletedCheckpointStorageLocation;
 import org.apache.flink.runtime.state.ConfigurableStateBackend;
-import org.apache.flink.runtime.state.DefaultOperatorStateBackendBuilder;
+import org.apache.flink.runtime.state.DefaultOperatorStateBackend;
 import org.apache.flink.runtime.state.KeyGroupRange;
-import org.apache.flink.runtime.state.KeyedStateHandle;
 import org.apache.flink.runtime.state.LocalRecoveryConfig;
 import org.apache.flink.runtime.state.OperatorStateBackend;
-import org.apache.flink.runtime.state.OperatorStateHandle;
 import org.apache.flink.runtime.state.StateBackend;
-import org.apache.flink.runtime.state.StreamCompressionDecorator;
 import org.apache.flink.runtime.state.filesystem.FsStateBackend;
 import org.apache.flink.runtime.state.ttl.TtlTimeProvider;
 import org.apache.flink.util.AbstractID;
-import org.apache.flink.util.DynamicCodeLoadingException;
-import org.apache.flink.util.FileUtils;
-import org.apache.flink.util.FlinkRuntimeException;
-import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.TernaryBoolean;
 
+import org.rocksdb.ColumnFamilyOptions;
+import org.rocksdb.DBOptions;
 import org.rocksdb.NativeLibraryLoader;
 import org.rocksdb.RocksDB;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import java.io.File;
@@ -67,15 +57,11 @@ import java.lang.reflect.Field;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
 
-import static org.apache.flink.contrib.streaming.state.RocksDBConfigurableOptions.WRITE_BATCH_SIZE;
-import static org.apache.flink.contrib.streaming.state.RocksDBOptions.CHECKPOINT_TRANSFER_THREAD_NUM;
 import static org.apache.flink.contrib.streaming.state.RocksDBOptions.TIMER_SERVICE_FACTORY;
-import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
@@ -89,9 +75,9 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  *
  * <p>The behavior of the RocksDB instances can be parametrized by setting RocksDB Options
  * using the methods {@link #setPredefinedOptions(PredefinedOptions)} and
- * {@link #setRocksDBOptions(RocksDBOptionsFactory)}.
+ * {@link #setOptions(OptionsFactory)}.
  */
-public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend implements ConfigurableStateBackend {
+public class RocksDBStateBackend extends AbstractStateBackend implements ConfigurableStateBackend {
 
 	/**
 	 * The options to chose for the type of priority queue state.
@@ -111,9 +97,6 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 	/** Flag whether the native library has been loaded. */
 	private static boolean rocksDbInitialized = false;
 
-	private static final int UNDEFINED_NUMBER_OF_TRANSFER_THREADS = -1;
-	private static final long UNDEFINED_WRITE_BATCH_SIZE = -1;
-
 	// ------------------------------------------------------------------------
 
 	// -- configuration values, set in the application / configuration
@@ -128,25 +111,17 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 	private File[] localRocksDbDirectories;
 
 	/** The pre-configured option settings. */
-	@Nullable
-	private PredefinedOptions predefinedOptions;
+	private PredefinedOptions predefinedOptions = PredefinedOptions.DEFAULT;
 
 	/** The options factory to create the RocksDB options in the cluster. */
 	@Nullable
-	private RocksDBOptionsFactory rocksDbOptionsFactory;
+	private OptionsFactory optionsFactory;
 
 	/** This determines if incremental checkpointing is enabled. */
 	private final TernaryBoolean enableIncrementalCheckpointing;
 
-	/** Thread number used to transfer (download and upload) state, default value: 1. */
-	private int numberOfTransferThreads;
-
-	/** The configuration for memory settings (pool sizes, etc.). */
-	private final RocksDBMemoryConfiguration memoryConfiguration;
-
 	/** This determines the type of priority queue state. */
-	@Nullable
-	private PriorityQueueStateType priorityQueueStateType;
+	private final PriorityQueueStateType priorityQueueStateType;
 
 	/** The default rocksdb metrics options. */
 	private final RocksDBNativeMetricOptions defaultMetricOptions;
@@ -164,11 +139,6 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 
 	/** Whether we already lazily initialized our local storage directories. */
 	private transient boolean isInitialized;
-
-	/**
-	 * Max consumed memory size for one batch in {@link RocksDBWriteBatchWrapper}, default value 2mb.
-	 */
-	private long writeBatchSize;
 
 	// ------------------------------------------------------------------------
 
@@ -217,6 +187,7 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 	 * @param checkpointDataUri The URI describing the filesystem and path to the checkpoint data directory.
 	 * @throws IOException Thrown, if no file system can be found for the scheme in the URI.
 	 */
+	@SuppressWarnings("deprecation")
 	public RocksDBStateBackend(URI checkpointDataUri) throws IOException {
 		this(new FsStateBackend(checkpointDataUri));
 	}
@@ -234,6 +205,7 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 	 * @param enableIncrementalCheckpointing True if incremental checkpointing is enabled.
 	 * @throws IOException Thrown, if no file system can be found for the scheme in the URI.
 	 */
+	@SuppressWarnings("deprecation")
 	public RocksDBStateBackend(URI checkpointDataUri, boolean enableIncrementalCheckpointing) throws IOException {
 		this(new FsStateBackend(checkpointDataUri), enableIncrementalCheckpointing);
 	}
@@ -266,10 +238,9 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 	public RocksDBStateBackend(StateBackend checkpointStreamBackend, TernaryBoolean enableIncrementalCheckpointing) {
 		this.checkpointStreamBackend = checkNotNull(checkpointStreamBackend);
 		this.enableIncrementalCheckpointing = enableIncrementalCheckpointing;
-		this.numberOfTransferThreads = UNDEFINED_NUMBER_OF_TRANSFER_THREADS;
+		// for now, we use still the heap-based implementation as default
+		this.priorityQueueStateType = PriorityQueueStateType.HEAP;
 		this.defaultMetricOptions = new RocksDBNativeMetricOptions();
-		this.memoryConfiguration = new RocksDBMemoryConfiguration();
-		this.writeBatchSize = UNDEFINED_WRITE_BATCH_SIZE;
 	}
 
 	/**
@@ -293,46 +264,29 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 	 *
 	 * @param original The state backend to re-configure.
 	 * @param config The configuration.
-	 * @param classLoader The class loader.
 	 */
-	private RocksDBStateBackend(RocksDBStateBackend original, ReadableConfig config, ClassLoader classLoader) {
+	private RocksDBStateBackend(RocksDBStateBackend original, Configuration config) {
 		// reconfigure the state backend backing the streams
 		final StateBackend originalStreamBackend = original.checkpointStreamBackend;
 		this.checkpointStreamBackend = originalStreamBackend instanceof ConfigurableStateBackend ?
-				((ConfigurableStateBackend) originalStreamBackend).configure(config, classLoader) :
+				((ConfigurableStateBackend) originalStreamBackend).configure(config) :
 				originalStreamBackend;
 
 		// configure incremental checkpoints
 		this.enableIncrementalCheckpointing = original.enableIncrementalCheckpointing.resolveUndefined(
-			config.get(CheckpointingOptions.INCREMENTAL_CHECKPOINTS));
+			config.getBoolean(CheckpointingOptions.INCREMENTAL_CHECKPOINTS));
 
-		if (original.numberOfTransferThreads == UNDEFINED_NUMBER_OF_TRANSFER_THREADS) {
-			this.numberOfTransferThreads = config.get(CHECKPOINT_TRANSFER_THREAD_NUM);
-		} else {
-			this.numberOfTransferThreads = original.numberOfTransferThreads;
-		}
+		final String priorityQueueTypeString = config.getString(TIMER_SERVICE_FACTORY);
 
-		if (original.writeBatchSize == UNDEFINED_WRITE_BATCH_SIZE) {
-			this.writeBatchSize = config.get(WRITE_BATCH_SIZE).getBytes();
-		} else {
-			this.writeBatchSize = original.writeBatchSize;
-		}
-
-		this.memoryConfiguration = RocksDBMemoryConfiguration.fromOtherAndConfiguration(original.memoryConfiguration, config);
-		this.memoryConfiguration.validate();
-
-		if (null == original.priorityQueueStateType) {
-			this.priorityQueueStateType = config.get(TIMER_SERVICE_FACTORY);
-		} else {
-			this.priorityQueueStateType = original.priorityQueueStateType;
-		}
+		this.priorityQueueStateType = priorityQueueTypeString.length() > 0 ?
+			PriorityQueueStateType.valueOf(priorityQueueTypeString.toUpperCase()) : original.priorityQueueStateType;
 
 		// configure local directories
 		if (original.localRocksDbDirectories != null) {
 			this.localRocksDbDirectories = original.localRocksDbDirectories;
 		}
 		else {
-			final String rocksdbLocalPaths = config.get(RocksDBOptions.LOCAL_DIRECTORIES);
+			final String rocksdbLocalPaths = config.getString(RocksDBOptions.LOCAL_DIRECTORIES);
 			if (rocksdbLocalPaths != null) {
 				String[] directories = rocksdbLocalPaths.split(",|" + File.pathSeparator);
 
@@ -349,21 +303,9 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 		// configure metric options
 		this.defaultMetricOptions = RocksDBNativeMetricOptions.fromConfig(config);
 
-		// configure RocksDB predefined options
-		this.predefinedOptions = original.predefinedOptions == null ?
-			PredefinedOptions.valueOf(config.get(RocksDBOptions.PREDEFINED_OPTIONS)) : original.predefinedOptions;
-		LOG.info("Using predefined options: {}.", predefinedOptions.name());
-
-		// configure RocksDB options factory
-		try {
-			rocksDbOptionsFactory = configureOptionsFactory(
-				original.rocksDbOptionsFactory,
-				config.get(RocksDBOptions.OPTIONS_FACTORY),
-				config,
-				classLoader);
-		} catch (DynamicCodeLoadingException e) {
-			throw new FlinkRuntimeException(e);
-		}
+		// copy remaining settings
+		this.predefinedOptions = original.predefinedOptions;
+		this.optionsFactory = original.optionsFactory;
 	}
 
 	// ------------------------------------------------------------------------
@@ -374,13 +316,12 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 	 * Creates a copy of this state backend that uses the values defined in the configuration
 	 * for fields where that were not yet specified in this state backend.
 	 *
-	 * @param config The configuration.
-	 * @param classLoader The class loader.
+	 * @param config the configuration
 	 * @return The re-configured variant of the state backend
 	 */
 	@Override
-	public RocksDBStateBackend configure(ReadableConfig config, ClassLoader classLoader) {
-		return new RocksDBStateBackend(this, config, classLoader);
+	public RocksDBStateBackend configure(Configuration config) {
+		return new RocksDBStateBackend(this, config);
 	}
 
 	// ------------------------------------------------------------------------
@@ -462,7 +403,7 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 	}
 
 	@Override
-	public CheckpointStorageAccess createCheckpointStorage(JobID jobId) throws IOException {
+	public CheckpointStorage createCheckpointStorage(JobID jobId) throws IOException {
 		return checkpointStreamBackend.createCheckpointStorage(jobId);
 	}
 
@@ -480,39 +421,7 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 			KeyGroupRange keyGroupRange,
 			TaskKvStateRegistry kvStateRegistry,
 			TtlTimeProvider ttlTimeProvider,
-			MetricGroup metricGroup,
-			@Nonnull Collection<KeyedStateHandle> stateHandles,
-			CloseableRegistry cancelStreamRegistry) throws IOException {
-		return createKeyedStateBackend(
-			env,
-			jobID,
-			operatorIdentifier,
-			keySerializer,
-			numberOfKeyGroups,
-			keyGroupRange,
-			kvStateRegistry,
-			ttlTimeProvider,
-			metricGroup,
-			stateHandles,
-			cancelStreamRegistry,
-			1.0
-		);
-	}
-
-	@Override
-	public <K> AbstractKeyedStateBackend<K> createKeyedStateBackend(
-		Environment env,
-		JobID jobID,
-		String operatorIdentifier,
-		TypeSerializer<K> keySerializer,
-		int numberOfKeyGroups,
-		KeyGroupRange keyGroupRange,
-		TaskKvStateRegistry kvStateRegistry,
-		TtlTimeProvider ttlTimeProvider,
-		MetricGroup metricGroup,
-		@Nonnull Collection<KeyedStateHandle> stateHandles,
-		CloseableRegistry cancelStreamRegistry,
-		double managedMemoryFraction) throws IOException {
+			MetricGroup metricGroup) throws IOException {
 
 		// first, make sure that the RocksDB JNI library is loaded
 		// we do this explicitly here to have better error handling
@@ -531,114 +440,41 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 		LocalRecoveryConfig localRecoveryConfig =
 			env.getTaskStateManager().createLocalRecoveryConfig();
 
-		final OpaqueMemoryResource<RocksDBSharedResources> sharedResources = RocksDBOperationUtils
-				.allocateSharedCachesIfConfigured(memoryConfiguration, env.getMemoryManager(), managedMemoryFraction, LOG);
-		if (sharedResources != null) {
-			LOG.info("Obtained shared RocksDB cache of size {} bytes", sharedResources.getSize());
-		}
-		final RocksDBResourceContainer resourceContainer = createOptionsAndResourceContainer(sharedResources);
-
-		ExecutionConfig executionConfig = env.getExecutionConfig();
-		StreamCompressionDecorator keyGroupCompressionDecorator = getCompressionDecorator(executionConfig);
-		RocksDBKeyedStateBackendBuilder<K> builder = new RocksDBKeyedStateBackendBuilder<>(
-			operatorIdentifier,
-			env.getUserCodeClassLoader().asClassLoader(),
-			instanceBasePath,
-			resourceContainer,
-			stateName -> resourceContainer.getColumnOptions(),
-			kvStateRegistry,
-			keySerializer,
-			numberOfKeyGroups,
-			keyGroupRange,
-			executionConfig,
-			localRecoveryConfig,
-			getPriorityQueueStateType(),
-			ttlTimeProvider,
-			metricGroup,
-			stateHandles,
-			keyGroupCompressionDecorator,
-			cancelStreamRegistry)
-			.setEnableIncrementalCheckpointing(isIncrementalCheckpointsEnabled())
-			.setNumberOfTransferingThreads(getNumberOfTransferThreads())
-			.setNativeMetricOptions(resourceContainer.getMemoryWatcherOptions(defaultMetricOptions))
-			.setWriteBatchSize(getWriteBatchSize());
-		return builder.build();
+		return new RocksDBKeyedStateBackend<>(
+				operatorIdentifier,
+				env.getUserClassLoader(),
+				instanceBasePath,
+				getDbOptions(),
+				getColumnOptions(),
+				kvStateRegistry,
+				keySerializer,
+				numberOfKeyGroups,
+				keyGroupRange,
+				env.getExecutionConfig(),
+				isIncrementalCheckpointsEnabled(),
+				localRecoveryConfig,
+				priorityQueueStateType,
+				ttlTimeProvider,
+				getMemoryWatcherOptions(),
+				metricGroup);
 	}
 
 	@Override
 	public OperatorStateBackend createOperatorStateBackend(
-		Environment env,
-		String operatorIdentifier,
-		@Nonnull Collection<OperatorStateHandle> stateHandles,
-		CloseableRegistry cancelStreamRegistry) throws Exception {
+			Environment env,
+			String operatorIdentifier) throws Exception {
 
 		//the default for RocksDB; eventually there can be a operator state backend based on RocksDB, too.
 		final boolean asyncSnapshots = true;
-		return new DefaultOperatorStateBackendBuilder(
-			env.getUserCodeClassLoader().asClassLoader(),
-			env.getExecutionConfig(),
-			asyncSnapshots,
-			stateHandles,
-			cancelStreamRegistry).build();
-	}
-
-	private RocksDBOptionsFactory configureOptionsFactory(
-			@Nullable RocksDBOptionsFactory originalOptionsFactory,
-			String factoryClassName,
-			ReadableConfig config,
-			ClassLoader classLoader) throws DynamicCodeLoadingException {
-
-		if (originalOptionsFactory != null) {
-			if (originalOptionsFactory instanceof ConfigurableRocksDBOptionsFactory) {
-				originalOptionsFactory = ((ConfigurableRocksDBOptionsFactory) originalOptionsFactory).configure(config);
-			}
-			LOG.info("Using application-defined options factory: {}.", originalOptionsFactory);
-
-			return originalOptionsFactory;
-		}
-
-		// if using DefaultConfigurableOptionsFactory by default, we could avoid reflection to speed up.
-		if (factoryClassName.equalsIgnoreCase(DefaultConfigurableOptionsFactory.class.getName())) {
-			DefaultConfigurableOptionsFactory optionsFactory = new DefaultConfigurableOptionsFactory();
-			optionsFactory.configure(config);
-			LOG.info("Using default options factory: {}.", optionsFactory);
-
-			return optionsFactory;
-		} else {
-			try {
-				@SuppressWarnings("rawtypes")
-				Class<? extends RocksDBOptionsFactory> clazz =
-					Class.forName(factoryClassName, false, classLoader)
-						.asSubclass(RocksDBOptionsFactory.class);
-
-				RocksDBOptionsFactory optionsFactory = clazz.newInstance();
-				if (optionsFactory instanceof ConfigurableRocksDBOptionsFactory) {
-					optionsFactory = ((ConfigurableRocksDBOptionsFactory) optionsFactory).configure(config);
-				}
-				LOG.info("Using configured options factory: {}.", optionsFactory);
-
-				return optionsFactory;
-			} catch (ClassNotFoundException e) {
-				throw new DynamicCodeLoadingException(
-					"Cannot find configured options factory class: " + factoryClassName, e);
-			} catch (ClassCastException | InstantiationException | IllegalAccessException e) {
-				throw new DynamicCodeLoadingException("The class configured under '" +
-					RocksDBOptions.OPTIONS_FACTORY.key() + "' is not a valid options factory (" +
-					factoryClassName + ')', e);
-			}
-		}
+		return new DefaultOperatorStateBackend(
+				env.getUserClassLoader(),
+				env.getExecutionConfig(),
+				asyncSnapshots);
 	}
 
 	// ------------------------------------------------------------------------
 	//  Parameters
 	// ------------------------------------------------------------------------
-
-	/**
-	 * Gets the memory configuration object, which offers settings to control RocksDB's memory usage.
-	 */
-	public RocksDBMemoryConfiguration getMemoryConfiguration() {
-		return memoryConfiguration;
-	}
 
 	/**
 	 * Sets the path where the RocksDB local database files should be stored on the local
@@ -751,21 +587,6 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 		return enableIncrementalCheckpointing.getOrDefault(CheckpointingOptions.INCREMENTAL_CHECKPOINTS.defaultValue());
 	}
 
-	/**
-	 * Gets the type of the priority queue state. It will fallback to the default value, if it is not explicitly set.
-	 * @return The type of the priority queue state.
-	 */
-	public PriorityQueueStateType getPriorityQueueStateType() {
-		return priorityQueueStateType == null ? TIMER_SERVICE_FACTORY.defaultValue() : priorityQueueStateType;
-	}
-
-	/**
-	 * Sets the type of the priority queue state. It will fallback to the default value, if it is not explicitly set.
-	 */
-	public void setPriorityQueueStateType(PriorityQueueStateType priorityQueueStateType) {
-		this.priorityQueueStateType = checkNotNull(priorityQueueStateType);
-	}
-
 	// ------------------------------------------------------------------------
 	//  Parametrize with RocksDB Options
 	// ------------------------------------------------------------------------
@@ -773,14 +594,13 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 	/**
 	 * Sets the predefined options for RocksDB.
 	 *
-	 * <p>If user-configured options within {@link RocksDBConfigurableOptions} is set (through flink-conf.yaml)
-	 * or a user-defined options factory is set (via {@link #setRocksDBOptions(RocksDBOptionsFactory)}),
+	 * <p>If a user-defined options factory is set (via {@link #setOptions(OptionsFactory)}),
 	 * then the options from the factory are applied on top of the here specified
-	 * predefined options and customized options.
+	 * predefined options.
 	 *
 	 * @param options The options to set (must not be null).
 	 */
-	public void setPredefinedOptions(@Nonnull PredefinedOptions options) {
+	public void setPredefinedOptions(PredefinedOptions options) {
 		predefinedOptions = checkNotNull(options);
 	}
 
@@ -789,17 +609,12 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 	 * The default options (if nothing was set via {@link #setPredefinedOptions(PredefinedOptions)})
 	 * are {@link PredefinedOptions#DEFAULT}.
 	 *
-	 * <p>If user-configured options within {@link RocksDBConfigurableOptions} is set (through flink-conf.yaml)
-	 * of a user-defined options factory is set (via {@link #setRocksDBOptions(RocksDBOptionsFactory)}),
-	 * then the options from the factory are applied on top of the predefined and customized options.
+	 * <p>If a user-defined  options factory is set (via {@link #setOptions(OptionsFactory)}),
+	 * then the options from the factory are applied on top of the predefined options.
 	 *
 	 * @return The currently set predefined options for RocksDB.
 	 */
-	@VisibleForTesting
 	public PredefinedOptions getPredefinedOptions() {
-		if (predefinedOptions == null) {
-			predefinedOptions = PredefinedOptions.DEFAULT;
-		}
 		return predefinedOptions;
 	}
 
@@ -816,94 +631,64 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 	 *
 	 * @param optionsFactory The options factory that lazily creates the RocksDB options.
 	 */
-	public void setRocksDBOptions(RocksDBOptionsFactory optionsFactory) {
-		this.rocksDbOptionsFactory = optionsFactory;
+	public void setOptions(OptionsFactory optionsFactory) {
+		this.optionsFactory = optionsFactory;
 	}
 
 	/**
-	 * Gets {@link org.rocksdb.Options} for the RocksDB instances.
+	 * Gets the options factory that lazily creates the RocksDB options.
 	 *
-	 * <p>The options created by the factory here are applied on top of the pre-defined
-	 * options profile selected via {@link #setPredefinedOptions(PredefinedOptions)}.
-	 * If the pre-defined options profile is the default
-	 * ({@link PredefinedOptions#DEFAULT}), then the factory fully controls the RocksDB options.
+	 * @return The options factory.
 	 */
-	@Nullable
-	public RocksDBOptionsFactory getRocksDBOptions() {
-		return rocksDbOptionsFactory;
+	public OptionsFactory getOptions() {
+		return optionsFactory;
 	}
 
 	/**
-	 * Gets the number of threads used to transfer files while snapshotting/restoring.
+	 * Gets the RocksDB {@link DBOptions} to be used for all RocksDB instances.
 	 */
-	public int getNumberOfTransferThreads() {
-		return numberOfTransferThreads == UNDEFINED_NUMBER_OF_TRANSFER_THREADS ?
-			CHECKPOINT_TRANSFER_THREAD_NUM.defaultValue() : numberOfTransferThreads;
+	public DBOptions getDbOptions() {
+		// initial options from pre-defined profile
+		DBOptions opt = predefinedOptions.createDBOptions();
+
+		// add user-defined options, if specified
+		if (optionsFactory != null) {
+			opt = optionsFactory.createDBOptions(opt);
+		}
+
+		// add necessary default options
+		opt = opt.setCreateIfMissing(true);
+
+		return opt;
 	}
 
 	/**
-	 * Sets the number of threads used to transfer files while snapshotting/restoring.
-	 *
-	 * @param numberOfTransferThreads The number of threads used to transfer files while snapshotting/restoring.
+	 * Gets the RocksDB {@link ColumnFamilyOptions} to be used for all RocksDB instances.
 	 */
-	public void setNumberOfTransferThreads(int numberOfTransferThreads) {
-		Preconditions.checkArgument(numberOfTransferThreads > 0,
-			"The number of threads used to transfer files in RocksDBStateBackend should be greater than zero.");
-		this.numberOfTransferThreads = numberOfTransferThreads;
+	public ColumnFamilyOptions getColumnOptions() {
+		// initial options from pre-defined profile
+		ColumnFamilyOptions opt = predefinedOptions.createColumnOptions();
+
+		// add user-defined options, if specified
+		if (optionsFactory != null) {
+			opt = optionsFactory.createColumnOptions(opt);
+		}
+
+		return opt;
 	}
 
-	/**
-	 * @deprecated Typo in method name. Use {@link #getNumberOfTransferThreads} instead.
-	 */
-	@Deprecated
-	public int getNumberOfTransferingThreads() {
-		return getNumberOfTransferThreads();
-	}
+	public RocksDBNativeMetricOptions getMemoryWatcherOptions() {
+		RocksDBNativeMetricOptions options = this.defaultMetricOptions;
+		if (optionsFactory != null) {
+			options = optionsFactory.createNativeMetricsOptions(options);
+		}
 
-	/**
-	 * @deprecated Typo in method name. Use {@link #setNumberOfTransferThreads(int)} instead.
-	 */
-	@Deprecated
-	public void setNumberOfTransferingThreads(int numberOfTransferingThreads) {
-		setNumberOfTransferThreads(numberOfTransferingThreads);
-	}
-
-	/**
-	 * Gets the max batch size will be used in {@link RocksDBWriteBatchWrapper}.
-	 */
-	public long getWriteBatchSize() {
-		return writeBatchSize == UNDEFINED_WRITE_BATCH_SIZE ?
-			WRITE_BATCH_SIZE.defaultValue().getBytes() : writeBatchSize;
-	}
-
-	/**
-	 * Sets the max batch size will be used in {@link RocksDBWriteBatchWrapper},
-	 * no positive value will disable memory size controller, just use item count controller.
-	 * @param writeBatchSize The size will used to be used in {@link RocksDBWriteBatchWrapper}.
-	 */
-	public void setWriteBatchSize(long writeBatchSize) {
-		checkArgument(writeBatchSize >= 0, "Write batch size have to be no negative.");
-		this.writeBatchSize = writeBatchSize;
+		return options;
 	}
 
 	// ------------------------------------------------------------------------
 	//  utilities
 	// ------------------------------------------------------------------------
-
-	@VisibleForTesting
-	RocksDBResourceContainer createOptionsAndResourceContainer() {
-		return createOptionsAndResourceContainer(null);
-	}
-
-	@VisibleForTesting
-	private RocksDBResourceContainer createOptionsAndResourceContainer(
-		@Nullable OpaqueMemoryResource<RocksDBSharedResources> sharedResources) {
-
-		return new RocksDBResourceContainer(
-			predefinedOptions != null ? predefinedOptions : PredefinedOptions.DEFAULT,
-			rocksDbOptionsFactory,
-			sharedResources);
-	}
 
 	@Override
 	public String toString() {
@@ -911,8 +696,6 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 				"checkpointStreamBackend=" + checkpointStreamBackend +
 				", localRocksDbDirectories=" + Arrays.toString(localRocksDbDirectories) +
 				", enableIncrementalCheckpointing=" + enableIncrementalCheckpointing +
-				", numberOfTransferThreads=" + numberOfTransferThreads +
-				", writeBatchSize=" + writeBatchSize +
 				'}';
 	}
 
@@ -920,8 +703,7 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 	//  static library loading utilities
 	// ------------------------------------------------------------------------
 
-	@VisibleForTesting
-	static void ensureRocksDBIsLoaded(String tempDirectory) throws IOException {
+	private void ensureRocksDBIsLoaded(String tempDirectory) throws IOException {
 		synchronized (RocksDBStateBackend.class) {
 			if (!rocksDbInitialized) {
 
@@ -930,7 +712,6 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 
 				Throwable lastException = null;
 				for (int attempt = 1; attempt <= ROCKSDB_LIB_LOADING_ATTEMPTS; attempt++) {
-					File rocksLibFolder = null;
 					try {
 						// when multiple instances of this class and RocksDB exist in different
 						// class loaders, then we can see the following exception:
@@ -942,7 +723,7 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 						//  instances of the same JNI library being loaded in different class loaders, but
 						//  apparently not when coming from the same file path, so there we go)
 
-						rocksLibFolder = new File(tempDirParent, "rocksdb-lib-" + new AbstractID());
+						final File rocksLibFolder = new File(tempDirParent, "rocksdb-lib-" + new AbstractID());
 
 						// make sure the temp path exists
 						LOG.debug("Attempting to create RocksDB native library folder {}", rocksLibFolder);
@@ -970,8 +751,6 @@ public class RocksDBStateBackend extends AbstractManagedMemoryStateBackend imple
 						} catch (Throwable tt) {
 							LOG.debug("Failed to reset 'initialized' flag in RocksDB native code loader", tt);
 						}
-
-						FileUtils.deleteDirectoryQuietly(rocksLibFolder);
 					}
 				}
 

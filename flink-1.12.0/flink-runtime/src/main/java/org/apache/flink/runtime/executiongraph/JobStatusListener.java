@@ -19,7 +19,7 @@
 package org.apache.flink.runtime.executiongraph;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.api.common.JobStatus;
+import org.apache.flink.runtime.jobgraph.JobStatus;
 
 /**
  * Interface for observers that monitor the status of a job.

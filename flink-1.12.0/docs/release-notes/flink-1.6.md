@@ -38,6 +38,6 @@ You should only use this feature if you are executing a stateless streaming job.
 In any other cases, it is highly recommended to remove the config option `jobmanager.execution.failover-strategy` from your `flink-conf.yaml` or set it to `"full"`.
 
 In order to avoid future problems, this feature has been removed from the documentation until it will be fixed.
-See [FLINK-10880](https://issues.apache.org/jira/browse/FLINK-10880) for more details. 
+See [FLINK-10880](https://issues.apache.org/jira/browse/FLINK-10880) for more details.
 
 {% top %}

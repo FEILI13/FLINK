@@ -37,7 +37,6 @@ public interface LogicalSlot {
 	Payload TERMINATED_PAYLOAD = new Payload() {
 
 		private final CompletableFuture<?> completedTerminationFuture = CompletableFuture.completedFuture(null);
-
 		@Override
 		public void fail(Throwable cause) {
 			// ignore

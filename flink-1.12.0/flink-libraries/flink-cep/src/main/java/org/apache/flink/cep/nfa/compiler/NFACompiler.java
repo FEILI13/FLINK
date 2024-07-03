@@ -29,10 +29,10 @@ import org.apache.flink.cep.pattern.MalformedPatternException;
 import org.apache.flink.cep.pattern.Pattern;
 import org.apache.flink.cep.pattern.Quantifier;
 import org.apache.flink.cep.pattern.Quantifier.Times;
+import org.apache.flink.cep.pattern.conditions.AndCondition;
 import org.apache.flink.cep.pattern.conditions.BooleanConditions;
 import org.apache.flink.cep.pattern.conditions.IterativeCondition;
-import org.apache.flink.cep.pattern.conditions.RichAndCondition;
-import org.apache.flink.cep.pattern.conditions.RichNotCondition;
+import org.apache.flink.cep.pattern.conditions.NotCondition;
 import org.apache.flink.streaming.api.windowing.time.Time;
 
 import java.io.Serializable;
@@ -43,7 +43,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.Stack;
 
@@ -130,7 +129,7 @@ public class NFACompiler {
 		private final Map<String, State<T>> stopStates = new HashMap<>();
 		private final List<State<T>> states = new ArrayList<>();
 
-		private Optional<Long> windowTime;
+		private long windowTime = 0;
 		private GroupPattern<T, ?> currentGroupPattern;
 		private Map<GroupPattern<T, ?>, Boolean> firstOfLoopMap = new HashMap<>();
 		private Pattern<T, ?> currentPattern;
@@ -141,7 +140,6 @@ public class NFACompiler {
 		NFAFactoryCompiler(final Pattern<T, ?> pattern) {
 			this.currentPattern = pattern;
 			afterMatchSkipStrategy = pattern.getAfterMatchSkipStrategy();
-			windowTime = Optional.empty();
 		}
 
 		/**
@@ -174,7 +172,7 @@ public class NFACompiler {
 		}
 
 		long getWindowTime() {
-			return windowTime.orElse(0L);
+			return windowTime;
 		}
 
 		/**
@@ -267,7 +265,7 @@ public class NFACompiler {
 		 */
 		private State<T> createEndingState() {
 			State<T> endState = createState(ENDING_STATE_NAME, State.StateType.Final);
-			windowTime = Optional.ofNullable(currentPattern.getWindowTime()).map(Time::toMilliseconds);
+			windowTime = currentPattern.getWindowTime() != null ? currentPattern.getWindowTime().toMilliseconds() : 0L;
 			return endState;
 		}
 
@@ -290,9 +288,9 @@ public class NFACompiler {
 
 					if (lastSink.isFinal()) {
 						//so that the proceed to final is not fired
-						notNext.addIgnore(lastSink, new RichNotCondition<>(notCondition));
+						notNext.addIgnore(lastSink, new NotCondition<>(notCondition));
 					} else {
-						notNext.addProceed(lastSink, new RichNotCondition<>(notCondition));
+						notNext.addProceed(lastSink, new NotCondition<>(notCondition));
 					}
 					notNext.addProceed(stopState, notCondition);
 					lastSink = notNext;
@@ -305,9 +303,9 @@ public class NFACompiler {
 				currentPattern = currentPattern.getPrevious();
 
 				final Time currentWindowTime = currentPattern.getWindowTime();
-				if (currentWindowTime != null && currentWindowTime.toMilliseconds() < windowTime.orElse(Long.MAX_VALUE)) {
+				if (currentWindowTime != null && currentWindowTime.toMilliseconds() < windowTime) {
 					// the window time is the global minimum of all window times of each state
-					windowTime = Optional.of(currentWindowTime.toMilliseconds());
+					windowTime = currentWindowTime.toMilliseconds();
 				}
 			}
 			return lastSink;
@@ -614,11 +612,11 @@ public class NFACompiler {
 					if (untilCondition != null) {
 						singletonState.addProceed(
 							originalStateMap.get(proceedState.getName()),
-							new RichAndCondition<>(proceedCondition, untilCondition));
+							new AndCondition<>(proceedCondition, untilCondition));
 					}
 					singletonState.addProceed(proceedState,
 						untilCondition != null
-							? new RichAndCondition<>(proceedCondition, new RichNotCondition<>(untilCondition))
+							? new AndCondition<>(proceedCondition, new NotCondition<>(untilCondition))
 							: proceedCondition);
 				} else {
 					singletonState.addProceed(proceedState, proceedCondition);
@@ -736,12 +734,12 @@ public class NFACompiler {
 			if (currentPattern.getQuantifier().hasProperty(Quantifier.QuantifierProperty.GREEDY)) {
 				if (untilCondition != null) {
 					State<T> sinkStateCopy = copy(sinkState);
-					loopingState.addProceed(sinkStateCopy, new RichAndCondition<>(proceedCondition, untilCondition));
+					loopingState.addProceed(sinkStateCopy, new AndCondition<>(proceedCondition, untilCondition));
 					originalStateMap.put(sinkState.getName(), sinkStateCopy);
 				}
 				loopingState.addProceed(sinkState,
 					untilCondition != null
-						? new RichAndCondition<>(proceedCondition, new RichNotCondition<>(untilCondition))
+						? new AndCondition<>(proceedCondition, new NotCondition<>(untilCondition))
 						: proceedCondition);
 				updateWithGreedyCondition(sinkState, getTakeCondition(currentPattern));
 			} else {
@@ -776,9 +774,9 @@ public class NFACompiler {
 				IterativeCondition<T> untilCondition,
 				boolean isTakeCondition) {
 			if (untilCondition != null && condition != null) {
-				return new RichAndCondition<>(new RichNotCondition<>(untilCondition), condition);
+				return new AndCondition<>(new NotCondition<>(untilCondition), condition);
 			} else if (untilCondition != null && isTakeCondition) {
-				return new RichNotCondition<>(untilCondition);
+				return new NotCondition<>(untilCondition);
 			}
 
 			return condition;
@@ -804,7 +802,7 @@ public class NFACompiler {
 					innerIgnoreCondition = null;
 					break;
 				case SKIP_TILL_NEXT:
-					innerIgnoreCondition = new RichNotCondition<>((IterativeCondition<T>) pattern.getCondition());
+					innerIgnoreCondition = new NotCondition<>((IterativeCondition<T>) pattern.getCondition());
 					break;
 				case SKIP_TILL_ANY:
 					innerIgnoreCondition = BooleanConditions.trueFunction();
@@ -845,7 +843,7 @@ public class NFACompiler {
 					ignoreCondition = null;
 					break;
 				case SKIP_TILL_NEXT:
-					ignoreCondition = new RichNotCondition<>((IterativeCondition<T>) pattern.getCondition());
+					ignoreCondition = new NotCondition<>((IterativeCondition<T>) pattern.getCondition());
 					break;
 				case SKIP_TILL_ANY:
 					ignoreCondition = BooleanConditions.trueFunction();
@@ -898,7 +896,7 @@ public class NFACompiler {
 			IterativeCondition<T> takeCondition) {
 			for (StateTransition<T> stateTransition : state.getStateTransitions()) {
 				stateTransition.setCondition(
-					new RichAndCondition<>(stateTransition.getCondition(), new RichNotCondition<>(takeCondition)));
+					new AndCondition<>(stateTransition.getCondition(), new NotCondition<>(takeCondition)));
 			}
 		}
 	}

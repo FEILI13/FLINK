@@ -48,6 +48,7 @@ public class TypeFillTest {
 	@Test
 	public void test() {
 		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 
 		try {
 			env.addSource(new TestSource<Integer>()).print();

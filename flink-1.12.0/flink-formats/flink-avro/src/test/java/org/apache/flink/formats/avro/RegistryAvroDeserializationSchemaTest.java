@@ -31,7 +31,6 @@ import org.junit.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.util.Random;
 
 import static org.apache.flink.formats.avro.utils.AvroTestUtils.writeRecord;
@@ -60,11 +59,6 @@ public class RegistryAvroDeserializationSchemaTest {
 				public Schema readSchema(InputStream in) {
 					return Address.getClassSchema();
 				}
-
-				@Override
-				public void writeSchema(Schema schema, OutputStream out) throws IOException {
-					//do nothing
-				}
 			}
 		);
 
@@ -73,6 +67,9 @@ public class RegistryAvroDeserializationSchemaTest {
 			Address.getClassSchema()));
 		assertEquals(address.getNum(), genericRecord.get("num"));
 		assertEquals(address.getStreet(), genericRecord.get("street").toString());
+		assertNull(genericRecord.get("city"));
+		assertNull(genericRecord.get("state"));
+		assertNull(genericRecord.get("zip"));
 		assertNull(genericRecord.get("country"));
 	}
 
@@ -89,17 +86,7 @@ public class RegistryAvroDeserializationSchemaTest {
 		RegistryAvroDeserializationSchema<SimpleRecord> deserializer = new RegistryAvroDeserializationSchema<>(
 			SimpleRecord.class,
 			null,
-			() -> new SchemaCoder() {
-				@Override
-				public Schema readSchema(InputStream in) {
-					return smallerUserSchema;
-				}
-
-				@Override
-				public void writeSchema(Schema schema, OutputStream out) throws IOException {
-					//Do nothing
-				}
-			}
+			() -> in -> smallerUserSchema
 		);
 
 		GenericData.Record smallUser = new GenericRecordBuilder(smallerUserSchema)

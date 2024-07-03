@@ -18,7 +18,8 @@
 
 package org.apache.flink.core.memory;
 
-import org.apache.flink.util.Preconditions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -30,7 +31,15 @@ import java.util.Arrays;
 /**
  * A simple and efficient serializer for the {@link java.io.DataOutput} interface.
  */
-public class DataOutputSerializer implements DataOutputView, MemorySegmentWritable {
+public class DataOutputSerializer implements DataOutputView {
+
+	private static final Logger LOG = LoggerFactory.getLogger(DataOutputSerializer.class);
+
+	private static final int PRUNE_BUFFER_THRESHOLD = 5 * 1024 * 1024;
+
+	// ------------------------------------------------------------------------
+
+	private final byte[] startBuffer;
 
 	private byte[] buffer;
 
@@ -45,7 +54,8 @@ public class DataOutputSerializer implements DataOutputView, MemorySegmentWritab
 			throw new IllegalArgumentException();
 		}
 
-		this.buffer = new byte[startSize];
+		this.startBuffer = new byte[startSize];
+		this.buffer = this.startBuffer;
 		this.wrapper = ByteBuffer.wrap(buffer);
 	}
 
@@ -97,6 +107,18 @@ public class DataOutputSerializer implements DataOutputView, MemorySegmentWritab
 		return this.position;
 	}
 
+	public void pruneBuffer() {
+		clear();
+		if (this.buffer.length > PRUNE_BUFFER_THRESHOLD) {
+			if (LOG.isDebugEnabled()) {
+				LOG.debug("Releasing serialization buffer of " + this.buffer.length + " bytes.");
+			}
+
+			this.buffer = this.startBuffer;
+			this.wrapper = ByteBuffer.wrap(this.buffer);
+		}
+	}
+
 	@Override
 	public String toString() {
 		return String.format("[pos=%d cap=%d]", this.position, this.buffer.length);
@@ -128,18 +150,6 @@ public class DataOutputSerializer implements DataOutputView, MemorySegmentWritab
 			resize(len);
 		}
 		System.arraycopy(b, off, this.buffer, this.position, len);
-		this.position += len;
-	}
-
-	@Override
-	public void write(MemorySegment segment, int off, int len) throws IOException {
-		if (len < 0 || off < 0 || off > segment.size() - len) {
-			throw new IndexOutOfBoundsException(String.format("offset: %d, length: %d, size: %d", off, len, segment.size()));
-		}
-		if (this.position > this.buffer.length - len) {
-			resize(len);
-		}
-		segment.get(off, this.buffer, this.position, len);
 		this.position += len;
 	}
 
@@ -207,13 +217,6 @@ public class DataOutputSerializer implements DataOutputView, MemorySegmentWritab
 		}
 		UNSAFE.putInt(this.buffer, BASE_OFFSET + this.position, v);
 		this.position += 4;
-	}
-
-	public void writeIntUnsafe(int v, int pos) throws IOException {
-		if (LITTLE_ENDIAN) {
-			v = Integer.reverseBytes(v);
-		}
-		UNSAFE.putInt(this.buffer, BASE_OFFSET + pos, v);
 	}
 
 	@SuppressWarnings("restriction")
@@ -345,15 +348,6 @@ public class DataOutputSerializer implements DataOutputView, MemorySegmentWritab
 
 		source.readFully(this.buffer, this.position, numBytes);
 		this.position += numBytes;
-	}
-
-	public void setPosition(int position) {
-		Preconditions.checkArgument(position >= 0 && position <= this.position, "Position out of bounds.");
-		this.position = position;
-	}
-
-	public void setPositionUnsafe(int position) {
-		this.position = position;
 	}
 
 	// ------------------------------------------------------------------------

@@ -24,7 +24,6 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.PriorityQueue;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Delayed;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledFuture;
@@ -33,10 +32,10 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * This is a {@link TimerService} and {@link ProcessingTimeService} used <b>strictly for testing</b> the
+ * This is a {@link ProcessingTimeService} used <b>strictly for testing</b> the
  * processing time functionality.
- */
-public class TestProcessingTimeService implements TimerService {
+ * */
+public class TestProcessingTimeService extends ProcessingTimeService {
 
 	private volatile long currentTime = Long.MIN_VALUE;
 
@@ -81,6 +80,15 @@ public class TestProcessingTimeService implements TimerService {
 	}
 
 	@Override
+	public void registerCallback(ProcessingTimeCallback p) {
+	}
+
+	@Override
+	public long getCurrentProcessingTimeCausal() {
+		return currentTime;
+	}
+
+	@Override
 	public ScheduledFuture<?> registerTimer(long timestamp, ProcessingTimeCallback target) {
 		if (isTerminated) {
 			throw new IllegalStateException("terminated");
@@ -113,23 +121,21 @@ public class TestProcessingTimeService implements TimerService {
 	}
 
 	@Override
-	public ScheduledFuture<?> scheduleWithFixedDelay(ProcessingTimeCallback callback, long initialDelay, long period) {
-		// for all testing purposed, there is no difference between the fixed rate and fixed delay
-		return scheduleAtFixedRate(callback, initialDelay, period);
-	}
-
-	@Override
 	public boolean isTerminated() {
 		return isTerminated;
 	}
 
 	@Override
-	public CompletableFuture<Void> quiesce() {
+	public void quiesce() {
 		if (!isTerminated) {
 			isQuiesced = true;
 			priorityQueue.clear();
 		}
-		return CompletableFuture.completedFuture(null);
+	}
+
+	@Override
+	public void awaitPendingAfterQuiesce() throws InterruptedException {
+		// do nothing.
 	}
 
 	@Override
@@ -139,6 +145,12 @@ public class TestProcessingTimeService implements TimerService {
 
 	@Override
 	public boolean shutdownServiceUninterruptible(long timeoutMs) {
+		shutdownService();
+		return true;
+	}
+
+	@Override
+	public boolean shutdownAndAwaitPending(long time, TimeUnit timeUnit) throws InterruptedException {
 		shutdownService();
 		return true;
 	}

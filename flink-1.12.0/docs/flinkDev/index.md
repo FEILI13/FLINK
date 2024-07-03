@@ -4,7 +4,7 @@ nav-title: '<i class="fa fa-cogs title dessert" aria-hidden="true"></i> Flink De
 title: "Flink Development"
 nav-id: "flinkdev"
 nav-parent_id: root
-nav-pos: 20
+nav-pos: 8
 ---
 <!--
 Licensed to the Apache Software Foundation (ASF) under one

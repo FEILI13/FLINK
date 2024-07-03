@@ -20,6 +20,7 @@ package org.apache.flink.streaming.runtime.io.benchmark;
 
 import org.apache.flink.core.testutils.CheckedThread;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
+import org.apache.flink.streaming.runtime.io.StreamRecordWriter;
 import org.apache.flink.types.LongValue;
 
 import java.io.IOException;
@@ -33,7 +34,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  * records.
  */
 public class LongRecordWriterThread extends CheckedThread {
-	private final RecordWriter<LongValue> recordWriter;
+	private final StreamRecordWriter<LongValue> recordWriter;
 	private final boolean broadcastMode;
 
 	/**
@@ -44,7 +45,7 @@ public class LongRecordWriterThread extends CheckedThread {
 	private volatile boolean running = true;
 
 	public LongRecordWriterThread(
-			RecordWriter<LongValue> recordWriter,
+			StreamRecordWriter<LongValue> recordWriter,
 			boolean broadcastMode) {
 		this.recordWriter = checkNotNull(recordWriter);
 		this.broadcastMode = broadcastMode;

@@ -18,6 +18,8 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
+import org.apache.flink.api.common.JobID;
+import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferProvider;
@@ -92,7 +94,8 @@ public class CancelPartitionRequestTest {
 					}
 				});
 
-			NettyProtocol protocol = new NettyProtocol(partitions, mock(TaskEventDispatcher.class));
+			NettyProtocol protocol = new NettyProtocol(
+					partitions, mock(TaskEventDispatcher.class), true);
 
 			serverAndClient = initServerAndClient(protocol);
 
@@ -108,6 +111,7 @@ public class CancelPartitionRequestTest {
 			}
 
 			verify(view, times(1)).releaseAllResources();
+			verify(view, times(0)).notifySubpartitionConsumed();
 		}
 		finally {
 			shutdown(serverAndClient);
@@ -141,7 +145,8 @@ public class CancelPartitionRequestTest {
 						}
 					});
 
-			NettyProtocol protocol = new NettyProtocol(partitions, mock(TaskEventDispatcher.class));
+			NettyProtocol protocol = new NettyProtocol(
+					partitions, mock(TaskEventDispatcher.class), true);
 
 			serverAndClient = initServerAndClient(protocol);
 
@@ -165,6 +170,7 @@ public class CancelPartitionRequestTest {
 			NettyTestUtil.awaitClose(ch);
 
 			verify(view, times(1)).releaseAllResources();
+			verify(view, times(0)).notifySubpartitionConsumed();
 		}
 		finally {
 			shutdown(serverAndClient);
@@ -186,14 +192,10 @@ public class CancelPartitionRequestTest {
 
 		@Nullable
 		@Override
-		public BufferAndBacklog getNextBuffer() throws IOException {
-			Buffer buffer = bufferProvider.requestBuffer();
-			if (buffer != null) {
-				buffer.setSize(buffer.getMaxCapacity()); // fake some data
-				return new BufferAndBacklog(buffer, 0, Buffer.DataType.DATA_BUFFER, 0);
-			} else {
-				return null;
-			}
+		public BufferAndBacklog getNextBuffer() throws IOException, InterruptedException {
+			Buffer buffer = bufferProvider.requestBufferBlocking();
+			buffer.setSize(buffer.getMaxCapacity()); // fake some data
+			return new BufferAndBacklog(buffer, true, 0, false);
 		}
 
 		@Override
@@ -206,22 +208,36 @@ public class CancelPartitionRequestTest {
 		}
 
 		@Override
+		public void sendFailConsumerTrigger(Throwable cause) {
+		}
+
+		@Override
+		public void notifySubpartitionConsumed() throws IOException {
+		}
+
+		@Override
 		public boolean isReleased() {
 			return false;
 		}
 
 		@Override
-		public void resumeConsumption() {
+		public boolean nextBufferIsEvent() {
+			return false;
 		}
 
 		@Override
-		public boolean isAvailable(int numCreditsAvailable) {
+		public boolean isAvailable() {
 			return true;
 		}
 
 		@Override
-		public int unsynchronizedGetNumberOfQueuedBuffers() {
-			return 0;
+		public JobID getJobID() {
+			return null;
+		}
+
+		@Override
+		public short getVertexID() {
+			return -1;
 		}
 
 		@Override

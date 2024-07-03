@@ -19,11 +19,9 @@
 package org.apache.flink.runtime.taskmanager;
 
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.TaskManagerOptions;
-import org.apache.flink.runtime.taskexecutor.TaskExecutor;
 
 /**
- * Interface to access {@link TaskExecutor} information.
+ * Interface to access {@link TaskManager} information.
  */
 public interface TaskManagerRuntimeInfo {
 
@@ -48,20 +46,4 @@ public interface TaskManagerRuntimeInfo {
 	 * @return True to terminate the JVM on an OutOfMemoryError, false otherwise.
 	 */
 	boolean shouldExitJvmOnOutOfMemoryError();
-
-	/**
-	 * Gets the external address of the TaskManager.
-	 *
-	 * @return The external address of the TaskManager.
-	 */
-	String getTaskManagerExternalAddress();
-
-	/**
-	 * Gets the bind address of the Taskmanager.
-	 *
-	 * @return The bind address of the TaskManager.
-	 */
-	default String getTaskManagerBindAddress() {
-		return getConfiguration().getString(TaskManagerOptions.BIND_HOST);
-	}
 }

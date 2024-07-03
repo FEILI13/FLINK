@@ -25,6 +25,7 @@ import org.apache.flink.runtime.jobmanager.scheduler.ScheduledUnit;
 import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.jobmaster.SlotRequestId;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
+import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.util.Preconditions;
 
 import javax.annotation.Nullable;
@@ -38,7 +39,7 @@ import java.util.function.Function;
 /**
  * {@link SlotProvider} implementation for testing purposes.
  */
-public class TestingSlotProvider implements SlotProvider {
+final class TestingSlotProvider implements SlotProvider {
 
 	private final ConcurrentMap<SlotRequestId, CompletableFuture<LogicalSlot>> slotFutures;
 
@@ -46,7 +47,7 @@ public class TestingSlotProvider implements SlotProvider {
 
 	private volatile Consumer<SlotRequestId> slotCanceller = ignored -> {};
 
-	public TestingSlotProvider(Function<SlotRequestId, CompletableFuture<LogicalSlot>> slotFutureCreator) {
+	TestingSlotProvider(Function<SlotRequestId, CompletableFuture<LogicalSlot>> slotFutureCreator) {
 		this.slotFutureCreator = slotFutureCreator;
 		this.slotFutures = new ConcurrentHashMap<>(4);
 	}
@@ -56,7 +57,7 @@ public class TestingSlotProvider implements SlotProvider {
 	}
 
 	@Override
-	public CompletableFuture<LogicalSlot> allocateSlot(SlotRequestId slotRequestId, ScheduledUnit task, SlotProfile slotProfile, Time timeout) {
+	public CompletableFuture<LogicalSlot> allocateSlot(SlotRequestId slotRequestId, ScheduledUnit task, boolean allowQueued, SlotProfile slotProfile, Time timeout) {
 		Preconditions.checkState(!slotFutures.containsKey(slotRequestId));
 		final CompletableFuture<LogicalSlot> slotFuture = slotFutureCreator.apply(slotRequestId);
 
@@ -66,11 +67,13 @@ public class TestingSlotProvider implements SlotProvider {
 	}
 
 	@Override
-	public void cancelSlotRequest(SlotRequestId slotRequestId, @Nullable SlotSharingGroupId slotSharingGroupId, Throwable cause) {
+	public CompletableFuture<Acknowledge> cancelSlotRequest(SlotRequestId slotRequestId, @Nullable SlotSharingGroupId slotSharingGroupId, Throwable cause) {
 		final CompletableFuture<LogicalSlot> slotFuture = slotFutures.remove(slotRequestId);
 		slotFuture.cancel(false);
 
 		slotCanceller.accept(slotRequestId);
+
+		return CompletableFuture.completedFuture(Acknowledge.get());
 	}
 
 	public void complete(SlotRequestId slotRequestId, LogicalSlot logicalSlot) {

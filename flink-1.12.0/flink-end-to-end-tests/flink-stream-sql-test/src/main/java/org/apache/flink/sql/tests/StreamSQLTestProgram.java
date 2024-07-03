@@ -20,33 +20,22 @@ package org.apache.flink.sql.tests;
 
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
-import org.apache.flink.api.common.serialization.Encoder;
-import org.apache.flink.api.common.state.ListState;
-import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
-import org.apache.flink.api.common.typeutils.base.IntSerializer;
-import org.apache.flink.api.common.typeutils.base.LongSerializer;
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
 import org.apache.flink.api.java.utils.ParameterTool;
-import org.apache.flink.core.fs.Path;
-import org.apache.flink.core.io.SimpleVersionedSerializer;
-import org.apache.flink.runtime.state.FunctionInitializationContext;
-import org.apache.flink.runtime.state.FunctionSnapshotContext;
-import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
+import org.apache.flink.streaming.api.TimeCharacteristic;
+import org.apache.flink.streaming.api.checkpoint.ListCheckpointed;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.sink.filesystem.BucketAssigner;
-import org.apache.flink.streaming.api.functions.sink.filesystem.StreamingFileSink;
-import org.apache.flink.streaming.api.functions.sink.filesystem.bucketassigners.SimpleVersionedStringSerializer;
-import org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.OnCheckpointRollingPolicy;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
-import org.apache.flink.table.api.EnvironmentSettings;
+import org.apache.flink.streaming.connectors.fs.bucketing.BasePathBucketer;
+import org.apache.flink.streaming.connectors.fs.bucketing.BucketingSink;
 import org.apache.flink.table.api.Table;
+import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.table.api.TableSchema;
-import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
-import org.apache.flink.table.api.internal.TableEnvironmentInternal;
+import org.apache.flink.table.api.java.StreamTableEnvironment;
 import org.apache.flink.table.sources.DefinedFieldMapping;
 import org.apache.flink.table.sources.DefinedRowtimeAttributes;
 import org.apache.flink.table.sources.RowtimeAttributeDescriptor;
@@ -55,7 +44,6 @@ import org.apache.flink.table.sources.tsextractors.ExistingField;
 import org.apache.flink.table.sources.wmstrategies.BoundedOutOfOrderTimestamps;
 import org.apache.flink.types.Row;
 
-import java.io.PrintStream;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -84,31 +72,20 @@ public class StreamSQLTestProgram {
 
 		ParameterTool params = ParameterTool.fromArgs(args);
 		String outputPath = params.getRequired("outputPath");
-		String planner = params.get("planner", "blink");
 
-		final EnvironmentSettings.Builder builder = EnvironmentSettings.newInstance();
-		builder.inStreamingMode();
-
-		if (planner.equals("old")) {
-			builder.useOldPlanner();
-		} else if (planner.equals("blink")) {
-			builder.useBlinkPlanner();
-		}
-
-		final EnvironmentSettings settings = builder.build();
-
-		final StreamExecutionEnvironment sEnv = StreamExecutionEnvironment.getExecutionEnvironment();
+		StreamExecutionEnvironment sEnv = StreamExecutionEnvironment.getExecutionEnvironment();
 		sEnv.setRestartStrategy(RestartStrategies.fixedDelayRestart(
 			3,
 			Time.of(10, TimeUnit.SECONDS)
 		));
+		sEnv.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 		sEnv.enableCheckpointing(4000);
 		sEnv.getConfig().setAutoWatermarkInterval(1000);
 
-		final StreamTableEnvironment tEnv = StreamTableEnvironment.create(sEnv, settings);
+		StreamTableEnvironment tEnv = TableEnvironment.getTableEnvironment(sEnv);
 
-		((TableEnvironmentInternal) tEnv).registerTableSourceInternal("table1", new GeneratorTableSource(10, 100, 60, 0));
-		((TableEnvironmentInternal) tEnv).registerTableSourceInternal("table2", new GeneratorTableSource(5, 0.2f, 60, 5));
+		tEnv.registerTableSource("table1", new GeneratorTableSource(10, 100, 60, 0));
+		tEnv.registerTableSource("table2", new GeneratorTableSource(5, 0.2f, 60, 5));
 
 		int overWindowSizeSeconds = 1;
 		int tumbleWindowSizeSeconds = 10;
@@ -162,14 +139,9 @@ public class StreamSQLTestProgram {
 		DataStream<Row> resultStream =
 			tEnv.toAppendStream(result, Types.ROW(Types.INT, Types.SQL_TIMESTAMP));
 
-		final StreamingFileSink<Row> sink = StreamingFileSink
-			.forRowFormat(new Path(outputPath), (Encoder<Row>) (element, stream) -> {
-				PrintStream out = new PrintStream(stream);
-				out.println(element.toString());
-			})
-			.withBucketAssigner(new KeyBucketAssigner())
-			.withRollingPolicy(OnCheckpointRollingPolicy.build())
-			.build();
+		// define bucketing sink to emit the result
+		BucketingSink<Row> sink = new BucketingSink<Row>(outputPath)
+			.setBucketer(new BasePathBucketer<>());
 
 		resultStream
 			// inject a KillMapper that forwards all records but terminates the first execution attempt
@@ -178,24 +150,6 @@ public class StreamSQLTestProgram {
 			.addSink(sink).setParallelism(1);
 
 		sEnv.execute();
-	}
-
-	/**
-	 * Use first field for buckets.
-	 */
-	public static final class KeyBucketAssigner implements BucketAssigner<Row, String> {
-
-		private static final long serialVersionUID = 987325769970523326L;
-
-		@Override
-		public String getBucketId(final Row element, final Context context) {
-			return String.valueOf(element.getField(0));
-		}
-
-		@Override
-		public SimpleVersionedSerializer<String> getSerializer() {
-			return SimpleVersionedStringSerializer.INSTANCE;
-		}
 	}
 
 	/**
@@ -260,7 +214,7 @@ public class StreamSQLTestProgram {
 	/**
 	 * Data-generating source function.
 	 */
-	public static class Generator implements SourceFunction<Row>, ResultTypeQueryable<Row>, CheckpointedFunction {
+	public static class Generator implements SourceFunction<Row>, ResultTypeQueryable<Row>, ListCheckpointed<Long> {
 
 		private final int numKeys;
 		private final int offsetSeconds;
@@ -269,7 +223,6 @@ public class StreamSQLTestProgram {
 		private final int durationMs;
 
 		private long ms = 0;
-		private ListState<Long> state = null;
 
 		public Generator(int numKeys, float rowsPerKeyAndSecond, int durationSeconds, int offsetSeconds) {
 			this.numKeys = numKeys;
@@ -303,33 +256,27 @@ public class StreamSQLTestProgram {
 		}
 
 		@Override
-		public void initializeState(FunctionInitializationContext context) throws Exception {
-			state = context.getOperatorStateStore().getListState(
-					new ListStateDescriptor<Long>("state", LongSerializer.INSTANCE));
-
-			for (Long l : state.get()) {
-				ms += l;
-			}
+		public List<Long> snapshotState(long checkpointId, long timestamp) {
+			return Collections.singletonList(ms);
 		}
 
 		@Override
-		public void snapshotState(FunctionSnapshotContext context) throws Exception {
-			state.clear();
-			state.add(ms);
+		public void restoreState(List<Long> state) {
+			for (Long l : state) {
+				ms += l;
+			}
 		}
 	}
 
 	/**
 	 * Kills the first execution attempt of an application when it receives the second record.
 	 */
-	public static class KillMapper implements MapFunction<Row, Row>, CheckpointedFunction, ResultTypeQueryable {
+	public static class KillMapper implements MapFunction<Row, Row>, ListCheckpointed<Integer>, ResultTypeQueryable {
 
 		// counts all processed records of all previous execution attempts
 		private int saveRecordCnt = 0;
 		// counts all processed records of this execution attempt
 		private int lostRecordCnt = 0;
-
-		private ListState<Integer> state = null;
 
 		@Override
 		public Row map(Row value) {
@@ -354,19 +301,16 @@ public class StreamSQLTestProgram {
 		}
 
 		@Override
-		public void initializeState(FunctionInitializationContext context) throws Exception {
-			state = context.getOperatorStateStore().getListState(
-					new ListStateDescriptor<Integer>("state", IntSerializer.INSTANCE));
-
-			for (Integer i : state.get()) {
-				saveRecordCnt += i;
-			}
+		public List<Integer> snapshotState(long checkpointId, long timestamp) {
+			return Collections.singletonList(saveRecordCnt);
 		}
 
 		@Override
-		public void snapshotState(FunctionSnapshotContext context) throws Exception {
-			state.clear();
-			state.add(saveRecordCnt);
+		public void restoreState(List<Integer> state) {
+			for (Integer i : state) {
+				saveRecordCnt += i;
+			}
 		}
 	}
+
 }

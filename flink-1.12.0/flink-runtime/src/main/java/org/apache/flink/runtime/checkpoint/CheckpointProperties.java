@@ -19,7 +19,7 @@
 package org.apache.flink.runtime.checkpoint;
 
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.api.common.JobStatus;
+import org.apache.flink.runtime.jobgraph.JobStatus;
 
 import java.io.Serializable;
 
@@ -176,16 +176,7 @@ public class CheckpointProperties implements Serializable {
 	 * @return <code>true</code> if the properties describe a savepoint, <code>false</code> otherwise.
 	 */
 	public boolean isSavepoint() {
-		return checkpointType.isSavepoint();
-	}
-
-	/**
-	 * Returns whether the checkpoint properties describe a synchronous savepoint/checkpoint.
-	 *
-	 * @return <code>true</code> if the properties describe a synchronous operation, <code>false</code> otherwise.
-	 */
-	public boolean isSynchronous() {
-		return checkpointType.isSynchronous();
+		return checkpointType == CheckpointType.SAVEPOINT;
 	}
 
 	// ------------------------------------------------------------------------
@@ -239,35 +230,8 @@ public class CheckpointProperties implements Serializable {
 	//  Factories and pre-configured properties
 	// ------------------------------------------------------------------------
 
-	private static final CheckpointProperties SYNC_SAVEPOINT = new CheckpointProperties(
-			true,
-			CheckpointType.SYNC_SAVEPOINT,
-			false,
-			false,
-			false,
-			false,
-			false);
-
-	private static final CheckpointProperties SYNC_SAVEPOINT_NOT_FORCED = new CheckpointProperties(
-			false,
-			CheckpointType.SYNC_SAVEPOINT,
-			false,
-			false,
-			false,
-			false,
-			false);
-
 	private static final CheckpointProperties SAVEPOINT = new CheckpointProperties(
 			true,
-			CheckpointType.SAVEPOINT,
-			false,
-			false,
-			false,
-			false,
-			false);
-
-	private static final CheckpointProperties SAVEPOINT_NO_FORCE = new CheckpointProperties(
-			false,
 			CheckpointType.SAVEPOINT,
 			false,
 			false,
@@ -311,12 +275,8 @@ public class CheckpointProperties implements Serializable {
 	 *
 	 * @return Checkpoint properties for a (manually triggered) savepoint.
 	 */
-	public static CheckpointProperties forSavepoint(boolean forced) {
-		return forced ? SAVEPOINT : SAVEPOINT_NO_FORCE;
-	}
-
-	public static CheckpointProperties forSyncSavepoint(boolean forced) {
-		return forced ? SYNC_SAVEPOINT : SYNC_SAVEPOINT_NOT_FORCED;
+	public static CheckpointProperties forSavepoint() {
+		return SAVEPOINT;
 	}
 
 	/**

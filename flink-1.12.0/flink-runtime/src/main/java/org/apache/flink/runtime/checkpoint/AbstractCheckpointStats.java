@@ -21,7 +21,6 @@ package org.apache.flink.runtime.checkpoint;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 
 import javax.annotation.Nullable;
-
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.Map;
@@ -89,14 +88,13 @@ public abstract class AbstractCheckpointStats implements Serializable {
 	public abstract long getStateSize();
 
 	/**
-	 * @return the total number of processed bytes during the checkpoint.
+	 * Returns the total buffered bytes during alignment over all subtasks.
+	 *
+	 * <p>Can return <code>-1</code> if the runtime did not report this.
+	 *
+	 * @return Total buffered bytes during alignment over all subtasks.
 	 */
-	public abstract long getProcessedData();
-
-	/**
-	 * @return the total number of persisted bytes during the checkpoint.
-	 */
-	public abstract long getPersistedData();
+	public abstract long getAlignmentBuffered();
 
 	/**
 	 * Returns the latest acknowledged subtask stats or <code>null</code> if

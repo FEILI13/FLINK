@@ -18,8 +18,6 @@
 
 package org.apache.flink.util;
 
-import org.apache.flink.util.function.ThrowingRunnable;
-
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -47,7 +45,7 @@ public class OptionalConsumer<T> {
 		return this;
 	}
 
-	public <E extends Exception> OptionalConsumer<T> ifNotPresent(ThrowingRunnable<E> r) throws E {
+	public OptionalConsumer<T> ifNotPresent(Runnable r) {
 		if (!optional.isPresent()) {
 			r.run();
 		}

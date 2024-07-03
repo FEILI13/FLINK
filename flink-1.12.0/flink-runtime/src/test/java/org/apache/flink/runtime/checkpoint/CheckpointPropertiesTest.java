@@ -59,7 +59,7 @@ public class CheckpointPropertiesTest {
 	 */
 	@Test
 	public void testSavepointProperties() {
-		CheckpointProperties props = CheckpointProperties.forSavepoint(true);
+		CheckpointProperties props = CheckpointProperties.forSavepoint();
 
 		assertTrue(props.forceCheckpoint());
 		assertFalse(props.discardOnSubsumed());
@@ -85,7 +85,7 @@ public class CheckpointPropertiesTest {
 		}
 
 		{
-			CheckpointProperties props = CheckpointProperties.forSavepoint(true);
+			CheckpointProperties props = CheckpointProperties.forSavepoint();
 			assertTrue(props.isSavepoint());
 
 			CheckpointProperties deserializedCheckpointProperties =

@@ -38,7 +38,7 @@ public abstract class AsynchronousOperationStatusMessageHeaders<V, M extends Mes
 	 *
 	 * @return value class
 	 */
-	public abstract Class<V> getValueClass();
+	protected abstract Class<V> getValueClass();
 
 	@Override
 	public Class<AsynchronousOperationResult<V>> getResponseClass() {

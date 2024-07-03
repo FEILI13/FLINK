@@ -56,7 +56,7 @@ public class RegisteredOperatorStateBackendMetaInfo<S> extends RegisteredStateMe
 			@Nonnull OperatorStateHandle.Mode assignmentMode) {
 		this(
 			name,
-			StateSerializerProvider.fromNewRegisteredSerializer(partitionStateSerializer),
+			StateSerializerProvider.fromNewState(partitionStateSerializer),
 			assignmentMode);
 	}
 
@@ -71,7 +71,7 @@ public class RegisteredOperatorStateBackendMetaInfo<S> extends RegisteredStateMe
 	public RegisteredOperatorStateBackendMetaInfo(@Nonnull StateMetaInfoSnapshot snapshot) {
 		this(
 			snapshot.getName(),
-			StateSerializerProvider.fromPreviousSerializerSnapshot(
+			StateSerializerProvider.fromRestoredState(
 				(TypeSerializerSnapshot<S>) Preconditions.checkNotNull(
 					snapshot.getTypeSerializerSnapshot(StateMetaInfoSnapshot.CommonSerializerKeys.VALUE_SERIALIZER))),
 			OperatorStateHandle.Mode.valueOf(

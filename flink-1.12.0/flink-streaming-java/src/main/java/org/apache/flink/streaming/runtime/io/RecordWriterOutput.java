@@ -32,8 +32,10 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusProvider;
-import org.apache.flink.streaming.runtime.tasks.WatermarkGaugeExposingOutput;
+import org.apache.flink.streaming.runtime.tasks.OperatorChain;
 import org.apache.flink.util.OutputTag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
@@ -43,9 +45,11 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * Implementation of {@link Output} that sends data using a {@link RecordWriter}.
  */
 @Internal
-public class RecordWriterOutput<OUT> implements WatermarkGaugeExposingOutput<StreamRecord<OUT>> {
+public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExposingOutput<StreamRecord<OUT>> {
 
-	private RecordWriter<SerializationDelegate<StreamElement>> recordWriter;
+	private static final Logger LOG = LoggerFactory.getLogger(RecordWriterOutput.class);
+
+	private StreamRecordWriter<SerializationDelegate<StreamElement>> recordWriter;
 
 	private SerializationDelegate<StreamElement> serializationDelegate;
 
@@ -57,7 +61,7 @@ public class RecordWriterOutput<OUT> implements WatermarkGaugeExposingOutput<Str
 
 	@SuppressWarnings("unchecked")
 	public RecordWriterOutput(
-			RecordWriter<SerializationDelegate<StreamRecord<OUT>>> recordWriter,
+			StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>> recordWriter,
 			TypeSerializer<OUT> outSerializer,
 			OutputTag outputTag,
 			StreamStatusProvider streamStatusProvider) {
@@ -66,8 +70,9 @@ public class RecordWriterOutput<OUT> implements WatermarkGaugeExposingOutput<Str
 		this.outputTag = outputTag;
 		// generic hack: cast the writer to generic Object type so we can use it
 		// with multiplexed records and watermarks
-		this.recordWriter = (RecordWriter<SerializationDelegate<StreamElement>>)
-				(RecordWriter<?>) recordWriter;
+		this.recordWriter = (StreamRecordWriter<SerializationDelegate<StreamElement>>)
+				(StreamRecordWriter<?>) recordWriter;
+
 
 		TypeSerializer<StreamElement> outRecordSerializer =
 				new StreamElementSerializer<>(outSerializer);
@@ -82,7 +87,7 @@ public class RecordWriterOutput<OUT> implements WatermarkGaugeExposingOutput<Str
 	@Override
 	public void collect(StreamRecord<OUT> record) {
 		if (this.outputTag != null) {
-			// we are not responsible for emitting to the main output.
+			// we are only responsible for emitting to the main input
 			return;
 		}
 
@@ -91,9 +96,13 @@ public class RecordWriterOutput<OUT> implements WatermarkGaugeExposingOutput<Str
 
 	@Override
 	public <X> void collect(OutputTag<X> outputTag, StreamRecord<X> record) {
-		if (OutputTag.isResponsibleFor(this.outputTag, outputTag)) {
-			pushToRecordWriter(record);
+		if (this.outputTag == null || !this.outputTag.equals(outputTag)) {
+			// we are only responsible for emitting to the side-output specified by our
+			// OutputTag.
+			return;
 		}
+
+		pushToRecordWriter(record);
 	}
 
 	private <X> void pushToRecordWriter(StreamRecord<X> record) {
@@ -144,8 +153,8 @@ public class RecordWriterOutput<OUT> implements WatermarkGaugeExposingOutput<Str
 		}
 	}
 
-	public void broadcastEvent(AbstractEvent event, boolean isPriorityEvent) throws IOException {
-		recordWriter.broadcastEvent(event, isPriorityEvent);
+	public void broadcastEvent(AbstractEvent event) throws IOException, InterruptedException {
+		recordWriter.broadcastEvent(event);
 	}
 
 	public void flush() throws IOException {
@@ -154,11 +163,19 @@ public class RecordWriterOutput<OUT> implements WatermarkGaugeExposingOutput<Str
 
 	@Override
 	public void close() {
-		recordWriter.close();
+		try {
+			recordWriter.close();
+		}
+		catch (Exception e) {
+			throw new RuntimeException(e.getMessage(), e);
+		}
+
 	}
 
 	@Override
 	public Gauge<Long> getWatermarkGauge() {
 		return watermarkGauge;
 	}
+
+
 }

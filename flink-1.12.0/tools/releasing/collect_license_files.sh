@@ -30,8 +30,6 @@ SRC=${1:-.}
 DST=${2:-licenses-output}
 PWD=$(pwd)
 TMP="${DST}/tmp"
-DIR=$(dirname "$0")
-NOTICE_BINARY_PREAMBLE="${DIR}/NOTICE-binary_PREAMBLE.txt"
 
 USAGE="collect_license_files <SOURCE_DIRECTORY:-.> <OUTPUT_DIRECTORY:-licenses-output>"
 
@@ -50,16 +48,10 @@ done
 
 NOTICE="${DST}/NOTICE"
 [ -f "${NOTICE}" ] && rm "${NOTICE}"
-cp "${NOTICE_BINARY_PREAMBLE}" "${NOTICE}"
-(export LC_ALL=C; find "${TMP}" -name "NOTICE" | sort | xargs cat >> "${NOTICE}")
+find "${TMP}" -name "NOTICE" | xargs cat >> "${NOTICE}"
 
 LICENSES="${DST}/licenses"
-[ -f "${LICENSES}" ] && rm -r "${LICENSES}"
+[ -f "${LICENSES}" ] && rm -r ""
 find "${TMP}" -name "licenses" -type d -exec cp -r -- "{}" "${DST}" \;
-
-# Search the binary distribution directory and collect those license files that
-# not bundled in any jars.
-find "${SRC}" -name "LICENSE.*" -type f \
-! -path "${DST}/licenses/*" ! -path "${TMP}/licenses/*" -exec cp -- "{}" "${DST}/licenses" \;
 
 rm -r "${TMP}"

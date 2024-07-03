@@ -34,18 +34,15 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-
-import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * Lightweight configuration object which stores key/value pairs.
  */
 @Public
 public class Configuration extends ExecutionConfig.GlobalJobParameters
-		implements IOReadableWritable, java.io.Serializable, Cloneable, ReadableConfig, WritableConfig {
+		implements IOReadableWritable, java.io.Serializable, Cloneable {
 
 	private static final long serialVersionUID = 1L;
 
@@ -85,17 +82,6 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	// --------------------------------------------------------------------------------------------
 
 	/**
-	 * Creates a new configuration that is initialized with the options of the given map.
-	 */
-	public static Configuration fromMap(Map<String, String> map) {
-		final Configuration configuration = new Configuration();
-		map.forEach(configuration::setString);
-		return configuration;
-	}
-
-	// --------------------------------------------------------------------------------------------
-
-	/**
 	 * Returns the class associated with the given key as a string.
 	 *
 	 * @param <T> The type of the class to return.
@@ -107,21 +93,18 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 * @return The value associated with the given key, or the default value, if to entry for the key exists.
 	 */
 	@SuppressWarnings("unchecked")
-	public <T> Class<T> getClass(
-			String key,
-			Class<? extends T> defaultValue,
-			ClassLoader classLoader) throws ClassNotFoundException {
-		Optional<Object> o = getRawValue(key);
-		if (!o.isPresent()) {
+	public <T> Class<T> getClass(String key, Class<? extends T> defaultValue, ClassLoader classLoader) throws ClassNotFoundException {
+		Object o = getRawValue(key);
+		if (o == null) {
 			return (Class<T>) defaultValue;
 		}
 
-		if (o.get().getClass() == String.class) {
-			return (Class<T>) Class.forName((String) o.get(), true, classLoader);
+		if (o.getClass() == String.class) {
+			return (Class<T>) Class.forName((String) o, true, classLoader);
 		}
 
-		throw new IllegalArgumentException(
-			"Configuration cannot evaluate object of class " + o.get().getClass() + " as a class name");
+		LOG.warn("Configuration cannot evaluate value " + o + " as a class name");
+		return (Class<T>) defaultValue;
 	}
 
 	/**
@@ -144,13 +127,14 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 * @param defaultValue
 	 *        the default value which is returned in case there is no value associated with the given key
 	 * @return the (default) value associated with the given key
-	 * @deprecated use {@link #getString(ConfigOption, String)} or {@link #getOptional(ConfigOption)}
 	 */
-	@Deprecated
 	public String getString(String key, String defaultValue) {
-		return getRawValue(key)
-			.map(ConfigurationUtils::convertToString)
-			.orElse(defaultValue);
+		Object o = getRawValue(key);
+		if (o == null) {
+			return defaultValue;
+		} else {
+			return o.toString();
+		}
 	}
 
 	/**
@@ -161,8 +145,8 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 */
 	@PublicEvolving
 	public String getString(ConfigOption<String> configOption) {
-		return getOptional(configOption)
-			.orElseGet(configOption::defaultValue);
+		Object o = getValueOrDefaultFromOption(configOption);
+		return o == null ? null : o.toString();
 	}
 
 	/**
@@ -175,8 +159,8 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 */
 	@PublicEvolving
 	public String getString(ConfigOption<String> configOption, String overrideDefault) {
-		return getOptional(configOption)
-			.orElse(overrideDefault);
+		Object o = getRawValueFromOption(configOption);
+		return o == null ? overrideDefault : o.toString();
 	}
 
 	/**
@@ -213,13 +197,14 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 * @param defaultValue
 	 *        the default value which is returned in case there is no value associated with the given key
 	 * @return the (default) value associated with the given key
-	 * @deprecated use {@link #getInteger(ConfigOption, int)} or {@link #getOptional(ConfigOption)}
 	 */
-	@Deprecated
 	public int getInteger(String key, int defaultValue) {
-		return getRawValue(key)
-			.map(ConfigurationUtils::convertToInt)
-			.orElse(defaultValue);
+		Object o = getRawValue(key);
+		if (o == null) {
+			return defaultValue;
+		}
+
+		return convertToInt(o, defaultValue);
 	}
 
 	/**
@@ -230,8 +215,8 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 */
 	@PublicEvolving
 	public int getInteger(ConfigOption<Integer> configOption) {
-		return getOptional(configOption)
-			.orElseGet(configOption::defaultValue);
+		Object o = getValueOrDefaultFromOption(configOption);
+		return convertToInt(o, configOption.defaultValue());
 	}
 
 	/**
@@ -245,8 +230,11 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 */
 	@PublicEvolving
 	public int getInteger(ConfigOption<Integer> configOption, int overrideDefault) {
-		return getOptional(configOption)
-			.orElse(overrideDefault);
+		Object o = getRawValueFromOption(configOption);
+		if (o == null) {
+			return overrideDefault;
+		}
+		return convertToInt(o, configOption.defaultValue());
 	}
 
 	/**
@@ -283,13 +271,14 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 * @param defaultValue
 	 *        the default value which is returned in case there is no value associated with the given key
 	 * @return the (default) value associated with the given key
-	 * @deprecated use {@link #getLong(ConfigOption, long)} or {@link #getOptional(ConfigOption)}
 	 */
-	@Deprecated
 	public long getLong(String key, long defaultValue) {
-		return getRawValue(key)
-			.map(ConfigurationUtils::convertToLong)
-			.orElse(defaultValue);
+		Object o = getRawValue(key);
+		if (o == null) {
+			return defaultValue;
+		}
+
+		return convertToLong(o, defaultValue);
 	}
 
 	/**
@@ -300,8 +289,8 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 */
 	@PublicEvolving
 	public long getLong(ConfigOption<Long> configOption) {
-		return getOptional(configOption)
-			.orElseGet(configOption::defaultValue);
+		Object o = getValueOrDefaultFromOption(configOption);
+		return convertToLong(o, configOption.defaultValue());
 	}
 
 	/**
@@ -315,8 +304,11 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 */
 	@PublicEvolving
 	public long getLong(ConfigOption<Long> configOption, long overrideDefault) {
-		return getOptional(configOption)
-			.orElse(overrideDefault);
+		Object o = getRawValueFromOption(configOption);
+		if (o == null) {
+			return overrideDefault;
+		}
+		return convertToLong(o, configOption.defaultValue());
 	}
 
 	/**
@@ -353,13 +345,14 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 * @param defaultValue
 	 *        the default value which is returned in case there is no value associated with the given key
 	 * @return the (default) value associated with the given key
-	 * @deprecated use {@link #getBoolean(ConfigOption, boolean)} or {@link #getOptional(ConfigOption)}
 	 */
-	@Deprecated
 	public boolean getBoolean(String key, boolean defaultValue) {
-		return getRawValue(key)
-			.map(ConfigurationUtils::convertToBoolean)
-			.orElse(defaultValue);
+		Object o = getRawValue(key);
+		if (o == null) {
+			return defaultValue;
+		}
+
+		return convertToBoolean(o);
 	}
 
 	/**
@@ -370,8 +363,8 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 */
 	@PublicEvolving
 	public boolean getBoolean(ConfigOption<Boolean> configOption) {
-		return getOptional(configOption)
-			.orElseGet(configOption::defaultValue);
+		Object o = getValueOrDefaultFromOption(configOption);
+		return convertToBoolean(o);
 	}
 
 	/**
@@ -385,8 +378,11 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 */
 	@PublicEvolving
 	public boolean getBoolean(ConfigOption<Boolean> configOption, boolean overrideDefault) {
-		return getOptional(configOption)
-			.orElse(overrideDefault);
+		Object o = getRawValueFromOption(configOption);
+		if (o == null) {
+			return overrideDefault;
+		}
+		return convertToBoolean(o);
 	}
 
 	/**
@@ -423,13 +419,14 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 * @param defaultValue
 	 *        the default value which is returned in case there is no value associated with the given key
 	 * @return the (default) value associated with the given key
-	 * @deprecated use {@link #getFloat(ConfigOption, float)} or {@link #getOptional(ConfigOption)}
 	 */
-	@Deprecated
 	public float getFloat(String key, float defaultValue) {
-		return getRawValue(key)
-			.map(ConfigurationUtils::convertToFloat)
-			.orElse(defaultValue);
+		Object o = getRawValue(key);
+		if (o == null) {
+			return defaultValue;
+		}
+
+		return convertToFloat(o, defaultValue);
 	}
 
 	/**
@@ -440,8 +437,8 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 */
 	@PublicEvolving
 	public float getFloat(ConfigOption<Float> configOption) {
-		return getOptional(configOption)
-			.orElseGet(configOption::defaultValue);
+		Object o = getValueOrDefaultFromOption(configOption);
+		return convertToFloat(o, configOption.defaultValue());
 	}
 
 	/**
@@ -455,8 +452,11 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 */
 	@PublicEvolving
 	public float getFloat(ConfigOption<Float> configOption, float overrideDefault) {
-		return getOptional(configOption)
-			.orElse(overrideDefault);
+		Object o = getRawValueFromOption(configOption);
+		if (o == null) {
+			return overrideDefault;
+		}
+		return convertToFloat(o, configOption.defaultValue());
 	}
 
 	/**
@@ -493,13 +493,14 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 * @param defaultValue
 	 *        the default value which is returned in case there is no value associated with the given key
 	 * @return the (default) value associated with the given key
-	 * @deprecated use {@link #getDouble(ConfigOption, double)} or {@link #getOptional(ConfigOption)}
 	 */
-	@Deprecated
 	public double getDouble(String key, double defaultValue) {
-		return getRawValue(key)
-			.map(ConfigurationUtils::convertToDouble)
-			.orElse(defaultValue);
+		Object o = getRawValue(key);
+		if (o == null) {
+			return defaultValue;
+		}
+
+		return convertToDouble(o, defaultValue);
 	}
 
 	/**
@@ -510,8 +511,8 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 */
 	@PublicEvolving
 	public double getDouble(ConfigOption<Double> configOption) {
-		return getOptional(configOption)
-			.orElseGet(configOption::defaultValue);
+		Object o = getValueOrDefaultFromOption(configOption);
+		return convertToDouble(o, configOption.defaultValue());
 	}
 
 	/**
@@ -525,8 +526,11 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 */
 	@PublicEvolving
 	public double getDouble(ConfigOption<Double> configOption, double overrideDefault) {
-		return getOptional(configOption)
-			.orElse(overrideDefault);
+		Object o = getRawValueFromOption(configOption);
+		if (o == null) {
+			return overrideDefault;
+		}
+		return convertToDouble(o, configOption.defaultValue());
 	}
 
 	/**
@@ -564,17 +568,20 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 *        The default value which is returned in case there is no value associated with the given key.
 	 * @return the (default) value associated with the given key.
 	 */
+	@SuppressWarnings("EqualsBetweenInconvertibleTypes")
 	public byte[] getBytes(String key, byte[] defaultValue) {
-		return getRawValue(key).map(o -> {
-				if (o.getClass().equals(byte[].class)) {
-					return (byte[]) o;
-				} else {
-					throw new IllegalArgumentException(String.format(
-						"Configuration cannot evaluate value %s as a byte[] value",
-						o));
-				}
-			}
-		).orElse(defaultValue);
+
+		Object o = getRawValue(key);
+		if (o == null) {
+			return defaultValue;
+		}
+		else if (o.getClass().equals(byte[].class)) {
+			return (byte[]) o;
+		}
+		else {
+			LOG.warn("Configuration cannot evaluate value {} as a byte[] value", o);
+			return defaultValue;
+		}
 	}
 
 	/**
@@ -597,38 +604,8 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 	 */
 	@PublicEvolving
 	public String getValue(ConfigOption<?> configOption) {
-		return Optional.ofNullable(getRawValueFromOption(configOption).orElseGet(configOption::defaultValue))
-			.map(String::valueOf)
-			.orElse(null);
-	}
-
-	/**
-	 * Returns the value associated with the given config option as an enum.
-	 *
-	 * @param enumClass    The return enum class
-	 * @param configOption The configuration option
-	 * @throws IllegalArgumentException If the string associated with the given config option cannot
-	 *                                  be parsed as a value of the provided enum class.
-	 */
-	@PublicEvolving
-	public <T extends Enum<T>> T getEnum(
-			final Class<T> enumClass,
-			final ConfigOption<String> configOption) {
-		checkNotNull(enumClass, "enumClass must not be null");
-		checkNotNull(configOption, "configOption must not be null");
-
-		Object rawValue = getRawValueFromOption(configOption)
-			.orElseGet(configOption::defaultValue);
-		try {
-			return ConfigurationUtils.convertToEnum(rawValue, enumClass);
-		} catch (IllegalArgumentException ex) {
-			final String errorMessage = String.format(
-				"Value for config option %s must be one of %s (was %s)",
-				configOption.key(),
-				Arrays.toString(enumClass.getEnumConstants()),
-				rawValue);
-			throw new IllegalArgumentException(errorMessage);
-		}
+		Object o = getValueOrDefaultFromOption(configOption);
+		return o == null ? null : o.toString();
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -724,11 +701,12 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 			if (this.confData.containsKey(configOption.key())) {
 				return true;
 			}
-			else if (configOption.hasFallbackKeys()) {
-				// try the fallback keys
-				for (FallbackKey fallbackKey : configOption.fallbackKeys()) {
-					if (this.confData.containsKey(fallbackKey.getKey())) {
-						loggingFallback(fallbackKey, configOption);
+			else if (configOption.hasDeprecatedKeys()) {
+				// try the deprecated keys
+				for (String deprecatedKey : configOption.deprecatedKeys()) {
+					if (this.confData.containsKey(deprecatedKey)) {
+						LOG.warn("Config uses deprecated configuration key '{}' instead of proper key '{}'",
+							deprecatedKey, configOption.key());
 						return true;
 					}
 				}
@@ -738,36 +716,6 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 		}
 	}
 
-	@Override
-	public <T> T get(ConfigOption<T> option) {
-		return getOptional(option).orElseGet(option::defaultValue);
-	}
-
-	@Override
-	public <T> Optional<T> getOptional(ConfigOption<T> option) {
-		Optional<Object> rawValue = getRawValueFromOption(option);
-		Class<?> clazz = option.getClazz();
-
-		try {
-			if (option.isList()) {
-				return rawValue.map(v -> ConfigurationUtils.convertToList(v, clazz));
-			} else {
-				return rawValue.map(v -> ConfigurationUtils.convertValue(v, clazz));
-			}
-		} catch (Exception e) {
-			throw new IllegalArgumentException(String.format(
-				"Could not parse value '%s' for key '%s'.",
-				rawValue.map(Object::toString).orElse(""),
-				option.key()), e);
-		}
-	}
-
-	@Override
-	public <T> Configuration set(ConfigOption<T> option, T value) {
-		setValueInternal(option.key(), value);
-		return this;
-	}
-
 	// --------------------------------------------------------------------------------------------
 
 	@Override
@@ -775,7 +723,7 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 		synchronized (this.confData){
 			Map<String, String> ret = new HashMap<>(this.confData.size());
 			for (Map.Entry<String, Object> entry : confData.entrySet()) {
-				ret.put(entry.getKey(), ConfigurationUtils.convertToString(entry.getValue()));
+				ret.put(entry.getKey(), entry.getValue().toString());
 			}
 			return ret;
 		}
@@ -793,10 +741,11 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 			// try the current key
 			Object oldValue = this.confData.remove(configOption.key());
 			if (oldValue == null){
-				for (FallbackKey fallbackKey : configOption.fallbackKeys()){
-					oldValue = this.confData.remove(fallbackKey.getKey());
+				for (String deprecatedKey : configOption.deprecatedKeys()){
+					oldValue = this.confData.remove(deprecatedKey);
 					if (oldValue != null){
-						loggingFallback(fallbackKey, configOption);
+						LOG.warn("Config uses deprecated configuration key '{}' instead of proper key '{}'",
+							deprecatedKey, configOption.key());
 						return true;
 					}
 				}
@@ -822,45 +771,140 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 		}
 	}
 
-	private Optional<Object> getRawValue(String key) {
+	private Object getRawValue(String key) {
 		if (key == null) {
 			throw new NullPointerException("Key must not be null.");
 		}
 
 		synchronized (this.confData) {
-			return Optional.ofNullable(this.confData.get(key));
+			return this.confData.get(key);
 		}
 	}
 
-	private Optional<Object> getRawValueFromOption(ConfigOption<?> configOption) {
+	private Object getRawValueFromOption(ConfigOption<?> configOption) {
 		// first try the current key
-		Optional<Object> o = getRawValue(configOption.key());
+		Object o = getRawValue(configOption.key());
 
-		if (o.isPresent()) {
+		if (o != null) {
 			// found a value for the current proper key
 			return o;
 		}
-		else if (configOption.hasFallbackKeys()) {
+		else if (configOption.hasDeprecatedKeys()) {
 			// try the deprecated keys
-			for (FallbackKey fallbackKey : configOption.fallbackKeys()) {
-				Optional<Object> oo = getRawValue(fallbackKey.getKey());
-				if (oo.isPresent()) {
-					loggingFallback(fallbackKey, configOption);
+			for (String deprecatedKey : configOption.deprecatedKeys()) {
+				Object oo = getRawValue(deprecatedKey);
+				if (oo != null) {
+					LOG.warn("Config uses deprecated configuration key '{}' instead of proper key '{}'",
+							deprecatedKey, configOption.key());
 					return oo;
 				}
 			}
 		}
 
-		return Optional.empty();
+		return null;
 	}
 
-	private void loggingFallback(FallbackKey fallbackKey, ConfigOption<?> configOption) {
-		if (fallbackKey.isDeprecated()) {
-			LOG.warn("Config uses deprecated configuration key '{}' instead of proper key '{}'",
-				fallbackKey.getKey(), configOption.key());
-		} else {
-			LOG.info("Config uses fallback configuration key '{}' instead of key '{}'",
-				fallbackKey.getKey(), configOption.key());
+	private Object getValueOrDefaultFromOption(ConfigOption<?> configOption) {
+		Object o = getRawValueFromOption(configOption);
+		return o != null ? o : configOption.defaultValue();
+	}
+
+	// --------------------------------------------------------------------------------------------
+	//  Type conversion
+	// --------------------------------------------------------------------------------------------
+
+	private int convertToInt(Object o, int defaultValue) {
+		if (o.getClass() == Integer.class) {
+			return (Integer) o;
+		}
+		else if (o.getClass() == Long.class) {
+			long value = (Long) o;
+			if (value <= Integer.MAX_VALUE && value >= Integer.MIN_VALUE) {
+				return (int) value;
+			} else {
+				LOG.warn("Configuration value {} overflows/underflows the integer type.", value);
+				return defaultValue;
+			}
+		}
+		else {
+			try {
+				return Integer.parseInt(o.toString());
+			}
+			catch (NumberFormatException e) {
+				LOG.warn("Configuration cannot evaluate value {} as an integer number", o);
+				return defaultValue;
+			}
+		}
+	}
+
+	private long convertToLong(Object o, long defaultValue) {
+		if (o.getClass() == Long.class) {
+			return (Long) o;
+		}
+		else if (o.getClass() == Integer.class) {
+			return ((Integer) o).longValue();
+		}
+		else {
+			try {
+				return Long.parseLong(o.toString());
+			}
+			catch (NumberFormatException e) {
+				LOG.warn("Configuration cannot evaluate value " + o + " as a long integer number");
+				return defaultValue;
+			}
+		}
+	}
+
+	private boolean convertToBoolean(Object o) {
+		if (o.getClass() == Boolean.class) {
+			return (Boolean) o;
+		}
+		else {
+			return Boolean.parseBoolean(o.toString());
+		}
+	}
+
+	private float convertToFloat(Object o, float defaultValue) {
+		if (o.getClass() == Float.class) {
+			return (Float) o;
+		}
+		else if (o.getClass() == Double.class) {
+			double value = ((Double) o);
+			if (value == 0.0
+					|| (value >= Float.MIN_VALUE && value <= Float.MAX_VALUE)
+					|| (value >= -Float.MAX_VALUE && value <= -Float.MIN_VALUE)) {
+				return (float) value;
+			} else {
+				LOG.warn("Configuration value {} overflows/underflows the float type.", value);
+				return defaultValue;
+			}
+		}
+		else {
+			try {
+				return Float.parseFloat(o.toString());
+			}
+			catch (NumberFormatException e) {
+				LOG.warn("Configuration cannot evaluate value {} as a float value", o);
+				return defaultValue;
+			}
+		}
+	}
+
+	private double convertToDouble(Object o, double defaultValue) {
+		if (o.getClass() == Double.class) {
+			return (Double) o;
+		}
+		else if (o.getClass() == Float.class) {
+			return ((Float) o).doubleValue();
+		}
+		else {
+			try {
+				return Double.parseDouble(o.toString());
+			}
+			catch (NumberFormatException e) {
+				LOG.warn("Configuration cannot evaluate value {} as a double value", o);
+				return defaultValue;
+			}
 		}
 	}
 
@@ -903,8 +947,7 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 						value = bytes;
 						break;
 					default:
-						throw new IOException(String.format("Unrecognized type: %s. This method is deprecated and" +
-							" might not work for all supported types.", type));
+						throw new IOException("Unrecognized type: " + type);
 				}
 
 				this.confData.put(key, value);
@@ -955,8 +998,7 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 					out.writeBoolean((Boolean) val);
 				}
 				else {
-					throw new IllegalArgumentException("Unrecognized type. This method is deprecated and might not work" +
-						" for all supported types.");
+					throw new IllegalArgumentException("Unrecognized type");
 				}
 			}
 		}
@@ -973,6 +1015,7 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
 		return hash;
 	}
 
+	@SuppressWarnings("EqualsBetweenInconvertibleTypes")
 	@Override
 	public boolean equals(Object obj) {
 		if (this == obj) {

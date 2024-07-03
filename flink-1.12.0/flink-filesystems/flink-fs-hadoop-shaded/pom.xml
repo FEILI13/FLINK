@@ -23,12 +23,12 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-filesystems</artifactId>
-		<version>1.12.0</version>
+		<version>1.7-CLONOS-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 
 	<artifactId>flink-fs-hadoop-shaded</artifactId>
-	<name>Flink : FileSystems : Hadoop FS shaded</name>
+	<name>flink-filesystems :: flink-fs-hadoop-shaded</name>
 
 	<packaging>jar</packaging>
 

@@ -25,9 +25,18 @@ under the License.
 * ToC
 {:toc}
 
-In this section you will learn about how to use broadcast state in practise. Please refer to [Stateful Stream
-Processing]({% link concepts/stateful-stream-processing.md %})
-to learn about the concepts behind stateful stream processing. 
+[Working with State](state.html) describes operator state which upon restore is either evenly distributed among the 
+parallel tasks of an operator, or unioned, with the whole state being used to initialize the restored parallel tasks.
+
+A third type of supported *operator state* is the *Broadcast State*. Broadcast state was introduced to support use cases
+where some data coming from one stream is required to be broadcasted to all downstream tasks, where it is stored locally
+and is used to process all incoming elements on the other stream. As an example where broadcast state can emerge as a 
+natural fit, one can imagine a low-throughput stream containing a set of rules which we want to evaluate against all 
+elements coming from another stream. Having the above type of use cases in mind, broadcast state differs from the rest 
+of operator states in that:
+ 1. it has a map format,
+ 2. it is only available to specific operators that have as inputs a *broadcasted* stream and a *non-broadcasted* one, and
+ 3. such an operator can have *multiple broadcast states* with different names.
 
 ## Provided APIs
 
@@ -43,9 +52,9 @@ Starting from the stream of `Items`, we just need to *key it* by `Color`, as we 
 make sure that elements of the same color end up on the same physical machine.
 
 {% highlight java %}
-// key the items by color
-KeyedStream<Item, Color> colorPartitionedStream = itemStream
-                        .keyBy(new KeySelector<Item, Color>(){...});
+// key the shapes by color
+KeyedStream<Item, Color> colorPartitionedStream = shapeStream
+                        .keyBy(new KeySelector<Shape, Color>(){...});
 {% endhighlight %}
 
 Moving on to the `Rules`, the stream containing them should be broadcasted to all downstream tasks, and these tasks 
@@ -85,7 +94,7 @@ The exact type of the function depends on the type of the non-broadcasted stream
 </div>
 
 {% highlight java %}
-DataStream<String> output = colorPartitionedStream
+DataStream<Match> output = colorPartitionedStream
                  .connect(ruleBroadcastStream)
                  .process(
                      
@@ -98,7 +107,7 @@ DataStream<String> output = colorPartitionedStream
                      new KeyedBroadcastProcessFunction<Color, Item, Rule, String>() {
                          // my matching logic
                      }
-                 );
+                 )
 {% endhighlight %}
 
 ### BroadcastProcessFunction and KeyedBroadcastProcessFunction
@@ -152,7 +161,7 @@ across all tasks. Ignoring this rule would break the consistency guarantees of t
 often difficult to debug results.
 
 <div class="alert alert-info">
-  <strong>Attention:</strong> The logic implemented in `processBroadcastElement()` must have the same deterministic behavior
+  <strong>Attention:</strong> The logic implemented in `processBroadcast()` must have the same deterministic behavior
   across all parallel instances!
 </div>
 
@@ -266,5 +275,3 @@ manner.
 
   - **No RocksDB state backend:** Broadcast state is kept in-memory at runtime and memory provisioning should be done 
 accordingly. This holds for all operator states.
-
-{% top %}

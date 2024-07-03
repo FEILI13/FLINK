@@ -26,17 +26,16 @@ import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.io.DiscardingOutputFormat;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.test.util.MiniClusterWithClientResource;
+import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.TestLogger;
 
 import org.junit.ClassRule;
 import org.junit.Test;
 
-import static org.apache.flink.util.ExceptionUtils.findThrowable;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -59,13 +58,14 @@ public class AccumulatorErrorITCase extends TestLogger {
 
 	public static Configuration getConfiguration() {
 		Configuration config = new Configuration();
-		config.set(TaskManagerOptions.MANAGED_MEMORY_SIZE, MemorySize.parse("12m"));
+		config.setString(TaskManagerOptions.MANAGED_MEMORY_SIZE, "12m");
 		return config;
 	}
 
 	@Test
 	public void testFaultyAccumulator() throws Exception {
 		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		env.getConfig().disableSysoutLogging();
 
 		// Test Exception forwarding with faulty Accumulator implementation
 		env.generateSequence(0, 10000)
@@ -79,6 +79,8 @@ public class AccumulatorErrorITCase extends TestLogger {
 	public void testInvalidTypeAccumulator() throws Exception {
 		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 
+		env.getConfig().disableSysoutLogging();
+
 		// Test Exception forwarding with faulty Accumulator implementation
 		env.generateSequence(0, 10000)
 			.map(new IncompatibleAccumulatorTypesMapper())
@@ -89,13 +91,17 @@ public class AccumulatorErrorITCase extends TestLogger {
 			env.execute();
 			fail("Should have failed.");
 		} catch (JobExecutionException e) {
-			assertTrue(findThrowable(e, UnsupportedOperationException.class).isPresent());
+			assertTrue("Root cause should be:",
+					e.getCause() instanceof Exception);
+			assertTrue("Root cause should be:",
+					e.getCause().getCause() instanceof UnsupportedOperationException);
 		}
 	}
 
 	@Test
 	public void testFaultyMergeAccumulator() throws Exception {
 		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		env.getConfig().disableSysoutLogging();
 
 		// Test Exception forwarding with faulty Accumulator implementation
 		env.generateSequence(0, 10000)
@@ -200,7 +206,7 @@ public class AccumulatorErrorITCase extends TestLogger {
 			fail("Should have failed");
 		}
 		catch (Exception ex) {
-			assertTrue(findThrowable(ex, CustomException.class).isPresent());
+			assertTrue(ExceptionUtils.findThrowable(ex, CustomException.class).isPresent());
 		}
 	}
 }

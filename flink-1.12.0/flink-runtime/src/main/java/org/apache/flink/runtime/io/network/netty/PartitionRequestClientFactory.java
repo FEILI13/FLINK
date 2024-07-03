@@ -18,9 +18,9 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
+import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.NetworkClientHandler;
-import org.apache.flink.runtime.io.network.PartitionRequestClient;
 import org.apache.flink.runtime.io.network.netty.exception.RemoteTransportException;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 
@@ -38,7 +38,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Factory for {@link NettyPartitionRequestClient} instances.
+ * Factory for {@link PartitionRequestClient} instances.
  *
  * <p>Instances of partition requests clients are shared among several {@link RemoteInputChannel}
  * instances.
@@ -50,47 +50,40 @@ class PartitionRequestClientFactory {
 
 	private final int retryNumber;
 
-	private final ConcurrentMap<ConnectionID, CompletableFuture<NettyPartitionRequestClient>> clients = new ConcurrentHashMap<>();
+	private final ConcurrentMap<ConnectionID, CompletableFuture<PartitionRequestClient>> clients = new ConcurrentHashMap<>();
+	private final CausalLogManager causalLogManager;
 
-	PartitionRequestClientFactory(NettyClient nettyClient) {
-		this(nettyClient, 0);
+	PartitionRequestClientFactory(NettyClient nettyClient){
+		this(nettyClient, null);
+	}
+	PartitionRequestClientFactory(NettyClient nettyClient, CausalLogManager causalLogManager) {
+		this(nettyClient, 5, causalLogManager);
 	}
 
-	PartitionRequestClientFactory(NettyClient nettyClient, int retryNumber) {
+	PartitionRequestClientFactory(NettyClient nettyClient, int retryNumber, CausalLogManager causalLogManager) {
 		this.nettyClient = nettyClient;
 		this.retryNumber = retryNumber;
+		this.causalLogManager = causalLogManager;
 	}
 
 	/**
 	 * Atomically establishes a TCP connection to the given remote address and
-	 * creates a {@link NettyPartitionRequestClient} instance for this connection.
+	 * creates a {@link PartitionRequestClient} instance for this connection.
 	 */
-	NettyPartitionRequestClient createPartitionRequestClient(ConnectionID connectionId) throws IOException, InterruptedException {
+	PartitionRequestClient createPartitionRequestClient(ConnectionID connectionId) throws IOException, InterruptedException {
 		while (true) {
 			AtomicBoolean isTheFirstOne = new AtomicBoolean(false);
-			CompletableFuture<NettyPartitionRequestClient> clientFuture = clients.computeIfAbsent(connectionId, unused -> {
+			CompletableFuture<PartitionRequestClient> clientFuture = clients.computeIfAbsent(connectionId, unused -> {
 				isTheFirstOne.set(true);
 				return new CompletableFuture<>();
 			});
 			if (isTheFirstOne.get()) {
-				try {
-					clientFuture.complete(connectWithRetries(connectionId));
-				} catch (InterruptedException e) {
-					clientFuture.complete(null); // let others waiting know that they should retry
-					throw e;
-				} catch (Exception e) {
-					clientFuture.completeExceptionally(e);
-				}
+				clientFuture.complete(connectWithRetries(connectionId));
 			}
 
-			final NettyPartitionRequestClient client;
+			final PartitionRequestClient client;
 			try {
 				client = clientFuture.get();
-				if (client == null) {
-					// computation failed in another thread - cleanup the map and restart the loop
-					clients.remove(connectionId, clientFuture);
-					continue;
-				}
 			} catch (ExecutionException e) {
 				throw new IOException(e);
 			}
@@ -104,7 +97,7 @@ class PartitionRequestClientFactory {
 		}
 	}
 
-	private NettyPartitionRequestClient connectWithRetries(ConnectionID connectionId) throws InterruptedException {
+	private PartitionRequestClient connectWithRetries(ConnectionID connectionId) {
 		int tried = 0;
 		while (true) {
 			try {
@@ -119,13 +112,11 @@ class PartitionRequestClientFactory {
 		}
 	}
 
-	private NettyPartitionRequestClient connect(ConnectionID connectionId) throws RemoteTransportException, InterruptedException {
+	private PartitionRequestClient connect(ConnectionID connectionId) throws RemoteTransportException {
 		try {
 			Channel channel = nettyClient.connect(connectionId.getAddress()).await().channel();
 			NetworkClientHandler clientHandler = channel.pipeline().get(NetworkClientHandler.class);
-			return new NettyPartitionRequestClient(channel, clientHandler, connectionId, this);
-		} catch (InterruptedException e) {
-			throw e;
+			return new PartitionRequestClient(channel, clientHandler, connectionId, this, causalLogManager);
 		} catch (Exception e) {
 			throw new RemoteTransportException(
 				"Connecting to remote task manager '" + connectionId.getAddress() +
@@ -136,7 +127,7 @@ class PartitionRequestClientFactory {
 	}
 
 	void closeOpenChannelConnections(ConnectionID connectionId) {
-		CompletableFuture<NettyPartitionRequestClient> entry = clients.get(connectionId);
+		CompletableFuture<PartitionRequestClient> entry = clients.get(connectionId);
 
 		if (entry != null && !entry.isDone()) {
 			entry.thenAccept(client -> {
@@ -155,7 +146,7 @@ class PartitionRequestClientFactory {
 	 * Removes the client for the given {@link ConnectionID}.
 	 */
 	void destroyPartitionRequestClient(ConnectionID connectionId, PartitionRequestClient client) {
-		final CompletableFuture<NettyPartitionRequestClient> future = clients.get(connectionId);
+		final CompletableFuture<PartitionRequestClient> future = clients.get(connectionId);
 		if (future != null && future.isDone()) {
 			future.thenAccept(futureClient -> {
 				if (client.equals(futureClient)) {
@@ -166,3 +157,4 @@ class PartitionRequestClientFactory {
 	}
 
 }
+

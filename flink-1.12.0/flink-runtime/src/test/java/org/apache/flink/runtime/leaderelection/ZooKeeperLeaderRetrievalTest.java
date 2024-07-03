@@ -18,6 +18,9 @@
 
 package org.apache.flink.runtime.leaderelection;
 
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.test.TestingServer;
+
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.runtime.blob.VoidBlobStore;
@@ -32,12 +35,11 @@ import org.apache.flink.runtime.util.LeaderRetrievalUtils;
 import org.apache.flink.runtime.util.ZooKeeperUtils;
 import org.apache.flink.util.TestLogger;
 
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.CuratorFramework;
-
-import org.apache.curator.test.TestingServer;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+
+import scala.concurrent.duration.FiniteDuration;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -46,13 +48,10 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketAddress;
 import java.net.UnknownHostException;
-import java.time.Duration;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.assertEquals;
 
-/**
- * Tests for the ZooKeeper based leader election and retrieval.
- */
 public class ZooKeeperLeaderRetrievalTest extends TestLogger{
 
 	private TestingServer testingServer;
@@ -80,16 +79,16 @@ public class ZooKeeperLeaderRetrievalTest extends TestLogger{
 
 	@After
 	public void after() throws Exception {
+		if(testingServer != null) {
+			testingServer.stop();
+
+			testingServer = null;
+		}
+
 		if (highAvailabilityServices != null) {
 			highAvailabilityServices.closeAndCleanupAllData();
 
 			highAvailabilityServices = null;
-		}
-
-		if (testingServer != null) {
-			testingServer.stop();
-
-			testingServer = null;
 		}
 	}
 
@@ -101,7 +100,7 @@ public class ZooKeeperLeaderRetrievalTest extends TestLogger{
 	 */
 	@Test
 	public void testConnectingAddressRetrievalWithDelayedLeaderElection() throws Exception {
-		Duration timeout = Duration.ofMinutes(1L);
+		FiniteDuration timeout = new FiniteDuration(1, TimeUnit.MINUTES);
 
 		long sleepingTime = 1000;
 
@@ -196,7 +195,7 @@ public class ZooKeeperLeaderRetrievalTest extends TestLogger{
 	 */
 	@Test
 	public void testTimeoutOfFindConnectingAddress() throws Exception {
-		Duration timeout = Duration.ofSeconds(1L);
+		FiniteDuration timeout = new FiniteDuration(10L, TimeUnit.SECONDS);
 
 		LeaderRetrievalService leaderRetrievalService = highAvailabilityServices.getJobManagerLeaderRetriever(HighAvailabilityServices.DEFAULT_JOB_ID);
 		InetAddress result = LeaderRetrievalUtils.findConnectingAddress(leaderRetrievalService, timeout);
@@ -206,14 +205,14 @@ public class ZooKeeperLeaderRetrievalTest extends TestLogger{
 
 	static class FindConnectingAddress implements Runnable {
 
-		private final Duration timeout;
+		private final FiniteDuration timeout;
 		private final LeaderRetrievalService leaderRetrievalService;
 
 		private InetAddress result;
 		private Exception exception;
 
 		public FindConnectingAddress(
-				Duration timeout,
+				FiniteDuration timeout,
 				LeaderRetrievalService leaderRetrievalService) {
 			this.timeout = timeout;
 			this.leaderRetrievalService = leaderRetrievalService;

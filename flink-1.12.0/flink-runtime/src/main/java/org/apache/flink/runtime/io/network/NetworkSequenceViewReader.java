@@ -18,12 +18,12 @@
 
 package org.apache.flink.runtime.io.network;
 
+import org.apache.flink.api.common.JobID;
+import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionProvider;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel.BufferAndAvailability;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
-
-import javax.annotation.Nullable;
 
 import java.io.IOException;
 
@@ -38,8 +38,7 @@ public interface NetworkSequenceViewReader {
 		ResultPartitionID resultPartitionId,
 		int subPartitionIndex) throws IOException;
 
-	@Nullable
-	BufferAndAvailability getNextBuffer() throws IOException;
+	BufferAndAvailability getNextBuffer() throws IOException, InterruptedException;
 
 	/**
 	 * The credits from consumer are added in incremental way.
@@ -47,11 +46,6 @@ public interface NetworkSequenceViewReader {
 	 * @param creditDeltas The credit deltas
 	 */
 	void addCredit(int creditDeltas);
-
-	/**
-	 * Resumes data consumption after an exactly once checkpoint.
-	 */
-	void resumeConsumption();
 
 	/**
 	 * Checks whether this reader is available or not.
@@ -69,11 +63,21 @@ public interface NetworkSequenceViewReader {
 	 */
 	void setRegisteredAsAvailable(boolean isRegisteredAvailable);
 
+	void notifySubpartitionConsumed() throws IOException;
+
 	boolean isReleased();
 
 	void releaseAllResources() throws IOException;
 
+	void releaseAllResources(Throwable cause) throws IOException;
+
 	Throwable getFailureCause();
 
 	InputChannelID getReceiverId();
+
+	JobID getJobID();
+
+	int getSequenceNumber();
+
+    short getVertexID();
 }

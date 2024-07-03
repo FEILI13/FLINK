@@ -36,7 +36,6 @@ import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.memory.MemoryManager;
-import org.apache.flink.runtime.memory.MemoryManagerBuilder;
 import org.apache.flink.runtime.operators.hash.NonReusingHashJoinIteratorITCase.TupleMatch;
 import org.apache.flink.runtime.operators.hash.NonReusingHashJoinIteratorITCase.TupleIntPairMatch;
 import org.apache.flink.runtime.operators.testutils.DiscardingOutputCollector;
@@ -107,14 +106,17 @@ public class ReusingHashJoinIteratorITCase extends TestLogger {
 		this.pairRecordPairComparator = new IntPairTuplePairComparator();
 		this.recordPairPairComparator = new TupleIntPairPairComparator();
 		
-		this.memoryManager = MemoryManagerBuilder.newBuilder().setMemorySize(MEMORY_SIZE).build();
+		this.memoryManager = new MemoryManager(MEMORY_SIZE, 1);
 		this.ioManager = new IOManagerAsync();
 	}
 
 	@After
-	public void afterTest() throws Exception {
+	public void afterTest() {
 		if (this.ioManager != null) {
-			this.ioManager.close();
+			this.ioManager.shutdown();
+			if (!this.ioManager.isProperlyShutDown()) {
+				Assert.fail("I/O manager failed to properly shut down.");
+			}
 			this.ioManager = null;
 		}
 		

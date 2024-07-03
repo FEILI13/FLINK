@@ -20,6 +20,8 @@ package org.apache.flink.cep.utils;
 
 import org.apache.flink.api.common.state.AggregatingState;
 import org.apache.flink.api.common.state.AggregatingStateDescriptor;
+import org.apache.flink.api.common.state.FoldingState;
+import org.apache.flink.api.common.state.FoldingStateDescriptor;
 import org.apache.flink.api.common.state.KeyedStateStore;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
@@ -122,6 +124,11 @@ public class TestSharedBuffer<V> extends SharedBuffer<V> {
 		}
 
 		@Override
+		public <T, ACC> FoldingState<T, ACC> getFoldingState(FoldingStateDescriptor<T, ACC> stateProperties) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
 		public <UK, UV> MapState<UK, UV> getMapState(MapStateDescriptor<UK, UV> stateProperties) {
 			return new MapState<UK, UV>() {
 
@@ -210,15 +217,6 @@ public class TestSharedBuffer<V> extends SharedBuffer<V> {
 					}
 
 					return new CountingIterator<>(values.entrySet().iterator());
-				}
-
-				@Override
-				public boolean isEmpty() throws Exception {
-					if (values == null) {
-						return true;
-					}
-
-					return values.isEmpty();
 				}
 
 				@Override

@@ -33,9 +33,6 @@ package org.apache.flink.metrics;
  * <p>The events are counted by a {@link Counter}.
  */
 public class MeterView implements Meter, View {
-
-	private static final int DEFAULT_TIME_SPAN_IN_SECONDS = 60;
-
 	/** The underlying counter maintaining the count. */
 	private final Counter counter;
 	/** The time-span over which the average is calculated. */
@@ -49,10 +46,6 @@ public class MeterView implements Meter, View {
 
 	public MeterView(int timeSpanInSeconds) {
 		this(new SimpleCounter(), timeSpanInSeconds);
-	}
-
-	public MeterView(Counter counter) {
-		this(counter, DEFAULT_TIME_SPAN_IN_SECONDS);
 	}
 
 	public MeterView(Counter counter, int timeSpanInSeconds) {

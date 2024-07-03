@@ -28,12 +28,12 @@ import javax.annotation.Nonnull;
 public class SlotAndLocality {
 
 	@Nonnull
-	private final PhysicalSlot slot;
+	private final AllocatedSlot slot;
 
 	@Nonnull
 	private final Locality locality;
 
-	public SlotAndLocality(@Nonnull PhysicalSlot slot, @Nonnull Locality locality) {
+	public SlotAndLocality(@Nonnull AllocatedSlot slot, @Nonnull Locality locality) {
 		this.slot = slot;
 		this.locality = locality;
 	}
@@ -41,7 +41,7 @@ public class SlotAndLocality {
 	// ------------------------------------------------------------------------
 
 	@Nonnull
-	public PhysicalSlot getSlot() {
+	public AllocatedSlot getSlot() {
 		return slot;
 	}
 

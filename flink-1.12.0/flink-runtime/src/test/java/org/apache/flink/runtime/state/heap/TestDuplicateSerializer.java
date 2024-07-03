@@ -18,8 +18,9 @@
 
 package org.apache.flink.runtime.state.heap;
 
+import org.apache.flink.api.common.typeutils.CompatibilityResult;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
+import org.apache.flink.api.common.typeutils.TypeSerializerConfigSnapshot;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
 
@@ -103,6 +104,11 @@ public class TestDuplicateSerializer extends TypeSerializer<Integer> {
 	}
 
 	@Override
+	public boolean canEqual(Object obj) {
+		return obj instanceof TestDuplicateSerializer;
+	}
+
+	@Override
 	public int hashCode() {
 		return getClass().hashCode();
 	}
@@ -112,7 +118,12 @@ public class TestDuplicateSerializer extends TypeSerializer<Integer> {
 	}
 
 	@Override
-	public TypeSerializerSnapshot<Integer> snapshotConfiguration() {
+	public TypeSerializerConfigSnapshot<Integer> snapshotConfiguration() {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public CompatibilityResult<Integer> ensureCompatibility(TypeSerializerConfigSnapshot<?> configSnapshot) {
 		throw new UnsupportedOperationException();
 	}
 }

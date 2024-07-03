@@ -19,6 +19,7 @@
 package org.apache.flink.test.streaming.runtime;
 
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
+import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -33,7 +34,6 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
 import org.apache.flink.streaming.runtime.tasks.TimerException;
 import org.apache.flink.test.util.AbstractTestBase;
-import org.apache.flink.util.ExceptionUtils;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -42,10 +42,7 @@ import org.junit.runners.Parameterized;
 
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Optional;
 import java.util.concurrent.Semaphore;
-
-import static org.junit.Assert.assertTrue;
 
 /**
  * Tests for the timer service of {@code StreamTask}.
@@ -77,26 +74,27 @@ public class StreamTaskTimerITCase extends AbstractTestBase {
 
 		source.transform("Custom Operator", BasicTypeInfo.STRING_TYPE_INFO, new TimerOperator(ChainingStrategy.ALWAYS));
 
+		boolean testSuccess = false;
 		try {
 			env.execute("Timer test");
 		} catch (JobExecutionException e) {
-			verifyJobExecutionException(e);
-		}
-	}
-
-	private void verifyJobExecutionException(JobExecutionException e) throws JobExecutionException {
-		final Optional<TimerException> optionalTimerException = ExceptionUtils.findThrowable(e, TimerException.class);
-		assertTrue(optionalTimerException.isPresent());
-
-		TimerException te = optionalTimerException.get();
-		if (te.getCause() instanceof RuntimeException) {
-			RuntimeException re = (RuntimeException) te.getCause();
-			if (!re.getMessage().equals("TEST SUCCESS")) {
+			if (e.getCause() instanceof TimerException) {
+				TimerException te = (TimerException) e.getCause();
+				if (te.getCause() instanceof RuntimeException) {
+					RuntimeException re = (RuntimeException) te.getCause();
+					if (re.getMessage().equals("TEST SUCCESS")) {
+						testSuccess = true;
+					} else {
+						throw e;
+					}
+				} else {
+					throw e;
+				}
+			} else {
 				throw e;
 			}
-		} else {
-			throw e;
 		}
+		Assert.assertTrue(testSuccess);
 	}
 
 	/**
@@ -113,11 +111,27 @@ public class StreamTaskTimerITCase extends AbstractTestBase {
 
 		source.transform("Custom Operator", BasicTypeInfo.STRING_TYPE_INFO, new TimerOperator(ChainingStrategy.NEVER));
 
+		boolean testSuccess = false;
 		try {
 			env.execute("Timer test");
 		} catch (JobExecutionException e) {
-			verifyJobExecutionException(e);
+			if (e.getCause() instanceof TimerException) {
+				TimerException te = (TimerException) e.getCause();
+				if (te.getCause() instanceof RuntimeException) {
+					RuntimeException re = (RuntimeException) te.getCause();
+					if (re.getMessage().equals("TEST SUCCESS")) {
+						testSuccess = true;
+					} else {
+						throw e;
+					}
+				} else {
+					throw e;
+				}
+			} else {
+				throw e;
+			}
 		}
+		Assert.assertTrue(testSuccess);
 	}
 
 	@Test
@@ -133,11 +147,27 @@ public class StreamTaskTimerITCase extends AbstractTestBase {
 				BasicTypeInfo.STRING_TYPE_INFO,
 				new TwoInputTimerOperator(ChainingStrategy.NEVER));
 
+		boolean testSuccess = false;
 		try {
 			env.execute("Timer test");
 		} catch (JobExecutionException e) {
-			verifyJobExecutionException(e);
+			if (e.getCause() instanceof TimerException) {
+				TimerException te = (TimerException) e.getCause();
+				if (te.getCause() instanceof RuntimeException) {
+					RuntimeException re = (RuntimeException) te.getCause();
+					if (re.getMessage().equals("TEST SUCCESS")) {
+						testSuccess = true;
+					} else {
+						throw e;
+					}
+				} else {
+					throw e;
+				}
+			} else {
+				throw e;
+			}
 		}
+		Assert.assertTrue(testSuccess);
 	}
 
 	private static class TimerOperator extends AbstractStreamOperator<String> implements OneInputStreamOperator<String, String>, ProcessingTimeCallback {
@@ -182,6 +212,11 @@ public class StreamTaskTimerITCase extends AbstractTestBase {
 			} finally {
 				semaphore.release();
 			}
+		}
+
+		@Override
+		public ProcessingTimeCallbackID getID() {
+			return null;
 		}
 
 		private void throwIfDone() {
@@ -256,6 +291,11 @@ public class StreamTaskTimerITCase extends AbstractTestBase {
 			} finally {
 				semaphore.release();
 			}
+		}
+
+		@Override
+		public ProcessingTimeCallbackID getID() {
+			return null;
 		}
 
 		private void throwIfDone() {

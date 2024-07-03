@@ -85,6 +85,11 @@ public final class ByteSerializer extends TypeSerializerSingleton<Byte> {
 	}
 
 	@Override
+	public boolean canEqual(Object obj) {
+		return obj instanceof ByteSerializer;
+	}
+
+	@Override
 	public TypeSerializerSnapshot<Byte> snapshotConfiguration() {
 		return new ByteSerializerSnapshot();
 	}
@@ -94,11 +99,10 @@ public final class ByteSerializer extends TypeSerializerSingleton<Byte> {
 	/**
 	 * Serializer configuration snapshot for compatibility and format evolution.
 	 */
-	@SuppressWarnings("WeakerAccess")
 	public static final class ByteSerializerSnapshot extends SimpleTypeSerializerSnapshot<Byte> {
 
 		public ByteSerializerSnapshot() {
-			super(() -> INSTANCE);
+			super(ByteSerializer.class);
 		}
 	}
 }

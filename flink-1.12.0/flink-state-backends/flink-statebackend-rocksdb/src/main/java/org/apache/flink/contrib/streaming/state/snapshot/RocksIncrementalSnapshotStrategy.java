@@ -19,9 +19,12 @@
 package org.apache.flink.contrib.streaming.state.snapshot;
 
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.contrib.streaming.state.RocksDBKeyedStateBackend.RocksDbKvStateInfo;
-import org.apache.flink.contrib.streaming.state.RocksDBStateUploader;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.CloseableRegistry;
+import org.apache.flink.core.fs.FSDataInputStream;
+import org.apache.flink.core.fs.FileStatus;
+import org.apache.flink.core.fs.FileSystem;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
@@ -30,14 +33,15 @@ import org.apache.flink.runtime.state.CheckpointStreamFactory;
 import org.apache.flink.runtime.state.CheckpointStreamWithResultProvider;
 import org.apache.flink.runtime.state.CheckpointedStateScope;
 import org.apache.flink.runtime.state.DirectoryStateHandle;
+import org.apache.flink.runtime.state.IncrementalKeyedStateHandle;
 import org.apache.flink.runtime.state.IncrementalLocalKeyedStateHandle;
-import org.apache.flink.runtime.state.IncrementalRemoteKeyedStateHandle;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyedBackendSerializationProxy;
 import org.apache.flink.runtime.state.KeyedStateHandle;
 import org.apache.flink.runtime.state.LocalRecoveryConfig;
 import org.apache.flink.runtime.state.LocalRecoveryDirectoryProvider;
 import org.apache.flink.runtime.state.PlaceholderStreamStateHandle;
+import org.apache.flink.runtime.state.RegisteredStateMetaInfoBase;
 import org.apache.flink.runtime.state.SnapshotDirectory;
 import org.apache.flink.runtime.state.SnapshotResult;
 import org.apache.flink.runtime.state.StateHandleID;
@@ -52,6 +56,7 @@ import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.ResourceGuard;
 
 import org.rocksdb.Checkpoint;
+import org.rocksdb.ColumnFamilyHandle;
 import org.rocksdb.RocksDB;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,7 +67,6 @@ import javax.annotation.Nullable;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -102,17 +106,11 @@ public class RocksIncrementalSnapshotStrategy<K> extends RocksDBSnapshotStrategy
 	/** The identifier of the last completed checkpoint. */
 	private long lastCompletedCheckpointId;
 
-	/** The help class used to upload state files. */
-	private final RocksDBStateUploader stateUploader;
-
-	/** The local directory name of the current snapshot strategy. */
-	private final String localDirectoryName;
-
 	public RocksIncrementalSnapshotStrategy(
 		@Nonnull RocksDB db,
 		@Nonnull ResourceGuard rocksDBResourceGuard,
 		@Nonnull TypeSerializer<K> keySerializer,
-		@Nonnull LinkedHashMap<String, RocksDbKvStateInfo> kvStateInformation,
+		@Nonnull LinkedHashMap<String, Tuple2<ColumnFamilyHandle, RegisteredStateMetaInfoBase>> kvStateInformation,
 		@Nonnull KeyGroupRange keyGroupRange,
 		@Nonnegative int keyGroupPrefixBytes,
 		@Nonnull LocalRecoveryConfig localRecoveryConfig,
@@ -120,8 +118,7 @@ public class RocksIncrementalSnapshotStrategy<K> extends RocksDBSnapshotStrategy
 		@Nonnull File instanceBasePath,
 		@Nonnull UUID backendUID,
 		@Nonnull SortedMap<Long, Set<StateHandleID>> materializedSstFiles,
-		long lastCompletedCheckpointId,
-		int numberOfTransferingThreads) {
+		long lastCompletedCheckpointId) {
 
 		super(
 			DESCRIPTION,
@@ -138,8 +135,6 @@ public class RocksIncrementalSnapshotStrategy<K> extends RocksDBSnapshotStrategy
 		this.backendUID = backendUID;
 		this.materializedSstFiles = materializedSstFiles;
 		this.lastCompletedCheckpointId = lastCompletedCheckpointId;
-		this.stateUploader = new RocksDBStateUploader(numberOfTransferingThreads);
-		this.localDirectoryName = backendUID.toString().replaceAll("[\\-]", "");
 	}
 
 	@Nonnull
@@ -179,13 +174,6 @@ public class RocksIncrementalSnapshotStrategy<K> extends RocksDBSnapshotStrategy
 		}
 	}
 
-	@Override
-	public void notifyCheckpointAborted(long abortedCheckpointId) {
-		synchronized (materializedSstFiles) {
-			materializedSstFiles.keySet().remove(abortedCheckpointId);
-		}
-	}
-
 	@Nonnull
 	private SnapshotDirectory prepareLocalSnapshotDirectory(long checkpointId) throws IOException {
 
@@ -194,19 +182,18 @@ public class RocksIncrementalSnapshotStrategy<K> extends RocksDBSnapshotStrategy
 			LocalRecoveryDirectoryProvider directoryProvider = localRecoveryConfig.getLocalStateDirectoryProvider();
 			File directory = directoryProvider.subtaskSpecificCheckpointDirectory(checkpointId);
 
-			if (!directory.exists() && !directory.mkdirs()) {
+			if (directory.exists()) {
+				FileUtils.deleteDirectory(directory);
+			}
+
+			if (!directory.mkdirs()) {
 				throw new IOException("Local state base directory for checkpoint " + checkpointId +
-					" does not exist and could not be created: " + directory);
+					" already exists: " + directory);
 			}
 
 			// introduces an extra directory because RocksDB wants a non-existing directory for native checkpoints.
-			// append localDirectoryName here to solve directory collision problem when two stateful operators chained in one task.
-			File rdbSnapshotDir = new File(directory, localDirectoryName);
-			if (rdbSnapshotDir.exists()) {
-				FileUtils.deleteDirectory(rdbSnapshotDir);
-			}
-
-			Path path = rdbSnapshotDir.toPath();
+			File rdbSnapshotDir = new File(directory, "rocks_db");
+			Path path = new Path(rdbSnapshotDir.toURI());
 			// create a "permanent" snapshot directory because local recovery is active.
 			try {
 				return SnapshotDirectory.permanent(path);
@@ -220,8 +207,8 @@ public class RocksIncrementalSnapshotStrategy<K> extends RocksDBSnapshotStrategy
 			}
 		} else {
 			// create a "temporary" snapshot directory because local recovery is inactive.
-			File snapshotDir = new File(instanceBasePath, "chk-" + checkpointId);
-			return SnapshotDirectory.temporary(snapshotDir);
+			Path path = new Path(instanceBasePath.getAbsolutePath(), "chk-" + checkpointId);
+			return SnapshotDirectory.temporary(path);
 		}
 	}
 
@@ -241,8 +228,9 @@ public class RocksIncrementalSnapshotStrategy<K> extends RocksDBSnapshotStrategy
 			"assuming the following (shared) files as base: {}.", checkpointId, lastCompletedCheckpoint, baseSstFiles);
 
 		// snapshot meta data to save
-		for (Map.Entry<String, RocksDbKvStateInfo> stateMetaInfoEntry : kvStateInformation.entrySet()) {
-			stateMetaInfoSnapshots.add(stateMetaInfoEntry.getValue().metaInfo.snapshot());
+		for (Map.Entry<String, Tuple2<ColumnFamilyHandle, RegisteredStateMetaInfoBase>> stateMetaInfoEntry
+			: kvStateInformation.entrySet()) {
+			stateMetaInfoSnapshots.add(stateMetaInfoEntry.getValue().f1.snapshot());
 		}
 		return baseSstFiles;
 	}
@@ -252,7 +240,7 @@ public class RocksIncrementalSnapshotStrategy<K> extends RocksDBSnapshotStrategy
 		try (
 			ResourceGuard.Lease ignored = rocksDBResourceGuard.acquireResource();
 			Checkpoint checkpoint = Checkpoint.create(db)) {
-			checkpoint.createCheckpoint(outputDirectory.getDirectory().toString());
+			checkpoint.createCheckpoint(outputDirectory.getDirectory().getPath());
 		} catch (Exception ex) {
 			try {
 				outputDirectory.cleanup();
@@ -268,6 +256,8 @@ public class RocksIncrementalSnapshotStrategy<K> extends RocksDBSnapshotStrategy
 	 */
 	private final class RocksDBIncrementalSnapshotOperation
 		extends AsyncSnapshotCallable<SnapshotResult<KeyedStateHandle>> {
+
+		private static final int READ_BUFFER_SIZE = 16 * 1024;
 
 		/** Id for the current checkpoint. */
 		private final long checkpointId;
@@ -329,8 +319,8 @@ public class RocksIncrementalSnapshotStrategy<K> extends RocksDBSnapshotStrategy
 					materializedSstFiles.put(checkpointId, sstFiles.keySet());
 				}
 
-				final IncrementalRemoteKeyedStateHandle jmIncrementalKeyedStateHandle =
-					new IncrementalRemoteKeyedStateHandle(
+				final IncrementalKeyedStateHandle jmIncrementalKeyedStateHandle =
+					new IncrementalKeyedStateHandle(
 						backendUID,
 						keyGroupRange,
 						checkpointId,
@@ -420,45 +410,74 @@ public class RocksIncrementalSnapshotStrategy<K> extends RocksDBSnapshotStrategy
 			// write state data
 			Preconditions.checkState(localBackupDirectory.exists());
 
-			Map<StateHandleID, Path> sstFilePaths = new HashMap<>();
-			Map<StateHandleID, Path> miscFilePaths = new HashMap<>();
+			FileStatus[] fileStatuses = localBackupDirectory.listStatus();
+			if (fileStatuses != null) {
+				for (FileStatus fileStatus : fileStatuses) {
+					final Path filePath = fileStatus.getPath();
+					final String fileName = filePath.getName();
+					final StateHandleID stateHandleID = new StateHandleID(fileName);
 
-			Path[] files = localBackupDirectory.listDirectory();
-			if (files != null) {
-				createUploadFilePaths(files, sstFiles, sstFilePaths, miscFilePaths);
+					if (fileName.endsWith(SST_FILE_SUFFIX)) {
+						final boolean existsAlready =
+							baseSstFiles != null && baseSstFiles.contains(stateHandleID);
 
-				sstFiles.putAll(stateUploader.uploadFilesToCheckpointFs(
-					sstFilePaths,
-					checkpointStreamFactory,
-					snapshotCloseableRegistry));
-				miscFiles.putAll(stateUploader.uploadFilesToCheckpointFs(
-					miscFilePaths,
-					checkpointStreamFactory,
-					snapshotCloseableRegistry));
+						if (existsAlready) {
+							// we introduce a placeholder state handle, that is replaced with the
+							// original from the shared state registry (created from a previous checkpoint)
+							sstFiles.put(
+								stateHandleID,
+								new PlaceholderStreamStateHandle());
+						} else {
+							sstFiles.put(stateHandleID, uploadLocalFileToCheckpointFs(filePath));
+						}
+					} else {
+						StreamStateHandle fileHandle = uploadLocalFileToCheckpointFs(filePath);
+						miscFiles.put(stateHandleID, fileHandle);
+					}
+				}
 			}
 		}
 
-		private void createUploadFilePaths(
-			Path[] files,
-			Map<StateHandleID, StreamStateHandle> sstFiles,
-			Map<StateHandleID, Path> sstFilePaths,
-			Map<StateHandleID, Path> miscFilePaths) {
-			for (Path filePath : files) {
-				final String fileName = filePath.getFileName().toString();
-				final StateHandleID stateHandleID = new StateHandleID(fileName);
+		private StreamStateHandle uploadLocalFileToCheckpointFs(Path filePath) throws Exception {
+			FSDataInputStream inputStream = null;
+			CheckpointStreamFactory.CheckpointStateOutputStream outputStream = null;
 
-				if (fileName.endsWith(SST_FILE_SUFFIX)) {
-					final boolean existsAlready = baseSstFiles != null && baseSstFiles.contains(stateHandleID);
+			try {
+				final byte[] buffer = new byte[READ_BUFFER_SIZE];
 
-					if (existsAlready) {
-						// we introduce a placeholder state handle, that is replaced with the
-						// original from the shared state registry (created from a previous checkpoint)
-						sstFiles.put(stateHandleID, new PlaceholderStreamStateHandle());
-					} else {
-						sstFilePaths.put(stateHandleID, filePath);
+				FileSystem backupFileSystem = localBackupDirectory.getFileSystem();
+				inputStream = backupFileSystem.open(filePath);
+				registerCloseableForCancellation(inputStream);
+
+				outputStream = checkpointStreamFactory
+					.createCheckpointStateOutputStream(CheckpointedStateScope.SHARED);
+				registerCloseableForCancellation(outputStream);
+
+				while (true) {
+					int numBytes = inputStream.read(buffer);
+
+					if (numBytes == -1) {
+						break;
 					}
-				} else {
-					miscFilePaths.put(stateHandleID, filePath);
+
+					outputStream.write(buffer, 0, numBytes);
+				}
+
+				StreamStateHandle result = null;
+				if (unregisterCloseableFromCancellation(outputStream)) {
+					result = outputStream.closeAndGetHandle();
+					outputStream = null;
+				}
+				return result;
+
+			} finally {
+
+				if (unregisterCloseableFromCancellation(inputStream)) {
+					IOUtils.closeQuietly(inputStream);
+				}
+
+				if (unregisterCloseableFromCancellation(outputStream)) {
+					IOUtils.closeQuietly(outputStream);
 				}
 			}
 		}
@@ -480,7 +499,7 @@ public class RocksIncrementalSnapshotStrategy<K> extends RocksDBSnapshotStrategy
 						CheckpointedStateScope.EXCLUSIVE,
 						checkpointStreamFactory);
 
-			snapshotCloseableRegistry.registerCloseable(streamWithResultProvider);
+			registerCloseableForCancellation(streamWithResultProvider);
 
 			try {
 				//no need for compression scheme support because sst-files are already compressed
@@ -495,7 +514,7 @@ public class RocksIncrementalSnapshotStrategy<K> extends RocksDBSnapshotStrategy
 
 				serializationProxy.write(out);
 
-				if (snapshotCloseableRegistry.unregisterCloseable(streamWithResultProvider)) {
+				if (unregisterCloseableFromCancellation(streamWithResultProvider)) {
 					SnapshotResult<StreamStateHandle> result =
 						streamWithResultProvider.closeAndFinalizeCheckpointStreamResult();
 					streamWithResultProvider = null;
@@ -505,7 +524,7 @@ public class RocksIncrementalSnapshotStrategy<K> extends RocksDBSnapshotStrategy
 				}
 			} finally {
 				if (streamWithResultProvider != null) {
-					if (snapshotCloseableRegistry.unregisterCloseable(streamWithResultProvider)) {
+					if (unregisterCloseableFromCancellation(streamWithResultProvider)) {
 						IOUtils.closeQuietly(streamWithResultProvider);
 					}
 				}

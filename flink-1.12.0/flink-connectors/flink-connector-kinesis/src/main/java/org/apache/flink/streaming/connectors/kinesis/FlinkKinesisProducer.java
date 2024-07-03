@@ -19,7 +19,6 @@ package org.apache.flink.streaming.connectors.kinesis;
 
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.api.common.serialization.RuntimeContextInitializationContextAdapters;
 import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Counter;
@@ -41,7 +40,6 @@ import com.amazonaws.services.kinesis.producer.UserRecordResult;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.MoreExecutors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -97,7 +95,7 @@ public class FlinkKinesisProducer<OUT> extends RichSinkFunction<OUT> implements 
 	private transient KinesisProducer producer;
 
 	/* Backpressuring waits for this latch, triggered by record callback */
-	private transient volatile TimeoutLatch backpressureLatch;
+	private transient TimeoutLatch backpressureLatch;
 
 	/* Callback handling failures */
 	private transient FutureCallback<UserRecordResult> callback;
@@ -121,12 +119,6 @@ public class FlinkKinesisProducer<OUT> extends RichSinkFunction<OUT> implements 
 
 		// create a simple wrapper for the serialization schema
 		this(new KinesisSerializationSchema<OUT>() {
-
-			@Override
-			public void open(SerializationSchema.InitializationContext context) throws Exception {
-				schema.open(context);
-			}
-
 			@Override
 			public ByteBuffer serialize(OUT element) {
 				// wrap into ByteBuffer
@@ -214,11 +206,6 @@ public class FlinkKinesisProducer<OUT> extends RichSinkFunction<OUT> implements 
 	public void open(Configuration parameters) throws Exception {
 		super.open(parameters);
 
-		schema.open(RuntimeContextInitializationContextAdapters.serializationAdapter(
-				getRuntimeContext(),
-				metricGroup -> metricGroup.addGroup("user")
-		));
-
 		// check and pass the configuration properties
 		KinesisProducerConfiguration producerConfig = KinesisConfigUtil.getValidatedProducerConfiguration(configProps);
 
@@ -304,7 +291,7 @@ public class FlinkKinesisProducer<OUT> extends RichSinkFunction<OUT> implements 
 		}
 
 		ListenableFuture<UserRecordResult> cb = producer.addUserRecord(stream, partition, explicitHashkey, serialized);
-		Futures.addCallback(cb, callback, MoreExecutors.directExecutor());
+		Futures.addCallback(cb, callback);
 	}
 
 	@Override
@@ -374,7 +361,7 @@ public class FlinkKinesisProducer<OUT> extends RichSinkFunction<OUT> implements 
 			if (failOnError) {
 				throw new RuntimeException("An exception was thrown while processing a record: " + errorMessages, thrownException);
 			} else {
-				LOG.warn("An exception was thrown while processing a record: {}.", errorMessages, thrownException);
+				LOG.warn("An exception was thrown while processing a record: {}", thrownException, errorMessages);
 
 				// reset, prevent double throwing
 				thrownException = null;

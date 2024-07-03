@@ -69,36 +69,15 @@ public class NetUtils {
 	}
 
 	/**
-	 * Converts a string of the form "host:port" into an {@link URL}.
-	 *
-	 * @param hostPort The "host:port" string.
-	 * @return The converted URL.
-	 */
-	public static URL getCorrectHostnamePort(String hostPort) {
-		return validateHostPortString(hostPort);
-	}
-
-	/**
-	 * Converts a string of the form "host:port" into an {@link InetSocketAddress}.
-	 *
-	 * @param hostPort The "host:port" string.
-	 * @return The converted InetSocketAddress.
-	 */
-	public static InetSocketAddress parseHostPortAddress(String hostPort) {
-		URL url = validateHostPortString(hostPort);
-		return new InetSocketAddress(url.getHost(), url.getPort());
-	}
-
-	/**
-	 * Validates if the given String represents a hostname:port.
+	 * Method to validate if the given String represents a hostname:port.
 	 *
 	 * <p>Works also for ipv6.
 	 *
 	 * <p>See: http://stackoverflow.com/questions/2345063/java-common-way-to-validate-and-convert-hostport-to-inetsocketaddress
 	 *
-	 * @return URL object for accessing host and port
+	 * @return URL object for accessing host and Port
 	 */
-	private static URL validateHostPortString(String hostPort) {
+	public static URL getCorrectHostnamePort(String hostPort) {
 		try {
 			URL u = new URL("http://" + hostPort);
 			if (u.getHost() == null) {
@@ -155,12 +134,6 @@ public class NetUtils {
 			host = InetAddress.getLoopbackAddress().getHostAddress();
 		} else {
 			host = host.trim().toLowerCase();
-			if (host.startsWith("[") && host.endsWith("]")) {
-				String address = host.substring(1, host.length() - 1);
-				if (IPAddressUtil.isIPv6LiteralAddress(address)) {
-					host = address;
-				}
-			}
 		}
 
 		// normalize and valid address
@@ -190,7 +163,7 @@ public class NetUtils {
 	 * @return host:port where host will be normalized if it is an IPv6 address
 	 */
 	public static String unresolvedHostAndPortToNormalizedString(String host, int port) {
-		Preconditions.checkArgument(isValidHostPort(port),
+		Preconditions.checkArgument(port >= 0 && port < 65536,
 			"Port is not within the valid range,");
 		return unresolvedHostToNormalizedString(host) + ":" + port;
 	}
@@ -350,7 +323,7 @@ public class NetUtils {
 			if (dashIdx == -1) {
 				// only one port in range:
 				final int port = Integer.valueOf(range);
-				if (!isValidHostPort(port)) {
+				if (port < 0 || port > 65535) {
 					throw new IllegalConfigurationException("Invalid port configuration. Port must be between 0" +
 						"and 65535, but was " + port + ".");
 				}
@@ -358,12 +331,12 @@ public class NetUtils {
 			} else {
 				// evaluate range
 				final int start = Integer.valueOf(range.substring(0, dashIdx));
-				if (!isValidHostPort(start)) {
+				if (start < 0 || start > 65535) {
 					throw new IllegalConfigurationException("Invalid port configuration. Port must be between 0" +
 						"and 65535, but was " + start + ".");
 				}
 				final int end = Integer.valueOf(range.substring(dashIdx + 1, range.length()));
-				if (!isValidHostPort(end)) {
+				if (end < 0 || end > 65535) {
 					throw new IllegalConfigurationException("Invalid port configuration. Port must be between 0" +
 						"and 65535, but was " + end + ".");
 				}
@@ -429,25 +402,5 @@ public class NetUtils {
 	@FunctionalInterface
 	public interface SocketFactory {
 		ServerSocket createSocket(int port) throws IOException;
-	}
-
-	/**
-	 * Check whether the given port is in right range when connecting to somewhere.
-	 *
-	 * @param port the port to check
-	 * @return true if the number in the range 1 to 65535
-	 */
-	public static boolean isValidClientPort(int port) {
-		return 1 <= port && port <= 65535;
-	}
-
-	/**
-	 * check whether the given port is in right range when getting port from local system.
-	 *
-	 * @param port the port to check
-	 * @return true if the number in the range 0 to 65535
-	 */
-	public static boolean isValidHostPort(int port) {
-		return 0 <= port && port <= 65535;
 	}
 }

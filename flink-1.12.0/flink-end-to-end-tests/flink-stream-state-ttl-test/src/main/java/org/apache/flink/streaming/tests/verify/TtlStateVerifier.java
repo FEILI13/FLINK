@@ -35,7 +35,8 @@ public interface TtlStateVerifier<UV, GV> {
 		new TtlListStateVerifier(),
 		new TtlMapStateVerifier(),
 		new TtlAggregatingStateVerifier(),
-		new TtlReducingStateVerifier()
+		new TtlReducingStateVerifier(),
+		new TtlFoldingStateVerifier()
 	);
 
 	@Nonnull

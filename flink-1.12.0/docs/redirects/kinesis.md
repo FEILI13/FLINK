@@ -1,5 +1,5 @@
 ---
-title: "Amazon Kinesis Data Streams Connector"
+title: "Kinesis Connector"
 layout: redirect
 redirect: /dev/connectors/kinesis.html
 permalink: /apis/streaming/connectors/kinesis.html

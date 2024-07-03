@@ -20,11 +20,11 @@ package org.apache.flink.yarn.entrypoint;
 
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.entrypoint.ClusterEntrypoint;
-import org.apache.flink.runtime.entrypoint.ClusterEntrypointUtils;
-import org.apache.flink.runtime.entrypoint.DynamicParametersConfigurationParserFactory;
 import org.apache.flink.runtime.entrypoint.JobClusterEntrypoint;
-import org.apache.flink.runtime.entrypoint.component.DefaultDispatcherResourceManagerComponentFactory;
+import org.apache.flink.runtime.entrypoint.component.DispatcherResourceManagerComponentFactory;
 import org.apache.flink.runtime.entrypoint.component.FileJobGraphRetriever;
+import org.apache.flink.runtime.entrypoint.component.JobDispatcherResourceManagerComponentFactory;
+import org.apache.flink.runtime.security.SecurityContext;
 import org.apache.flink.runtime.util.EnvironmentInformation;
 import org.apache.flink.runtime.util.JvmShutdownSafeguard;
 import org.apache.flink.runtime.util.SignalHandler;
@@ -41,8 +41,19 @@ import java.util.Map;
  */
 public class YarnJobClusterEntrypoint extends JobClusterEntrypoint {
 
-	public YarnJobClusterEntrypoint(Configuration configuration) {
+	private final String workingDirectory;
+
+	public YarnJobClusterEntrypoint(
+			Configuration configuration,
+			String workingDirectory) {
+
 		super(configuration);
+		this.workingDirectory = Preconditions.checkNotNull(workingDirectory);
+	}
+
+	@Override
+	protected SecurityContext installSecurityContext(Configuration configuration) throws Exception {
+		return YarnEntrypointUtils.installSecurityContext(configuration, workingDirectory);
 	}
 
 	@Override
@@ -51,12 +62,10 @@ public class YarnJobClusterEntrypoint extends JobClusterEntrypoint {
 	}
 
 	@Override
-	protected DefaultDispatcherResourceManagerComponentFactory createDispatcherResourceManagerComponentFactory(Configuration configuration) throws IOException {
-		return DefaultDispatcherResourceManagerComponentFactory.createJobComponentFactory(
-			YarnResourceManagerFactory.getInstance(),
-			FileJobGraphRetriever.createFrom(
-					configuration,
-					YarnEntrypointUtils.getUsrLibDir(configuration).orElse(null)));
+	protected DispatcherResourceManagerComponentFactory<?> createDispatcherResourceManagerComponentFactory(Configuration configuration) {
+		return new JobDispatcherResourceManagerComponentFactory(
+			YarnResourceManagerFactory.INSTANCE,
+			FileJobGraphRetriever.createFrom(configuration));
 	}
 
 	// ------------------------------------------------------------------------
@@ -84,13 +93,11 @@ public class YarnJobClusterEntrypoint extends JobClusterEntrypoint {
 			LOG.warn("Could not log YARN environment information.", e);
 		}
 
-		final Configuration dynamicParameters = ClusterEntrypointUtils.parseParametersOrExit(
-			args,
-			new DynamicParametersConfigurationParserFactory(),
-			YarnJobClusterEntrypoint.class);
-		final Configuration configuration = YarnEntrypointUtils.loadConfiguration(workingDirectory, dynamicParameters, env);
+		Configuration configuration = YarnEntrypointUtils.loadConfiguration(workingDirectory, env, LOG);
 
-		YarnJobClusterEntrypoint yarnJobClusterEntrypoint = new YarnJobClusterEntrypoint(configuration);
+		YarnJobClusterEntrypoint yarnJobClusterEntrypoint = new YarnJobClusterEntrypoint(
+			configuration,
+			workingDirectory);
 
 		ClusterEntrypoint.runClusterEntrypoint(yarnJobClusterEntrypoint);
 	}

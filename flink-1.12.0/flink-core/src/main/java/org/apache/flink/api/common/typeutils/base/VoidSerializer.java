@@ -86,6 +86,11 @@ public final class VoidSerializer extends TypeSerializerSingleton<Void> {
 	}
 
 	@Override
+	public boolean canEqual(Object obj) {
+		return obj instanceof VoidSerializer;
+	}
+
+	@Override
 	public TypeSerializerSnapshot<Void> snapshotConfiguration() {
 		return new VoidSerializerSnapshot();
 	}
@@ -95,11 +100,10 @@ public final class VoidSerializer extends TypeSerializerSingleton<Void> {
 	/**
 	 * Serializer configuration snapshot for compatibility and format evolution.
 	 */
-	@SuppressWarnings("WeakerAccess")
 	public static final class VoidSerializerSnapshot extends SimpleTypeSerializerSnapshot<Void> {
 
 		public VoidSerializerSnapshot() {
-			super(() -> INSTANCE);
+			super(VoidSerializer.class);
 		}
 	}
 }

@@ -44,7 +44,7 @@ public abstract class FencedRpcEndpoint<F extends Serializable> extends RpcEndpo
 	private volatile F fencingToken;
 	private volatile MainThreadExecutor fencedMainThreadExecutor;
 
-	protected FencedRpcEndpoint(RpcService rpcService, String endpointId, @Nullable F fencingToken) {
+	protected FencedRpcEndpoint(RpcService rpcService, String endpointId) {
 		super(rpcService, endpointId);
 
 		Preconditions.checkArgument(
@@ -53,17 +53,16 @@ public abstract class FencedRpcEndpoint<F extends Serializable> extends RpcEndpo
 			FencedMainThreadExecutable.class.getSimpleName());
 
 		// no fencing token == no leadership
-		this.fencingToken = fencingToken;
+		this.fencingToken = null;
 		this.unfencedMainThreadExecutor = new UnfencedMainThreadExecutor((FencedMainThreadExecutable) rpcServer);
 		this.fencedMainThreadExecutor = new MainThreadExecutor(
 			getRpcService().fenceRpcServer(
 				rpcServer,
-				fencingToken),
-			this::validateRunsInMainThread);
+				null));
 	}
 
-	protected FencedRpcEndpoint(RpcService rpcService, @Nullable F fencingToken) {
-		this(rpcService, UUID.randomUUID().toString(), fencingToken);
+	protected FencedRpcEndpoint(RpcService rpcService) {
+		this(rpcService, UUID.randomUUID().toString());
 	}
 
 	public F getFencingToken() {
@@ -82,7 +81,7 @@ public abstract class FencedRpcEndpoint<F extends Serializable> extends RpcEndpo
 			rpcServer,
 			newFencingToken);
 
-		this.fencedMainThreadExecutor = new MainThreadExecutor(mainThreadExecutable, this::validateRunsInMainThread);
+		this.fencedMainThreadExecutor = new MainThreadExecutor(mainThreadExecutable);
 	}
 
 	/**
@@ -126,7 +125,7 @@ public abstract class FencedRpcEndpoint<F extends Serializable> extends RpcEndpo
 	 * Run the given callable in the main thread of the RpcEndpoint without checking the fencing
 	 * token. This allows to run operations outside of the fencing token scope.
 	 *
-	 * @param callable to run in the main thread of the rpc endpoint without checking the fencing token.
+	 * @param callable to run in the main thread of the rpc endpoint without checkint the fencing token.
 	 * @param timeout for the operation.
 	 * @return Future containing the callable result.
 	 */

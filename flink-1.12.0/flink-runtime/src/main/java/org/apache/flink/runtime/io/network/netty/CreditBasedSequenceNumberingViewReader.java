@@ -19,8 +19,9 @@
 package org.apache.flink.runtime.io.network.netty;
 
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.api.common.JobID;
+import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.io.network.NetworkSequenceViewReader;
-import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.partition.BufferAvailabilityListener;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionProvider;
@@ -30,7 +31,8 @@ import org.apache.flink.runtime.io.network.partition.consumer.InputChannel.Buffe
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.runtime.io.network.partition.consumer.LocalInputChannel;
 
-import javax.annotation.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
@@ -41,6 +43,8 @@ import java.io.IOException;
  * handler about non-emptiness, similar to the {@link LocalInputChannel}.
  */
 class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListener, NetworkSequenceViewReader {
+
+	private static final Logger LOG = LoggerFactory.getLogger(CreditBasedSequenceNumberingViewReader.class);
 
 	private final Object requestLock = new Object();
 
@@ -59,17 +63,34 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 	 */
 	private boolean isRegisteredAsAvailable = false;
 
-	/** The number of available buffers for holding data on the consumer side. */
+	/**
+	 * The number of available buffers for holding data on the consumer side.
+	 */
 	private int numCreditsAvailable;
 
-	CreditBasedSequenceNumberingViewReader(
-			InputChannelID receiverId,
-			int initialCredit,
-			PartitionRequestQueue requestQueue) {
+	private int sequenceNumber = -1;
+	private JobID jobID;
+	private short vertexID;
 
+	private final boolean sensitiveFailureDetectionEnabled;
+
+	CreditBasedSequenceNumberingViewReader(
+		InputChannelID receiverId,
+		int initialCredit,
+		PartitionRequestQueue requestQueue) {
+
+		this(receiverId, initialCredit, requestQueue, true);
+	}
+
+
+	CreditBasedSequenceNumberingViewReader(
+		InputChannelID receiverId,
+		int initialCredit,
+		PartitionRequestQueue requestQueue, boolean sensitiveFailureDetectionEnabled) {
 		this.receiverId = receiverId;
 		this.numCreditsAvailable = initialCredit;
 		this.requestQueue = requestQueue;
+		this.sensitiveFailureDetectionEnabled = sensitiveFailureDetectionEnabled;
 	}
 
 	@Override
@@ -88,22 +109,18 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 					resultPartitionId,
 					subPartitionIndex,
 					this);
+				this.jobID = subpartitionView.getJobID();
+				this.vertexID = subpartitionView.getVertexID();
 			} else {
 				throw new IllegalStateException("Subpartition already requested");
 			}
 		}
-
-		notifyDataAvailable();
 	}
 
 	@Override
 	public void addCredit(int creditDeltas) {
 		numCreditsAvailable += creditDeltas;
-	}
-
-	@Override
-	public void resumeConsumption() {
-		subpartitionView.resumeConsumption();
+		LOG.debug("{}: added credit {}. Now {} credits available.", this, creditDeltas, numCreditsAvailable);
 	}
 
 	@Override
@@ -119,39 +136,47 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 	/**
 	 * Returns true only if the next buffer is an event or the reader has both available
 	 * credits and buffers.
-	 *
-	 * @implSpec BEWARE: this must be in sync with {@link #getNextDataType(BufferAndBacklog)}, such that
-	 * {@code getNextDataType(bufferAndBacklog) != NONE <=> isAvailable()}!
 	 */
 	@Override
 	public boolean isAvailable() {
-		return subpartitionView.isAvailable(numCreditsAvailable);
+		// BEWARE: this must be in sync with #isAvailable(BufferAndBacklog)!
+		return hasBuffersAvailable() &&
+			(numCreditsAvailable > 0 || subpartitionView.nextBufferIsEvent());
 	}
 
 	/**
-	 * Returns the {@link org.apache.flink.runtime.io.network.buffer.Buffer.DataType} of the next buffer in line.
+	 * Check whether this reader is available or not (internal use, in sync with
+	 * {@link #isAvailable()}, but slightly faster).
 	 *
-	 * <p>Returns the next data type only if the next buffer is an event or the reader has both available
+	 * <p>Returns true only if the next buffer is an event or the reader has both available
 	 * credits and buffers.
 	 *
-	 * @implSpec BEWARE: this must be in sync with {@link #isAvailable()}, such that
-	 * {@code getNextDataType(bufferAndBacklog) != NONE <=> isAvailable()}!
-	 *
-	 * @param bufferAndBacklog
-	 * 		current buffer and backlog including information about the next buffer
-	 * @return the next data type if the next buffer can be pulled immediately or {@link Buffer.DataType#NONE}
+	 * @param bufferAndBacklog current buffer and backlog including information about the next buffer
 	 */
-	private Buffer.DataType getNextDataType(BufferAndBacklog bufferAndBacklog) {
-		final Buffer.DataType nextDataType = bufferAndBacklog.getNextDataType();
-		if (numCreditsAvailable > 0 || nextDataType.isEvent()) {
-			return nextDataType;
-		}
-		return Buffer.DataType.NONE;
+	private boolean isAvailable(BufferAndBacklog bufferAndBacklog) {
+		// BEWARE: this must be in sync with #isAvailable()!
+		return bufferAndBacklog.isMoreAvailable() &&
+			(numCreditsAvailable > 0 || bufferAndBacklog.nextBufferIsEvent());
 	}
 
 	@Override
 	public InputChannelID getReceiverId() {
 		return receiverId;
+	}
+
+	@Override
+	public JobID getJobID() {
+		return jobID;
+	}
+
+	@Override
+	public int getSequenceNumber() {
+		return sequenceNumber;
+	}
+
+	@Override
+	public short getVertexID() {
+		return vertexID;
 	}
 
 	@VisibleForTesting
@@ -161,27 +186,31 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 
 	@VisibleForTesting
 	boolean hasBuffersAvailable() {
-		return subpartitionView.isAvailable(Integer.MAX_VALUE);
+		return subpartitionView.isAvailable();
 	}
 
-	@Nullable
 	@Override
-	public BufferAndAvailability getNextBuffer() throws IOException {
+	public BufferAndAvailability getNextBuffer() throws IOException, InterruptedException {
 		BufferAndBacklog next = subpartitionView.getNextBuffer();
 		if (next != null) {
+			sequenceNumber++;
+
 			if (next.buffer().isBuffer() && --numCreditsAvailable < 0) {
 				throw new IllegalStateException("no credit available");
 			}
+			LOG.debug("{}: decrement credit. Now {} credits available.", this, numCreditsAvailable);
 
-			final Buffer.DataType nextDataType = getNextDataType(next);
 			return new BufferAndAvailability(
-				next.buffer(),
-				nextDataType,
-				next.buffersInBacklog(),
-				next.getSequenceNumber());
+				next.buffer(), isAvailable(next), next.buffersInBacklog(), next.getEpochID());
 		} else {
 			return null;
 		}
+	}
+
+	@Override
+	public void notifySubpartitionConsumed() throws IOException {
+		LOG.info("Reader {} issues release notification for subpartition view {}.", this, subpartitionView);
+		subpartitionView.notifySubpartitionConsumed();
 	}
 
 	@Override
@@ -195,8 +224,24 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 	}
 
 	@Override
+	public void releaseAllResources(Throwable cause) throws IOException {
+		if (this.sensitiveFailureDetectionEnabled) {
+			LOG.info("Reader {} DOES NOT issue release resources call for subpartition view {} (it releases only the available buffers). Instead it sends fail consumer trigger.", this, subpartitionView);
+			subpartitionView.sendFailConsumerTrigger(cause);
+		} else {
+			this.subpartitionView.releaseAllResources();
+		}
+	}
+
+	@Override
 	public void releaseAllResources() throws IOException {
-		subpartitionView.releaseAllResources();
+		if (this.sensitiveFailureDetectionEnabled) {
+			LOG.info("Reader {} issues release resources call for subpartition view {}.", this, subpartitionView);
+			subpartitionView.sendFailConsumerTrigger(null);
+		} else {
+			this.subpartitionView.releaseAllResources();
+
+		}
 	}
 
 	@Override
@@ -205,15 +250,11 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 	}
 
 	@Override
-	public void notifyPriorityEvent(int prioritySequenceNumber) {
-		notifyDataAvailable();
-	}
-
-	@Override
 	public String toString() {
 		return "CreditBasedSequenceNumberingViewReader{" +
 			"requestLock=" + requestLock +
 			", receiverId=" + receiverId +
+			", sequenceNumber=" + sequenceNumber +
 			", numCreditsAvailable=" + numCreditsAvailable +
 			", isRegisteredAsAvailable=" + isRegisteredAsAvailable +
 			'}';

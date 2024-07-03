@@ -20,7 +20,6 @@ package org.apache.flink.fs.s3.common.utils;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.core.fs.FSDataOutputStream;
-import org.apache.flink.util.RefCounted;
 
 import java.io.File;
 import java.io.IOException;

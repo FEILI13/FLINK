@@ -20,15 +20,14 @@ package org.apache.flink.runtime.executiongraph;
 
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.clusterframework.types.SlotProfile;
-import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.instance.SlotSharingGroupId;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobmanager.scheduler.ScheduledUnit;
 import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.jobmaster.SlotRequestId;
-import org.apache.flink.runtime.jobmaster.slotpool.Scheduler;
+import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
+import org.apache.flink.runtime.messages.Acknowledge;
 
-import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import java.util.Collections;
@@ -45,7 +44,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * A slot provider where one can pre-set the slot futures for tasks based on
  * vertex ID and subtask index.
  */
-class ProgrammedSlotProvider implements Scheduler {
+class ProgrammedSlotProvider implements SlotProvider {
 
 	private final Map<JobVertexID, CompletableFuture<LogicalSlot>[]> slotFutures = new HashMap<>();
 
@@ -116,10 +115,11 @@ class ProgrammedSlotProvider implements Scheduler {
 	public CompletableFuture<LogicalSlot> allocateSlot(
 			SlotRequestId slotRequestId,
 			ScheduledUnit task,
+			boolean allowQueued,
 			SlotProfile slotProfile,
 			Time allocationTimeout) {
-		final JobVertexID vertexId = task.getJobVertexId();
-		final int subtask = task.getSubtaskIndex();
+		JobVertexID vertexId = task.getTaskToExecute().getVertex().getJobvertexId();
+		int subtask = task.getTaskToExecute().getParallelSubtaskIndex();
 
 		CompletableFuture<LogicalSlot>[] forTask = slotFutures.get(vertexId);
 		if (forTask != null) {
@@ -136,25 +136,8 @@ class ProgrammedSlotProvider implements Scheduler {
 	}
 
 	@Override
-	public void cancelSlotRequest(
-			SlotRequestId slotRequestId,
-			@Nullable SlotSharingGroupId slotSharingGroupId,
-			Throwable cause) {
+	public CompletableFuture<Acknowledge> cancelSlotRequest(SlotRequestId slotRequestId, @Nullable SlotSharingGroupId slotSharingGroupId, Throwable cause) {
 		canceledSlotRequests.add(slotRequestId);
-	}
-
-	@Override
-	public void start(@Nonnull ComponentMainThreadExecutor mainThreadExecutor) {
-
-	}
-
-	@Override
-	public boolean requiresPreviousExecutionGraphAllocations() {
-		return false;
-	}
-
-	@Override
-	public void returnLogicalSlot(LogicalSlot logicalSlot) {
-		throw new UnsupportedOperationException();
+		return CompletableFuture.completedFuture(Acknowledge.get());
 	}
 }

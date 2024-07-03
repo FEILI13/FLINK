@@ -18,7 +18,7 @@
 
 package org.apache.flink.streaming.api.operators;
 
-import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.api.common.functions.FoldFunction;
 import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.state.StateDescriptor;
@@ -26,6 +26,7 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.base.ListSerializer;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.typeutils.runtime.kryo.KryoSerializer;
+import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -34,7 +35,6 @@ import org.apache.flink.streaming.api.functions.windowing.ProcessAllWindowFuncti
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
 import org.apache.flink.streaming.api.functions.windowing.WindowFunction;
 import org.apache.flink.streaming.api.transformations.OneInputTransformation;
-import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.streaming.runtime.operators.windowing.WindowOperator;
@@ -58,13 +58,39 @@ import static org.junit.Assert.assertTrue;
 public class StateDescriptorPassingTest {
 
 	@Test
-	public void testReduceWindowState() {
+	public void testFoldWindowState() throws Exception {
 		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		env.setStreamTimeCharacteristic(TimeCharacteristic.IngestionTime);
 		env.registerTypeWithKryoSerializer(File.class, JavaSerializer.class);
 
-		DataStream<File> src = env.fromElements(new File("/"))
-				.assignTimestampsAndWatermarks(WatermarkStrategy.<File>forMonotonousTimestamps()
-						.withTimestampAssigner((file, ts) -> System.currentTimeMillis()));
+		DataStream<String> src = env.fromElements("abc");
+
+		SingleOutputStreamOperator<?> result = src
+				.keyBy(new KeySelector<String, String>() {
+					@Override
+					public String getKey(String value) {
+						return null;
+					}
+				})
+				.timeWindow(Time.milliseconds(1000))
+				.fold(new File("/"), new FoldFunction<String, File>() {
+
+					@Override
+					public File fold(File a, String e) {
+						return null;
+					}
+				});
+
+		validateStateDescriptorConfigured(result);
+	}
+
+	@Test
+	public void testReduceWindowState() throws Exception {
+		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		env.setStreamTimeCharacteristic(TimeCharacteristic.IngestionTime);
+		env.registerTypeWithKryoSerializer(File.class, JavaSerializer.class);
+
+		DataStream<File> src = env.fromElements(new File("/"));
 
 		SingleOutputStreamOperator<?> result = src
 				.keyBy(new KeySelector<File, String>() {
@@ -73,7 +99,7 @@ public class StateDescriptorPassingTest {
 						return null;
 					}
 				})
-				.window(TumblingEventTimeWindows.of(Time.milliseconds(1000)))
+				.timeWindow(Time.milliseconds(1000))
 				.reduce(new ReduceFunction<File>() {
 
 					@Override
@@ -86,13 +112,12 @@ public class StateDescriptorPassingTest {
 	}
 
 	@Test
-	public void testApplyWindowState() {
+	public void testApplyWindowState() throws Exception {
 		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		env.setStreamTimeCharacteristic(TimeCharacteristic.IngestionTime);
 		env.registerTypeWithKryoSerializer(File.class, JavaSerializer.class);
 
-		DataStream<File> src = env.fromElements(new File("/"))
-				.assignTimestampsAndWatermarks(WatermarkStrategy.<File>forMonotonousTimestamps()
-						.withTimestampAssigner((file, ts) -> System.currentTimeMillis()));
+		DataStream<File> src = env.fromElements(new File("/"));
 
 		SingleOutputStreamOperator<?> result = src
 				.keyBy(new KeySelector<File, String>() {
@@ -101,7 +126,7 @@ public class StateDescriptorPassingTest {
 						return null;
 					}
 				})
-				.window(TumblingEventTimeWindows.of(Time.milliseconds(1000)))
+				.timeWindow(Time.milliseconds(1000))
 				.apply(new WindowFunction<File, String, String, TimeWindow>() {
 					@Override
 					public void apply(String s, TimeWindow window,
@@ -112,13 +137,12 @@ public class StateDescriptorPassingTest {
 	}
 
 	@Test
-	public void testProcessWindowState() {
+	public void testProcessWindowState() throws Exception {
 		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		env.setStreamTimeCharacteristic(TimeCharacteristic.IngestionTime);
 		env.registerTypeWithKryoSerializer(File.class, JavaSerializer.class);
 
-		DataStream<File> src = env.fromElements(new File("/"))
-				.assignTimestampsAndWatermarks(WatermarkStrategy.<File>forMonotonousTimestamps()
-						.withTimestampAssigner((file, ts) -> System.currentTimeMillis()));
+		DataStream<File> src = env.fromElements(new File("/"));
 
 		SingleOutputStreamOperator<?> result = src
 				.keyBy(new KeySelector<File, String>() {
@@ -127,7 +151,7 @@ public class StateDescriptorPassingTest {
 						return null;
 					}
 				})
-				.window(TumblingEventTimeWindows.of(Time.milliseconds(1000)))
+				.timeWindow(Time.milliseconds(1000))
 				.process(new ProcessWindowFunction<File, String, String, TimeWindow>() {
 					@Override
 					public void process(String s, Context ctx,
@@ -138,17 +162,15 @@ public class StateDescriptorPassingTest {
 	}
 
 	@Test
-	public void testProcessAllWindowState()  {
+	public void testProcessAllWindowState() throws Exception {
 		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		env.setStreamTimeCharacteristic(TimeCharacteristic.IngestionTime);
 		env.registerTypeWithKryoSerializer(File.class, JavaSerializer.class);
 
-		// simulate ingestion time
-		DataStream<File> src = env.fromElements(new File("/"))
-				.assignTimestampsAndWatermarks(WatermarkStrategy.<File>forMonotonousTimestamps()
-						.withTimestampAssigner((file, ts) -> System.currentTimeMillis()));
+		DataStream<File> src = env.fromElements(new File("/"));
 
 		SingleOutputStreamOperator<?> result = src
-				.windowAll(TumblingEventTimeWindows.of(Time.milliseconds(1000)))
+				.timeWindowAll(Time.milliseconds(1000))
 				.process(new ProcessAllWindowFunction<File, String, TimeWindow>() {
 					@Override
 					public void process(Context ctx, Iterable<File> input, Collector<String> out) {}
@@ -158,17 +180,36 @@ public class StateDescriptorPassingTest {
 	}
 
 	@Test
-	public void testReduceWindowAllState() {
+	public void testFoldWindowAllState() throws Exception {
 		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		env.setStreamTimeCharacteristic(TimeCharacteristic.IngestionTime);
 		env.registerTypeWithKryoSerializer(File.class, JavaSerializer.class);
 
-		// simulate ingestion time
-		DataStream<File> src = env.fromElements(new File("/"))
-				.assignTimestampsAndWatermarks(WatermarkStrategy.<File>forMonotonousTimestamps()
-						.withTimestampAssigner((file, ts) -> System.currentTimeMillis()));
+		DataStream<String> src = env.fromElements("abc");
 
 		SingleOutputStreamOperator<?> result = src
-				.windowAll(TumblingEventTimeWindows.of(Time.milliseconds(1000)))
+				.timeWindowAll(Time.milliseconds(1000))
+				.fold(new File("/"), new FoldFunction<String, File>() {
+
+					@Override
+					public File fold(File a, String e) {
+						return null;
+					}
+				});
+
+		validateStateDescriptorConfigured(result);
+	}
+
+	@Test
+	public void testReduceWindowAllState() throws Exception {
+		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		env.setStreamTimeCharacteristic(TimeCharacteristic.IngestionTime);
+		env.registerTypeWithKryoSerializer(File.class, JavaSerializer.class);
+
+		DataStream<File> src = env.fromElements(new File("/"));
+
+		SingleOutputStreamOperator<?> result = src
+				.timeWindowAll(Time.milliseconds(1000))
 				.reduce(new ReduceFunction<File>() {
 
 					@Override
@@ -181,17 +222,15 @@ public class StateDescriptorPassingTest {
 	}
 
 	@Test
-	public void testApplyWindowAllState() {
+	public void testApplyWindowAllState() throws Exception {
 		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		env.setStreamTimeCharacteristic(TimeCharacteristic.IngestionTime);
 		env.registerTypeWithKryoSerializer(File.class, JavaSerializer.class);
 
-		// simulate ingestion time
-		DataStream<File> src = env.fromElements(new File("/"))
-				.assignTimestampsAndWatermarks(WatermarkStrategy.<File>forMonotonousTimestamps()
-						.withTimestampAssigner((file, ts) -> System.currentTimeMillis()));
+		DataStream<File> src = env.fromElements(new File("/"));
 
 		SingleOutputStreamOperator<?> result = src
-				.windowAll(TumblingEventTimeWindows.of(Time.milliseconds(1000)))
+				.timeWindowAll(Time.milliseconds(1000))
 				.apply(new AllWindowFunction<File, String, TimeWindow>() {
 					@Override
 					public void apply(TimeWindow window, Iterable<File> input, Collector<String> out) {}

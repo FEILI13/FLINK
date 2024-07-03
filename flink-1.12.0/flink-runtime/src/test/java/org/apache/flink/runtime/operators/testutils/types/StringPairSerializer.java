@@ -20,8 +20,9 @@ package org.apache.flink.runtime.operators.testutils.types;
 
 import java.io.IOException;
 
+import org.apache.flink.api.common.typeutils.CompatibilityResult;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
+import org.apache.flink.api.common.typeutils.TypeSerializerConfigSnapshot;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.types.StringValue;
@@ -87,6 +88,17 @@ public class StringPairSerializer extends TypeSerializer<StringPair> {
 
 	@Override
 	public boolean equals(Object obj) {
+		if (obj instanceof StringPairSerializer) {
+			StringPairSerializer other = (StringPairSerializer) obj;
+
+			return other.canEqual(this);
+		} else {
+			return false;
+		}
+	}
+
+	@Override
+	public boolean canEqual(Object obj) {
 		return obj instanceof StringPairSerializer;
 	}
 
@@ -96,7 +108,12 @@ public class StringPairSerializer extends TypeSerializer<StringPair> {
 	}
 
 	@Override
-	public TypeSerializerSnapshot<StringPair> snapshotConfiguration() {
+	public TypeSerializerConfigSnapshot<StringPair> snapshotConfiguration() {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public CompatibilityResult<StringPair> ensureCompatibility(TypeSerializerConfigSnapshot<?> configSnapshot) {
 		throw new UnsupportedOperationException();
 	}
 }

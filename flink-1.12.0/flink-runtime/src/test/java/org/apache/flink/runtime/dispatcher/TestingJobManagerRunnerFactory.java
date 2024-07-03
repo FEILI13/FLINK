@@ -19,72 +19,58 @@
 package org.apache.flink.runtime.dispatcher;
 
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.blob.BlobServer;
+import org.apache.flink.runtime.clusterframework.types.ResourceID;
+import org.apache.flink.runtime.executiongraph.ArchivedExecutionGraph;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.runtime.jobmaster.JobManagerRunner;
 import org.apache.flink.runtime.jobmaster.JobManagerSharedServices;
-import org.apache.flink.runtime.jobmaster.TestingJobManagerRunner;
 import org.apache.flink.runtime.jobmaster.factories.JobManagerJobMetricGroupFactory;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
 
-import javax.annotation.Nonnull;
+import java.util.concurrent.CompletableFuture;
 
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
- * Testing implementation of {@link JobManagerRunnerFactory} which returns a {@link TestingJobManagerRunner}.
+ * {@link org.apache.flink.runtime.dispatcher.Dispatcher.JobManagerRunnerFactory} implementation for
+ * testing purposes.
  */
-public class TestingJobManagerRunnerFactory implements JobManagerRunnerFactory {
+class TestingJobManagerRunnerFactory implements Dispatcher.JobManagerRunnerFactory {
 
-	private final BlockingQueue<TestingJobManagerRunner> createdJobManagerRunner = new ArrayBlockingQueue<>(16);
+	private final CompletableFuture<JobGraph> jobGraphFuture;
+	private final CompletableFuture<ArchivedExecutionGraph> resultFuture;
+	private final CompletableFuture<Void> terminationFuture;
 
-	private int numBlockingJobManagerRunners;
-
-	public TestingJobManagerRunnerFactory() {
-		this(0);
-	}
-
-	public TestingJobManagerRunnerFactory(int numBlockingJobManagerRunners) {
-		this.numBlockingJobManagerRunners = numBlockingJobManagerRunners;
+	TestingJobManagerRunnerFactory(CompletableFuture<JobGraph> jobGraphFuture, CompletableFuture<ArchivedExecutionGraph> resultFuture, CompletableFuture<Void> terminationFuture) {
+		this.jobGraphFuture = jobGraphFuture;
+		this.resultFuture = resultFuture;
+		this.terminationFuture = terminationFuture;
 	}
 
 	@Override
-	public TestingJobManagerRunner createJobManagerRunner(
+	public JobManagerRunner createJobManagerRunner(
+			ResourceID resourceId,
 			JobGraph jobGraph,
 			Configuration configuration,
 			RpcService rpcService,
 			HighAvailabilityServices highAvailabilityServices,
 			HeartbeatServices heartbeatServices,
-			JobManagerSharedServices jobManagerServices,
+			BlobServer blobServer,
+			JobManagerSharedServices jobManagerSharedServices,
 			JobManagerJobMetricGroupFactory jobManagerJobMetricGroupFactory,
-			FatalErrorHandler fatalErrorHandler,
-			long initializationTimestamp) throws Exception {
-		final TestingJobManagerRunner testingJobManagerRunner = createTestingJobManagerRunner(jobGraph);
-		createdJobManagerRunner.offer(testingJobManagerRunner);
+			FatalErrorHandler fatalErrorHandler) throws Exception {
+		jobGraphFuture.complete(jobGraph);
 
-		return testingJobManagerRunner;
-	}
+		final JobManagerRunner mock = mock(JobManagerRunner.class);
+		when(mock.getResultFuture()).thenReturn(resultFuture);
+		when(mock.closeAsync()).thenReturn(terminationFuture);
+		when(mock.getJobGraph()).thenReturn(jobGraph);
 
-	@Nonnull
-	private TestingJobManagerRunner createTestingJobManagerRunner(JobGraph jobGraph) {
-		final boolean blockingTermination;
-
-		if (numBlockingJobManagerRunners > 0) {
-			numBlockingJobManagerRunners--;
-			blockingTermination = true;
-		} else {
-			blockingTermination = false;
-		}
-
-		return new TestingJobManagerRunner.Builder()
-			.setJobId(jobGraph.getJobID())
-			.setBlockingTermination(blockingTermination)
-			.build();
-	}
-
-	public TestingJobManagerRunner takeCreatedJobManagerRunner() throws InterruptedException {
-		return createdJobManagerRunner.take();
+		return mock;
 	}
 }

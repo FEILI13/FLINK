@@ -80,7 +80,7 @@ public class RestServerEndpointTest extends TestLogger {
 		final File file = temporaryFolder.newFolder();
 		final Path testUploadDir = file.toPath().resolve("testUploadDir");
 		assertFalse(Files.exists(testUploadDir));
-		RestServerEndpoint.createUploadDir(testUploadDir, NOPLogger.NOP_LOGGER, true);
+		RestServerEndpoint.createUploadDir(testUploadDir, NOPLogger.NOP_LOGGER);
 		assertTrue(Files.exists(testUploadDir));
 	}
 
@@ -92,7 +92,7 @@ public class RestServerEndpointTest extends TestLogger {
 		final Path testUploadDir = file.toPath().resolve("testUploadDir");
 		assertFalse(Files.exists(testUploadDir));
 		try {
-			RestServerEndpoint.createUploadDir(testUploadDir, NOPLogger.NOP_LOGGER, true);
+			RestServerEndpoint.createUploadDir(testUploadDir, NOPLogger.NOP_LOGGER);
 			fail("Expected exception not thrown.");
 		} catch (IOException e) {
 		}

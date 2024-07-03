@@ -1,7 +1,7 @@
 ---
 title:  "Batch Examples"
 nav-title: Batch Examples
-nav-parent_id: batch
+nav-parent_id: examples
 nav-pos: 20
 ---
 <!--
@@ -25,7 +25,7 @@ under the License.
 
 The following example programs showcase different applications of Flink
 from simple word counting to graph algorithms. The code samples illustrate the
-use of [Flink's DataSet API]({% link dev/batch/index.md %}).
+use of [Flink's DataSet API]({{ site.baseurl }}/dev/batch/index.html).
 
 The full source code of the following and more examples can be found in the {% gh_link flink-examples/flink-examples-batch "flink-examples-batch" %} module of the Flink source repository.
 
@@ -270,7 +270,7 @@ val result = finalRanks
 result.writeAsCsv(outputPath, "\n", " ")
 {% endhighlight %}
 
-The {% gh_link /flink-examples/flink-examples-batch/src/main/scala/org/apache/flink/examples/scala/graph/PageRankBasic.scala "PageRank program" %} implements the above example.
+he {% gh_link /flink-examples/flink-examples-batch/src/main/scala/org/apache/flink/examples/scala/graph/PageRankBasic.scala "PageRank program" %} implements the above example.
 It requires the following parameters to run: `--pages <path> --links <path> --output <path> --numPages <n> --iterations <n>`.
 </div>
 </div>

@@ -21,18 +21,12 @@ package org.apache.flink.runtime.entrypoint.component;
 import org.apache.flink.runtime.clusterframework.ApplicationStatus;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.dispatcher.Dispatcher;
-import org.apache.flink.runtime.dispatcher.runner.DispatcherRunner;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
+import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
 import org.apache.flink.runtime.resourcemanager.ResourceManager;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
-import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.webmonitor.WebMonitorEndpoint;
-import org.apache.flink.util.AutoCloseableAsync;
 import org.apache.flink.util.ExceptionUtils;
-import org.apache.flink.util.FlinkException;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -46,15 +40,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Component which starts a {@link Dispatcher}, {@link ResourceManager} and {@link WebMonitorEndpoint}
  * in the same process.
  */
-public class DispatcherResourceManagerComponent implements AutoCloseableAsync {
-
-	private static final Logger LOG = LoggerFactory.getLogger(DispatcherResourceManagerComponent.class);
+public class DispatcherResourceManagerComponent<T extends Dispatcher> {
 
 	@Nonnull
-	private final DispatcherRunner dispatcherRunner;
+	private final T dispatcher;
 
 	@Nonnull
-	private final ResourceManagerService resourceManagerService;
+	private final ResourceManager<?> resourceManager;
 
 	@Nonnull
 	private final LeaderRetrievalService dispatcherLeaderRetrievalService;
@@ -63,7 +55,10 @@ public class DispatcherResourceManagerComponent implements AutoCloseableAsync {
 	private final LeaderRetrievalService resourceManagerRetrievalService;
 
 	@Nonnull
-	private final AutoCloseableAsync webMonitorEndpoint;
+	private final WebMonitorEndpoint<?> webMonitorEndpoint;
+
+	@Nonnull
+	private final JobManagerMetricGroup jobManagerMetricGroup;
 
 	private final CompletableFuture<Void> terminationFuture;
 
@@ -71,43 +66,63 @@ public class DispatcherResourceManagerComponent implements AutoCloseableAsync {
 
 	private final AtomicBoolean isRunning = new AtomicBoolean(true);
 
-	private final FatalErrorHandler fatalErrorHandler;
-
 	DispatcherResourceManagerComponent(
-			@Nonnull DispatcherRunner dispatcherRunner,
-			@Nonnull ResourceManagerService resourceManagerService,
+			@Nonnull T dispatcher,
+			@Nonnull ResourceManager<?> resourceManager,
 			@Nonnull LeaderRetrievalService dispatcherLeaderRetrievalService,
 			@Nonnull LeaderRetrievalService resourceManagerRetrievalService,
-			@Nonnull AutoCloseableAsync webMonitorEndpoint,
-			@Nonnull FatalErrorHandler fatalErrorHandler) {
-		this.dispatcherRunner = dispatcherRunner;
-		this.resourceManagerService = resourceManagerService;
+			@Nonnull WebMonitorEndpoint<?> webMonitorEndpoint,
+			@Nonnull JobManagerMetricGroup jobManagerMetricGroup) {
+		this.resourceManager = resourceManager;
+		this.dispatcher = dispatcher;
 		this.dispatcherLeaderRetrievalService = dispatcherLeaderRetrievalService;
 		this.resourceManagerRetrievalService = resourceManagerRetrievalService;
 		this.webMonitorEndpoint = webMonitorEndpoint;
-		this.fatalErrorHandler = fatalErrorHandler;
+		this.jobManagerMetricGroup = jobManagerMetricGroup;
 		this.terminationFuture = new CompletableFuture<>();
 		this.shutDownFuture = new CompletableFuture<>();
 
 		registerShutDownFuture();
-		handleUnexpectedResourceManagerTermination();
 	}
 
-	private void handleUnexpectedResourceManagerTermination() {
-		resourceManagerService.getTerminationFuture().whenComplete(
-				(ignored, throwable) -> {
-					if (isRunning.get()) {
-						fatalErrorHandler.onFatalError(new FlinkException("Unexpected termination of ResourceManager.", throwable));
+	private void registerShutDownFuture() {
+		terminationFuture.whenComplete(
+			(aVoid, throwable) -> {
+				if (throwable != null) {
+					shutDownFuture.completeExceptionally(throwable);
+				} else {
+					shutDownFuture.complete(ApplicationStatus.SUCCEEDED);
+				}
+			});
+
+		dispatcher
+			.getTerminationFuture()
+			.whenComplete(
+				(aVoid, throwable) -> {
+					if (throwable != null) {
+						shutDownFuture.completeExceptionally(throwable);
+					} else {
+						shutDownFuture.complete(ApplicationStatus.SUCCEEDED);
 					}
 				});
 	}
 
-	private void registerShutDownFuture() {
-		FutureUtils.forward(dispatcherRunner.getShutDownFuture(), shutDownFuture);
+	public CompletableFuture<Void> getTerminationFuture() {
+		return terminationFuture;
 	}
 
 	public final CompletableFuture<ApplicationStatus> getShutDownFuture() {
 		return shutDownFuture;
+	}
+
+	@Nonnull
+	public T getDispatcher() {
+		return dispatcher;
+	}
+
+	@Nonnull
+	public WebMonitorEndpoint<?> getWebMonitorEndpoint() {
+		return webMonitorEndpoint;
 	}
 
 	/**
@@ -136,13 +151,11 @@ public class DispatcherResourceManagerComponent implements AutoCloseableAsync {
 			final ApplicationStatus applicationStatus,
 			final @Nullable String diagnostics) {
 
-		final ResourceManagerGateway selfGateway = resourceManagerService.getGateway();
+		final ResourceManagerGateway selfGateway = resourceManager.getSelfGateway(ResourceManagerGateway.class);
 		return selfGateway.deregisterApplication(applicationStatus, diagnostics).thenApply(ack -> null);
 	}
 
 	private CompletableFuture<Void> closeAsyncInternal() {
-		LOG.info("Closing components.");
-
 		Exception exception = null;
 
 		final Collection<CompletableFuture<Void>> terminationFutures = new ArrayList<>(3);
@@ -159,9 +172,11 @@ public class DispatcherResourceManagerComponent implements AutoCloseableAsync {
 			exception = ExceptionUtils.firstOrSuppressed(e, exception);
 		}
 
-		terminationFutures.add(dispatcherRunner.closeAsync());
+		dispatcher.shutDown();
+		terminationFutures.add(dispatcher.getTerminationFuture());
 
-		terminationFutures.add(resourceManagerService.closeAsync());
+		resourceManager.shutDown();
+		terminationFutures.add(resourceManager.getTerminationFuture());
 
 		if (exception != null) {
 			terminationFutures.add(FutureUtils.completedExceptionally(exception));
@@ -169,7 +184,11 @@ public class DispatcherResourceManagerComponent implements AutoCloseableAsync {
 
 		final CompletableFuture<Void> componentTerminationFuture = FutureUtils.completeAll(terminationFutures);
 
-		componentTerminationFuture.whenComplete((aVoid, throwable) -> {
+		final CompletableFuture<Void> metricGroupTerminationFuture = FutureUtils.runAfterwards(
+			componentTerminationFuture,
+			jobManagerMetricGroup::close);
+
+		metricGroupTerminationFuture.whenComplete((aVoid, throwable) -> {
 			if (throwable != null) {
 				terminationFuture.completeExceptionally(throwable);
 			} else {
@@ -178,20 +197,5 @@ public class DispatcherResourceManagerComponent implements AutoCloseableAsync {
 		});
 
 		return terminationFuture;
-	}
-
-	@Override
-	public CompletableFuture<Void> closeAsync() {
-		return deregisterApplicationAndClose(ApplicationStatus.CANCELED, "DispatcherResourceManagerComponent has been closed.");
-	}
-
-	/**
-	 * Service which gives access to a {@link ResourceManagerGateway}.
-	 */
-	interface ResourceManagerService extends AutoCloseableAsync {
-
-		ResourceManagerGateway getGateway();
-
-		CompletableFuture<Void> getTerminationFuture();
 	}
 }

@@ -29,11 +29,8 @@ import org.apache.flink.api.common.functions.Function;
  * (midnight, January 1, 1970 UTC).
  *
  * @param <T> The type of the elements to which this assigner assigns timestamps.
- *
- * @deprecated use {@link org.apache.flink.api.common.eventtime.TimestampAssigner}
  */
-@Deprecated
-public interface TimestampAssigner<T> extends org.apache.flink.api.common.eventtime.TimestampAssigner<T>, Function {
+public interface TimestampAssigner<T> extends Function {
 
 	/**
 	 * Assigns a timestamp to an element, in milliseconds since the Epoch.
@@ -44,10 +41,9 @@ public interface TimestampAssigner<T> extends org.apache.flink.api.common.eventt
 	 * {@code Long.MIN_VALUE}.
 	 *
 	 * @param element The element that the timestamp will be assigned to.
-	 * @param recordTimestamp The previous internal timestamp of the element,
+	 * @param previousElementTimestamp The previous internal timestamp of the element,
 	 *                                 or a negative value, if no timestamp has been assigned yet.
 	 * @return The new timestamp.
 	 */
-	@Override
-	long extractTimestamp(T element, long recordTimestamp);
+	long extractTimestamp(T element, long previousElementTimestamp);
 }

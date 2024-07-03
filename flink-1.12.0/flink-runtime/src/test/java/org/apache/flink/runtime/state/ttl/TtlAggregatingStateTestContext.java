@@ -47,23 +47,23 @@ class TtlAggregatingStateTestContext
 
 	@SuppressWarnings("unchecked")
 	@Override
-	public <US extends State, SV> StateDescriptor<US, SV> createStateDescriptor() {
+	<US extends State, SV> StateDescriptor<US, SV> createStateDescriptor() {
 		return (StateDescriptor<US, SV>) new AggregatingStateDescriptor<>(
-			getName(), AGGREGATE, LongSerializer.INSTANCE);
+			"TtlTestAggregatingState", AGGREGATE, LongSerializer.INSTANCE);
 	}
 
 	@Override
-	public void update(Integer value) throws Exception {
+	void update(Integer value) throws Exception {
 		ttlState.add(value);
 	}
 
 	@Override
-	public String get() throws Exception {
+	String get() throws Exception {
 		return ttlState.get();
 	}
 
 	@Override
-	public Object getOriginal() throws Exception {
+	Object getOriginal() throws Exception {
 		return ttlState.original.get();
 	}
 
@@ -80,8 +80,6 @@ class TtlAggregatingStateTestContext
 
 	private static final AggregateFunction<Integer, Long, String> AGGREGATE =
 		new AggregateFunction<Integer, Long, String>() {
-			private static final long serialVersionUID = 815663074737539631L;
-
 			@Override
 			public Long createAccumulator() {
 				return DEFAULT_ACCUMULATOR;

@@ -20,29 +20,36 @@ package org.apache.flink.runtime.jobmaster;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.runtime.blob.TransientBlobKey;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
+import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
+import org.apache.flink.runtime.clusterframework.ApplicationStatus;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
+import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
-import org.apache.flink.runtime.jobgraph.OperatorID;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
 import org.apache.flink.runtime.messages.Acknowledge;
-import org.apache.flink.runtime.messages.TaskBackPressureResponse;
-import org.apache.flink.runtime.operators.coordination.OperatorEvent;
+import org.apache.flink.runtime.messages.StackTrace;
+import org.apache.flink.runtime.messages.StackTraceSampleResponse;
+import org.apache.flink.runtime.taskexecutor.FileType;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.util.Preconditions;
-import org.apache.flink.util.SerializedValue;
 
-import java.util.Collections;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Implementation of the {@link TaskManagerGateway} for Flink's RPC system.
  */
 public class RpcTaskManagerGateway implements TaskManagerGateway {
+
+	private static final Logger LOG = LoggerFactory.getLogger(RpcTaskManagerGateway.class);
 
 	private final TaskExecutorGateway taskExecutorGateway;
 
@@ -59,12 +66,39 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
-	public CompletableFuture<TaskBackPressureResponse> requestTaskBackPressure(
+	public void disconnectFromJobManager(InstanceID instanceId, Exception cause) {
+//		taskExecutorGateway.disconnectFromJobManager(instanceId, cause);
+		throw new UnsupportedOperationException("Operation is not yet supported.");
+	}
+
+	@Override
+	public void stopCluster(ApplicationStatus applicationStatus, String message) {
+//		taskExecutorGateway.stopCluster(applicationStatus, message);
+		throw new UnsupportedOperationException("Operation is not yet supported.");
+	}
+
+	@Override
+	public CompletableFuture<StackTrace> requestStackTrace(Time timeout) {
+//		return taskExecutorGateway.requestStackTrace(timeout);
+		throw new UnsupportedOperationException("Operation is not yet supported.");
+	}
+
+	@Override
+	public CompletableFuture<StackTraceSampleResponse> requestStackTraceSample(
 			ExecutionAttemptID executionAttemptID,
-			int requestId,
+			int sampleId,
+			int numSamples,
+			Time delayBetweenSamples,
+			int maxStackTraceDepth,
 			Time timeout) {
 
-		return taskExecutorGateway.requestTaskBackPressure(executionAttemptID, requestId, timeout);
+		return taskExecutorGateway.requestStackTraceSample(
+			executionAttemptID,
+			sampleId,
+			numSamples,
+			delayBetweenSamples,
+			maxStackTraceDepth,
+			timeout);
 	}
 
 	@Override
@@ -73,8 +107,28 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
+	public CompletableFuture<Acknowledge> failTask(ExecutionAttemptID executionAttemptID, Throwable t, Time timeout) {
+		return taskExecutorGateway.failTask(executionAttemptID, t, timeout);
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> stopTask(ExecutionAttemptID executionAttemptID, Time timeout) {
+		return taskExecutorGateway.stopTask(executionAttemptID, timeout);
+	}
+
+	@Override
 	public CompletableFuture<Acknowledge> cancelTask(ExecutionAttemptID executionAttemptID, Time timeout) {
 		return taskExecutorGateway.cancelTask(executionAttemptID, timeout);
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobManagerTaskRestore taskRestore, Time timeout) {
+		return taskExecutorGateway.dispatchStateToStandbyTask(executionAttemptID, taskRestore, timeout);
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> switchStandbyTaskToRunning(ExecutionAttemptID executionAttemptID, Time timeout) {
+		return taskExecutorGateway.switchStandbyTaskToRunning(executionAttemptID, timeout);
 	}
 
 	@Override
@@ -83,8 +137,8 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
-	public void releasePartitions(JobID jobId, Set<ResultPartitionID> partitionIds) {
-		taskExecutorGateway.releaseOrPromotePartitions(jobId, partitionIds, Collections.emptySet());
+	public void failPartition(ExecutionAttemptID executionAttemptID) {
+		taskExecutorGateway.failPartition(executionAttemptID);
 	}
 
 	@Override
@@ -93,18 +147,22 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
-	public void notifyCheckpointAborted(ExecutionAttemptID executionAttemptID, JobID jobId, long checkpointId, long timestamp) {
-		taskExecutorGateway.abortCheckpoint(executionAttemptID, checkpointId, timestamp);
-	}
-
-	@Override
-	public void triggerCheckpoint(ExecutionAttemptID executionAttemptID, JobID jobId, long checkpointId, long timestamp, CheckpointOptions checkpointOptions, boolean advanceToEndOfEventTime) {
+	public void triggerCheckpoint(ExecutionAttemptID executionAttemptID, JobID jobId, long checkpointId, long timestamp, CheckpointOptions checkpointOptions) {
 		taskExecutorGateway.triggerCheckpoint(
 			executionAttemptID,
 			checkpointId,
 			timestamp,
-			checkpointOptions,
-			advanceToEndOfEventTime);
+			checkpointOptions);
+	}
+
+	@Override
+	public CompletableFuture<TransientBlobKey> requestTaskManagerLog(Time timeout) {
+		return taskExecutorGateway.requestFileUpload(FileType.LOG, timeout);
+	}
+
+	@Override
+	public CompletableFuture<TransientBlobKey> requestTaskManagerStdout(Time timeout) {
+		return taskExecutorGateway.requestFileUpload(FileType.STDOUT, timeout);
 	}
 
 	@Override
@@ -116,10 +174,8 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
-	public CompletableFuture<Acknowledge> sendOperatorEventToTask(
-		ExecutionAttemptID task,
-		OperatorID operator,
-		SerializedValue<OperatorEvent> evt) {
-		return taskExecutorGateway.sendOperatorEventToTask(task, operator, evt);
+	public CompletableFuture<Acknowledge> ignoreCheckpoint(ExecutionAttemptID attemptId, long checkpointId,
+														   Time rpcTimeout) {
+		return taskExecutorGateway.ignoreCheckpoint(attemptId, checkpointId, rpcTimeout);
 	}
 }

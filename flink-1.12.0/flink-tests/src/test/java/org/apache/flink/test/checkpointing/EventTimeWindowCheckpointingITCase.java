@@ -28,7 +28,6 @@ import org.apache.flink.api.java.tuple.Tuple4;
 import org.apache.flink.configuration.AkkaOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
-import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.contrib.streaming.state.RocksDBOptions;
 import org.apache.flink.contrib.streaming.state.RocksDBStateBackend;
@@ -37,12 +36,11 @@ import org.apache.flink.runtime.state.AbstractStateBackend;
 import org.apache.flink.runtime.state.filesystem.FsStateBackend;
 import org.apache.flink.runtime.state.memory.MemoryStateBackend;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
+import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.functions.windowing.RichWindowFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
-import org.apache.flink.streaming.api.windowing.assigners.SlidingEventTimeWindows;
-import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.test.checkpointing.utils.FailingSource;
@@ -69,6 +67,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Map;
 
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.apache.flink.test.checkpointing.EventTimeWindowCheckpointingITCase.StateBackendEnum.ROCKSDB_INCREMENTAL_ZK;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -76,7 +75,7 @@ import static org.junit.Assert.fail;
 
 /**
  * This verifies that checkpointing works correctly with event time windows. This is more
- * strict than {@link ProcessingTimeWindowCheckpointingITCase} because for event-time the contents
+ * strict than {@link WindowCheckpointingITCase} because for event-time the contents
  * of the emitted windows are deterministic.
  *
  * <p>Split into multiple test classes in order to decrease the runtime per backend
@@ -89,7 +88,6 @@ public class EventTimeWindowCheckpointingITCase extends TestLogger {
 
 	private static final int MAX_MEM_STATE_SIZE = 20 * 1024 * 1024;
 	private static final int PARALLELISM = 4;
-	private static final int NUM_OF_TASK_MANAGERS = 2;
 
 	private TestingServer zkServer;
 
@@ -123,8 +121,8 @@ public class EventTimeWindowCheckpointingITCase extends TestLogger {
 		return new MiniClusterWithClientResource(
 			new MiniClusterResourceConfiguration.Builder()
 				.setConfiguration(getConfigurationSafe())
-				.setNumberTaskManagers(NUM_OF_TASK_MANAGERS)
-				.setNumberSlotsPerTaskManager(PARALLELISM / NUM_OF_TASK_MANAGERS)
+				.setNumberTaskManagers(2)
+				.setNumberSlotsPerTaskManager(PARALLELISM / 2)
 				.build());
 	}
 
@@ -170,16 +168,18 @@ public class EventTimeWindowCheckpointingITCase extends TestLogger {
 				break;
 			}
 			case ROCKSDB_FULLY_ASYNC: {
-				setupRocksDB(config, -1, false);
+				setupRocksDB(-1, false);
 				break;
 			}
 			case ROCKSDB_INCREMENTAL:
 				// Test RocksDB based timer service as well
-				config.set(RocksDBOptions.TIMER_SERVICE_FACTORY, RocksDBStateBackend.PriorityQueueStateType.ROCKSDB);
-				setupRocksDB(config, 16, true);
+				config.setString(
+					RocksDBOptions.TIMER_SERVICE_FACTORY,
+					RocksDBStateBackend.PriorityQueueStateType.ROCKSDB.toString());
+				setupRocksDB(16, true);
 				break;
 			case ROCKSDB_INCREMENTAL_ZK: {
-				setupRocksDB(config, 16, true);
+				setupRocksDB(16, true);
 				break;
 			}
 			default:
@@ -188,10 +188,7 @@ public class EventTimeWindowCheckpointingITCase extends TestLogger {
 		return config;
 	}
 
-	private void setupRocksDB(Configuration config, int fileSizeThreshold, boolean incrementalCheckpoints) throws IOException {
-		// Configure the managed memory size as 64MB per slot for rocksDB state backend.
-		config.set(TaskManagerOptions.MANAGED_MEMORY_SIZE, MemorySize.ofMebiBytes(PARALLELISM / NUM_OF_TASK_MANAGERS * 64));
-
+	private void setupRocksDB(int fileSizeThreshold, boolean incrementalCheckpoints) throws IOException {
 		String rocksDb = tempFolder.newFolder().getAbsolutePath();
 		String backups = tempFolder.newFolder().getAbsolutePath();
 		// we use the fs backend with small threshold here to test the behaviour with file
@@ -211,6 +208,9 @@ public class EventTimeWindowCheckpointingITCase extends TestLogger {
 		final File haDir = temporaryFolder.newFolder();
 
 		Configuration config = new Configuration();
+		config.setString(TaskManagerOptions.MANAGED_MEMORY_SIZE, "48m");
+		// the default network buffers size (10% of heap max =~ 150MB) seems to much for this test case
+		config.setString(TaskManagerOptions.NETWORK_BUFFERS_MEMORY_MAX, String.valueOf(80L << 20)); // 80 MB
 		config.setString(AkkaOptions.FRAMESIZE, String.valueOf(MAX_MEM_STATE_SIZE) + "b");
 
 		if (zkServer != null) {
@@ -256,16 +256,18 @@ public class EventTimeWindowCheckpointingITCase extends TestLogger {
 		try {
 			StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 			env.setParallelism(PARALLELISM);
+			env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 			env.enableCheckpointing(100);
 			env.setRestartStrategy(RestartStrategies.fixedDelayRestart(1, 0));
-						env.setStateBackend(this.stateBackend);
+			env.getConfig().disableSysoutLogging();
+			env.setStateBackend(this.stateBackend);
 			env.getConfig().setUseSnapshotCompression(true);
 
 			env
 					.addSource(new FailingSource(new KeyedEventTimeGenerator(numKeys, windowSize), numElementsPerKey))
 					.rebalance()
 					.keyBy(0)
-					.window(TumblingEventTimeWindows.of(Time.milliseconds(windowSize)))
+					.timeWindow(Time.of(windowSize, MILLISECONDS))
 					.apply(new RichWindowFunction<Tuple2<Long, IntType>, Tuple4<Long, Long, Long, IntType>, Tuple, TimeWindow>() {
 
 						private boolean open = false;
@@ -330,16 +332,18 @@ public class EventTimeWindowCheckpointingITCase extends TestLogger {
 			StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 			env.setParallelism(PARALLELISM);
 			env.setMaxParallelism(maxParallelism);
+			env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 			env.enableCheckpointing(100);
 			env.setRestartStrategy(RestartStrategies.fixedDelayRestart(1, 0));
-						env.setStateBackend(this.stateBackend);
+			env.getConfig().disableSysoutLogging();
+			env.setStateBackend(this.stateBackend);
 			env.getConfig().setUseSnapshotCompression(true);
 
 			env
 					.addSource(new FailingSource(new KeyedEventTimeGenerator(numKeys, windowSize), numElementsPerKey))
 					.rebalance()
 					.keyBy(0)
-					.window(TumblingEventTimeWindows.of(Time.milliseconds(windowSize)))
+					.timeWindow(Time.of(windowSize, MILLISECONDS))
 					.apply(new RichWindowFunction<Tuple2<Long, IntType>, Tuple4<Long, Long, Long, IntType>, Tuple, TimeWindow>() {
 
 						private boolean open = false;
@@ -397,16 +401,18 @@ public class EventTimeWindowCheckpointingITCase extends TestLogger {
 			StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 			env.setMaxParallelism(2 * PARALLELISM);
 			env.setParallelism(PARALLELISM);
+			env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 			env.enableCheckpointing(100);
 			env.setRestartStrategy(RestartStrategies.fixedDelayRestart(1, 0));
-						env.setStateBackend(this.stateBackend);
+			env.getConfig().disableSysoutLogging();
+			env.setStateBackend(this.stateBackend);
 			env.getConfig().setUseSnapshotCompression(true);
 
 			env
 					.addSource(new FailingSource(new KeyedEventTimeGenerator(numKeys, windowSlide), numElementsPerKey))
 					.rebalance()
 					.keyBy(0)
-					.window(SlidingEventTimeWindows.of(Time.milliseconds(windowSize), Time.milliseconds(windowSlide)))
+					.timeWindow(Time.of(windowSize, MILLISECONDS), Time.of(windowSlide, MILLISECONDS))
 					.apply(new RichWindowFunction<Tuple2<Long, IntType>, Tuple4<Long, Long, Long, IntType>, Tuple, TimeWindow>() {
 
 						private boolean open = false;
@@ -460,16 +466,18 @@ public class EventTimeWindowCheckpointingITCase extends TestLogger {
 		try {
 			StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 			env.setParallelism(PARALLELISM);
+			env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 			env.enableCheckpointing(100);
 			env.setRestartStrategy(RestartStrategies.fixedDelayRestart(1, 0));
-						env.setStateBackend(this.stateBackend);
+			env.getConfig().disableSysoutLogging();
+			env.setStateBackend(this.stateBackend);
 			env.getConfig().setUseSnapshotCompression(true);
 
 			env
 					.addSource(new FailingSource(new KeyedEventTimeGenerator(numKeys, windowSize), numElementsPerKey))
 					.rebalance()
 					.keyBy(0)
-					.window(TumblingEventTimeWindows.of(Time.milliseconds(windowSize)))
+					.timeWindow(Time.of(windowSize, MILLISECONDS))
 					.reduce(
 							new ReduceFunction<Tuple2<Long, IntType>>() {
 
@@ -531,16 +539,18 @@ public class EventTimeWindowCheckpointingITCase extends TestLogger {
 		try {
 			StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 			env.setParallelism(PARALLELISM);
+			env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 			env.enableCheckpointing(100);
 			env.setRestartStrategy(RestartStrategies.fixedDelayRestart(1, 0));
-						env.setStateBackend(this.stateBackend);
+			env.getConfig().disableSysoutLogging();
+			env.setStateBackend(this.stateBackend);
 			env.getConfig().setUseSnapshotCompression(true);
 
 			env
 					.addSource(new FailingSource(new KeyedEventTimeGenerator(numKeys, windowSlide), numElementsPerKey))
 					.rebalance()
 					.keyBy(0)
-					.window(SlidingEventTimeWindows.of(Time.milliseconds(windowSize), Time.milliseconds(windowSlide)))
+					.timeWindow(Time.of(windowSize, MILLISECONDS), Time.of(windowSlide, MILLISECONDS))
 					.reduce(
 							new ReduceFunction<Tuple2<Long, IntType>>() {
 
@@ -695,11 +705,25 @@ public class EventTimeWindowCheckpointingITCase extends TestLogger {
 	}
 
 	private int numElementsPerKey() {
-		return 3000;
+		switch (this.stateBackendEnum) {
+			case ROCKSDB_FULLY_ASYNC:
+			case ROCKSDB_INCREMENTAL:
+			case ROCKSDB_INCREMENTAL_ZK:
+				return 3000;
+			default:
+				return 300;
+		}
 	}
 
 	private int windowSize() {
-		return 1000;
+		switch (this.stateBackendEnum) {
+			case ROCKSDB_FULLY_ASYNC:
+			case ROCKSDB_INCREMENTAL:
+			case ROCKSDB_INCREMENTAL_ZK:
+				return 1000;
+			default:
+				return 100;
+		}
 	}
 
 	private int windowSlide() {
@@ -707,6 +731,13 @@ public class EventTimeWindowCheckpointingITCase extends TestLogger {
 	}
 
 	private int numKeys() {
-		return 100;
+		switch (this.stateBackendEnum) {
+			case ROCKSDB_FULLY_ASYNC:
+			case ROCKSDB_INCREMENTAL:
+			case ROCKSDB_INCREMENTAL_ZK:
+				return 100;
+			default:
+				return 20;
+		}
 	}
 }

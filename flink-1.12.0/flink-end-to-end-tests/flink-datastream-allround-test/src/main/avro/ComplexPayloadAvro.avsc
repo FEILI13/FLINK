@@ -22,7 +22,7 @@
      {
         "name": "eventTime",
         "type": "long",
-        "default": -1
+        "default": ""
      },
      {
         "name": "stringList",

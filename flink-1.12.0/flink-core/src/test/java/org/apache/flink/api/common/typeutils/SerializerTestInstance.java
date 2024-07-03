@@ -19,15 +19,6 @@
 package org.apache.flink.api.common.typeutils;
 
 
-import org.apache.flink.testutils.DeeplyEqualsChecker;
-
-import org.junit.Ignore;
-import org.junit.Test;
-
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-
-@Ignore
 public class SerializerTestInstance<T> extends SerializerTestBase<T> {
 
 	private final TypeSerializer<T> serializer;
@@ -42,25 +33,14 @@ public class SerializerTestInstance<T> extends SerializerTestBase<T> {
 
 	@SafeVarargs
 	public SerializerTestInstance(TypeSerializer<T> serializer, Class<T> typeClass, int length, T... testData) {
-		this(new DeeplyEqualsChecker(), serializer, typeClass, length, testData);
-	}
-
-	@SafeVarargs
-	public SerializerTestInstance(
-			DeeplyEqualsChecker checker,
-			TypeSerializer<T> serializer,
-			Class<T> typeClass,
-			int length,
-			T... testData) {
-		super(checker);
 		this.serializer = serializer;
 		this.typeClass = typeClass;
 		this.length = length;
 		this.testData = testData;
 	}
-
+	
 	// --------------------------------------------------------------------------------------------
-
+	
 	@Override
 	protected TypeSerializer<T> createSerializer() {
 		return this.serializer;
@@ -80,26 +60,21 @@ public class SerializerTestInstance<T> extends SerializerTestBase<T> {
 	protected T[] getTestData() {
 		return this.testData;
 	}
-
+	
 	// --------------------------------------------------------------------------------------------
-
+	
 	public void testAll() {
-		for (Method method : SerializerTestBase.class.getMethods()) {
-			if (method.getAnnotation(Test.class) == null) {
-				continue;
-			}
-			try {
-				method.invoke(this);
-			} catch (IllegalAccessException e) {
-				throw new RuntimeException("Unable to invoke test " + method.getName(), e);
-			} catch (InvocationTargetException e) {
-				sneakyThrow(e.getCause());
-			}
-		}
-	}
-
-	@SuppressWarnings("unchecked")
-	private static <E extends Throwable> void sneakyThrow(Throwable e) throws E {
-		throw (E) e;
+		testInstantiate();
+		testGetLength();
+		testCopy();
+		testCopyIntoNewElements();
+		testCopyIntoReusedElements();
+		testSerializeIndividually();
+		testSerializeIndividuallyReusingValues();
+		testSerializeAsSequenceNoReuse();
+		testSerializeAsSequenceReusingValues();
+		testSerializedCopyIndividually();
+		testSerializedCopyAsSequence();
+		testSerializabilityAndEquals();
 	}
 }

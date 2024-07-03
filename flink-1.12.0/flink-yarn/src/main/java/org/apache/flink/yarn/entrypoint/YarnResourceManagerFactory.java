@@ -19,44 +19,61 @@
 package org.apache.flink.yarn.entrypoint;
 
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.clusterframework.types.ResourceID;
+import org.apache.flink.runtime.entrypoint.ClusterInformation;
+import org.apache.flink.runtime.heartbeat.HeartbeatServices;
+import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
+import org.apache.flink.runtime.metrics.MetricRegistry;
+import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
+import org.apache.flink.runtime.resourcemanager.ResourceManager;
+import org.apache.flink.runtime.resourcemanager.ResourceManagerFactory;
+import org.apache.flink.runtime.resourcemanager.ResourceManagerRuntimeServices;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerRuntimeServicesConfiguration;
-import org.apache.flink.runtime.resourcemanager.active.ActiveResourceManager;
-import org.apache.flink.runtime.resourcemanager.active.ActiveResourceManagerFactory;
-import org.apache.flink.runtime.resourcemanager.active.ResourceManagerDriver;
-import org.apache.flink.util.ConfigurationException;
-import org.apache.flink.yarn.DefaultYarnNodeManagerClientFactory;
-import org.apache.flink.yarn.DefaultYarnResourceManagerClientFactory;
-import org.apache.flink.yarn.YarnResourceManagerDriver;
+import org.apache.flink.runtime.rpc.FatalErrorHandler;
+import org.apache.flink.runtime.rpc.RpcService;
+import org.apache.flink.yarn.YarnResourceManager;
 import org.apache.flink.yarn.YarnWorkerNode;
-import org.apache.flink.yarn.configuration.YarnResourceManagerDriverConfiguration;
+
+import javax.annotation.Nullable;
 
 /**
- * {@link ActiveResourceManagerFactory} implementation which creates a {@link ActiveResourceManager} with {@link YarnResourceManagerDriver}.
+ * {@link ResourceManagerFactory} implementation which creates a {@link YarnResourceManager}.
  */
-public class YarnResourceManagerFactory extends ActiveResourceManagerFactory<YarnWorkerNode> {
-
-	private static final YarnResourceManagerFactory INSTANCE = new YarnResourceManagerFactory();
-
-	private YarnResourceManagerFactory() {}
-
-	public static YarnResourceManagerFactory getInstance() {
-		return INSTANCE;
-	}
+public enum YarnResourceManagerFactory implements ResourceManagerFactory<YarnWorkerNode> {
+	INSTANCE;
 
 	@Override
-	protected ResourceManagerDriver<YarnWorkerNode> createResourceManagerDriver(Configuration configuration, String webInterfaceUrl, String rpcAddress) {
-		final YarnResourceManagerDriverConfiguration yarnResourceManagerDriverConfiguration = new YarnResourceManagerDriverConfiguration(System.getenv(), rpcAddress, webInterfaceUrl);
+	public ResourceManager<YarnWorkerNode> createResourceManager(
+			Configuration configuration,
+			ResourceID resourceId,
+			RpcService rpcService,
+			HighAvailabilityServices highAvailabilityServices,
+			HeartbeatServices heartbeatServices,
+			MetricRegistry metricRegistry,
+			FatalErrorHandler fatalErrorHandler,
+			ClusterInformation clusterInformation,
+			@Nullable String webInterfaceUrl,
+			JobManagerMetricGroup jobManagerMetricGroup) throws Exception {
+		final ResourceManagerRuntimeServicesConfiguration rmServicesConfiguration = ResourceManagerRuntimeServicesConfiguration.fromConfiguration(configuration);
+		final ResourceManagerRuntimeServices rmRuntimeServices = ResourceManagerRuntimeServices.fromConfiguration(
+			rmServicesConfiguration,
+			highAvailabilityServices,
+			rpcService.getScheduledExecutor());
 
-		return new YarnResourceManagerDriver(
+		return new YarnResourceManager(
+			rpcService,
+			ResourceManager.RESOURCE_MANAGER_NAME,
+			resourceId,
 			configuration,
-			yarnResourceManagerDriverConfiguration,
-			DefaultYarnResourceManagerClientFactory.getInstance(),
-			DefaultYarnNodeManagerClientFactory.getInstance());
-	}
-
-	@Override
-	protected ResourceManagerRuntimeServicesConfiguration createResourceManagerRuntimeServicesConfiguration(
-		Configuration configuration) throws ConfigurationException {
-		return ResourceManagerRuntimeServicesConfiguration.fromConfiguration(configuration, YarnWorkerResourceSpecFactory.INSTANCE);
+			System.getenv(),
+			highAvailabilityServices,
+			heartbeatServices,
+			rmRuntimeServices.getSlotManager(),
+			metricRegistry,
+			rmRuntimeServices.getJobLeaderIdService(),
+			clusterInformation,
+			fatalErrorHandler,
+			webInterfaceUrl,
+			jobManagerMetricGroup);
 	}
 }

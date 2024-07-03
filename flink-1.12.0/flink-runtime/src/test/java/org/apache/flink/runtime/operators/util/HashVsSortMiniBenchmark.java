@@ -24,16 +24,15 @@ import org.apache.flink.api.common.typeutils.TypeComparator;
 import org.apache.flink.api.common.typeutils.TypePairComparator;
 import org.apache.flink.api.common.typeutils.TypeSerializerFactory;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.core.memory.MemoryType;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.memory.MemoryManager;
-import org.apache.flink.runtime.memory.MemoryManagerBuilder;
 import org.apache.flink.runtime.operators.hash.ReusingBuildFirstHashJoinIterator;
 import org.apache.flink.runtime.operators.hash.ReusingBuildSecondHashJoinIterator;
 import org.apache.flink.runtime.operators.sort.ReusingMergeInnerJoinIterator;
-import org.apache.flink.runtime.operators.sort.Sorter;
-import org.apache.flink.runtime.operators.sort.ExternalSorter;
+import org.apache.flink.runtime.operators.sort.UnilateralSortMerger;
 import org.apache.flink.runtime.operators.testutils.DiscardingOutputCollector;
 import org.apache.flink.runtime.operators.testutils.DummyInvokable;
 import org.apache.flink.runtime.operators.testutils.TestData;
@@ -93,16 +92,12 @@ public class HashVsSortMiniBenchmark {
 		this.comparator2 = TestData.getIntStringTupleComparator();
 		this.pairComparator11 = new GenericPairComparator(this.comparator1, this.comparator2);
 		
-		this.memoryManager = MemoryManagerBuilder
-			.newBuilder()
-			.setMemorySize(MEMORY_SIZE)
-			.setPageSize(PAGE_SIZE)
-			.build();
+		this.memoryManager = new MemoryManager(MEMORY_SIZE, 1, PAGE_SIZE, MemoryType.HEAP, true);
 		this.ioManager = new IOManagerAsync();
 	}
 
 	@After
-	public void afterTest() throws Exception {
+	public void afterTest() {
 		if (this.memoryManager != null) {
 			Assert.assertTrue("Memory Leak: Not all memory has been returned to the memory manager.",
 				this.memoryManager.verifyEmpty());
@@ -111,7 +106,10 @@ public class HashVsSortMiniBenchmark {
 		}
 		
 		if (this.ioManager != null) {
-			this.ioManager.close();
+			this.ioManager.shutdown();
+			if (!this.ioManager.isProperlyShutDown()) {
+				Assert.fail("I/O manager failed to properly shut down.");
+			}
 			this.ioManager = null;
 		}
 	}
@@ -131,32 +129,16 @@ public class HashVsSortMiniBenchmark {
 			
 			long start = System.nanoTime();
 			
-			final Sorter<Tuple2<Integer, String>> sorter1 =
-				ExternalSorter.newBuilder(
-						this.memoryManager,
-						this.parentTask,
-						this.serializer1.getSerializer(),
-						this.comparator1.duplicate())
-					.maxNumFileHandles(128)
-					.enableSpilling(ioManager, 0.8f)
-					.memoryFraction((double) MEMORY_FOR_SORTER / MEMORY_SIZE)
-					.objectReuse(true)
-					.largeRecords(true)
-					.build(input1);
-
-			final Sorter<Tuple2<Integer, String>> sorter2 =
-				ExternalSorter.newBuilder(
-						this.memoryManager,
-						this.parentTask,
-						this.serializer2.getSerializer(),
-						this.comparator2.duplicate())
-					.maxNumFileHandles(128)
-					.enableSpilling(ioManager, 0.8f)
-					.memoryFraction((double) MEMORY_FOR_SORTER / MEMORY_SIZE)
-					.objectReuse(true)
-					.largeRecords(true)
-					.build(input2);
-
+			final UnilateralSortMerger<Tuple2<Integer, String>> sorter1 = new UnilateralSortMerger<>(
+					this.memoryManager, this.ioManager, input1, this.parentTask, this.serializer1, 
+					this.comparator1.duplicate(), (double)MEMORY_FOR_SORTER/MEMORY_SIZE, 128, 0.8f,
+					true /*use large record handler*/, true);
+			
+			final UnilateralSortMerger<Tuple2<Integer, String>> sorter2 = new UnilateralSortMerger<>(
+					this.memoryManager, this.ioManager, input2, this.parentTask, this.serializer2, 
+					this.comparator2.duplicate(), (double)MEMORY_FOR_SORTER/MEMORY_SIZE, 128, 0.8f,
+					true /*use large record handler*/, true);
+			
 			final MutableObjectIterator<Tuple2<Integer, String>> sortedInput1 = sorter1.getIterator();
 			final MutableObjectIterator<Tuple2<Integer, String>> sortedInput2 = sorter2.getIterator();
 			
@@ -271,18 +253,10 @@ public class HashVsSortMiniBenchmark {
 
 		long start = System.nanoTime();
 
-		final Sorter<Tuple2<Integer, String>> sorter =
-			ExternalSorter.newBuilder(
-					this.memoryManager,
-					this.parentTask,
-					this.serializer1.getSerializer(),
-					this.comparator1.duplicate())
-				.maxNumFileHandles(128)
-				.enableSpilling(ioManager, 0.8f)
-				.memoryFraction((double) MEMORY_FOR_SORTER / MEMORY_SIZE)
-				.objectReuse(true)
-				.largeRecords(true)
-				.build(input1);
+		final UnilateralSortMerger<Tuple2<Integer, String>> sorter = new UnilateralSortMerger<>(
+				this.memoryManager, this.ioManager, input1, this.parentTask, this.serializer1,
+				this.comparator1.duplicate(), (double)MEMORY_FOR_SORTER/MEMORY_SIZE, 128, 0.8f,
+				true /*use large record handler*/, true);
 
 		MutableObjectIterator<Tuple2<Integer, String>> iter = sorter.getIterator();
 

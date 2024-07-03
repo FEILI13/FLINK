@@ -25,19 +25,17 @@ import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.operators.Output;
-import org.apache.flink.streaming.api.operators.SetupableStreamOperator;
 import org.apache.flink.streaming.api.operators.StreamOperator;
 import org.apache.flink.streaming.runtime.io.RecordWriterOutput;
 import org.apache.flink.streaming.runtime.operators.StreamOperatorChainingTest;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusProvider;
-import org.apache.flink.streaming.util.MockStreamTaskBuilder;
+import org.apache.flink.streaming.runtime.tasks.OperatorChain.BroadcastingOutputCollector;
+import org.apache.flink.streaming.runtime.tasks.OperatorChain.ChainingOutput;
+import org.apache.flink.streaming.runtime.tasks.OperatorChain.WatermarkGaugeExposingOutput;
 
 import org.junit.Test;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
@@ -72,19 +70,20 @@ public class OperatorChainTest {
 	// ------------------------------------------------------------------------
 
 	@SafeVarargs
-	public static <T, OP extends StreamOperator<T>> OperatorChain<T, OP> setupOperatorChain(
-			OneInputStreamOperator<T, T>... operators) throws Exception {
+	private static <T, OP extends StreamOperator<T>> OperatorChain<T, OP> setupOperatorChain(
+			OneInputStreamOperator<T, T>... operators) {
 
 		checkNotNull(operators);
 		checkArgument(operators.length > 0);
 
 		try (MockEnvironment env = MockEnvironment.builder().build()) {
-			final StreamTask<?, ?> containingTask = new MockStreamTaskBuilder(env).build();
+
+		final StreamTask<?, ?> containingTask = new OneInputStreamTask<T, OneInputStreamOperator<T, T>>(env);
 
 			final StreamStatusProvider statusProvider = mock(StreamStatusProvider.class);
 			final StreamConfig cfg = new StreamConfig(new Configuration());
 
-			final List<StreamOperatorWrapper<?, ?>> operatorWrappers = new ArrayList<>();
+			final StreamOperator<?>[] ops = new StreamOperator<?>[operators.length];
 
 			// initial output goes to nowhere
 			@SuppressWarnings({"unchecked", "rawtypes"})
@@ -92,33 +91,21 @@ public class OperatorChainTest {
 					new Output[0], statusProvider);
 
 			// build the reverse operators array
-			for (int i = 0; i < operators.length; i++) {
-				int operatorIndex = operators.length - i - 1;
-				OneInputStreamOperator<T, T> op = operators[operatorIndex];
-				if (op instanceof SetupableStreamOperator) {
-					((SetupableStreamOperator) op).setup(containingTask, cfg, lastWriter);
-				}
+			for (int i = 0; i < ops.length; i++) {
+				OneInputStreamOperator<T, T> op = operators[ops.length - i - 1];
+				op.setup(containingTask, cfg, lastWriter);
 				lastWriter = new ChainingOutput<>(op, statusProvider, null);
-
-				ProcessingTimeService processingTimeService = null;
-				if (op instanceof AbstractStreamOperator) {
-					processingTimeService = ((AbstractStreamOperator) op).getProcessingTimeService();
-				}
-				operatorWrappers.add(new StreamOperatorWrapper<>(
-					op,
-					Optional.ofNullable(processingTimeService),
-					containingTask.getMailboxExecutorFactory().createExecutor(i),
-					operatorIndex == 0));
+				ops[i] = op;
 			}
 
 			@SuppressWarnings("unchecked")
-			final StreamOperatorWrapper<T, OP> headOperatorWrapper = (StreamOperatorWrapper<T, OP>) operatorWrappers.get(operatorWrappers.size() - 1);
+			final OP head = (OP) operators[0];
 
 			return new OperatorChain<>(
-				operatorWrappers,
-				new RecordWriterOutput<?>[0],
-				lastWriter,
-				headOperatorWrapper);
+					ops,
+					new RecordWriterOutput<?>[0],
+					lastWriter,
+					head);
 		}
 	}
 

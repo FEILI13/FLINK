@@ -72,6 +72,7 @@ public class JarUploadHandlerTest extends TestLogger {
 
 		jarDir = temporaryFolder.newFolder().toPath();
 		jarUploadHandler = new JarUploadHandler(
+			CompletableFuture.completedFuture("localhost:12345"),
 			() -> CompletableFuture.completedFuture(mockDispatcherGateway),
 			Time.seconds(10),
 			Collections.emptyMap(),
@@ -98,7 +99,7 @@ public class JarUploadHandlerTest extends TestLogger {
 
 	@Test
 	public void testUploadJar() throws Exception {
-		final Path uploadedFile = Files.createFile(jarDir.resolve("FooBazzleExample.jar"));
+		final Path uploadedFile = Files.createFile(jarDir.resolve("Kafka010Example.jar"));
 		final HandlerRequest<EmptyRequestBody, EmptyMessageParameters> request = createRequest(uploadedFile);
 
 		final JarUploadResponseBody jarUploadResponseBody = jarUploadHandler.handleRequest(request, mockDispatcherGateway).get();
@@ -111,7 +112,7 @@ public class JarUploadHandlerTest extends TestLogger {
 
 	@Test
 	public void testFailedUpload() throws Exception {
-		final Path uploadedFile = jarDir.resolve("FooBazzleExample.jar");
+		final Path uploadedFile = jarDir.resolve("Kafka010Example.jar");
 		final HandlerRequest<EmptyRequestBody, EmptyMessageParameters> request = createRequest(uploadedFile);
 
 		try {

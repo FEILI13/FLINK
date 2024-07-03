@@ -18,7 +18,7 @@
 package org.apache.flink.streaming.runtime.partitioner;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.runtime.io.network.api.writer.SubtaskStateMapper;
+import org.apache.flink.api.common.services.RandomService;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -28,7 +28,7 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
  * channels. This distributes only to a subset of downstream nodes because
  * {@link org.apache.flink.streaming.api.graph.StreamingJobGraphGenerator} instantiates
  * a {@link DistributionPattern#POINTWISE} distribution pattern when encountering
- * {@code RescalePartitioner}.
+ * {@code SemiRebalancePartitioner}.
  *
  * <p>The subset of downstream operations to which the upstream operation sends
  * elements depends on the degree of parallelism of both the upstream and downstream operation.
@@ -49,19 +49,20 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 public class RescalePartitioner<T> extends StreamPartitioner<T> {
 	private static final long serialVersionUID = 1L;
 
-	private int nextChannelToSendTo = -1;
+	private final int[] returnArray = new int[] {-1};
 
 	@Override
-	public int selectChannel(SerializationDelegate<StreamRecord<T>> record) {
-		if (++nextChannelToSendTo >= numberOfChannels) {
-			nextChannelToSendTo = 0;
+	public int[] selectChannels(SerializationDelegate<StreamRecord<T>> record, int numberOfOutputChannels) {
+		int newChannel = ++this.returnArray[0];
+		if (newChannel >= numberOfOutputChannels) {
+			this.returnArray[0] = 0;
 		}
-		return nextChannelToSendTo;
+		return this.returnArray;
 	}
 
 	@Override
-	public SubtaskStateMapper getDownstreamSubtaskStateMapper() {
-		return SubtaskStateMapper.ROUND_ROBIN;
+	public void setRandomService(RandomService randomService) {
+
 	}
 
 	public StreamPartitioner<T> copy() {
@@ -71,5 +72,10 @@ public class RescalePartitioner<T> extends StreamPartitioner<T> {
 	@Override
 	public String toString() {
 		return "RESCALE";
+	}
+
+	@Override
+	public void notifyEpochStart(long epochID) {
+		this.returnArray[0] = -1;
 	}
 }

@@ -28,8 +28,10 @@ import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
+import org.apache.flink.runtime.checkpoint.StateAssignmentOperation;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.jobgraph.OperatorID;
+import org.apache.flink.runtime.jobgraph.OperatorInstanceID;
 import org.apache.flink.runtime.operators.testutils.MockInputSplitProvider;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
@@ -160,8 +162,12 @@ public class RestoreStreamTaskTest extends TestLogger {
 		assertEquals(2, stateHandles.getSubtaskStateMappings().size());
 
 		// test empty state in case of scale up
-
-		OperatorSubtaskState emptyHeadOperatorState = OperatorSubtaskState.builder().build();
+		OperatorSubtaskState emptyHeadOperatorState = StateAssignmentOperation.operatorSubtaskStateFrom(
+			new OperatorInstanceID(0, headOperatorID),
+			Collections.emptyMap(),
+			Collections.emptyMap(),
+			Collections.emptyMap(),
+			Collections.emptyMap());
 
 		stateHandles.putSubtaskStateByOperatorID(headOperatorID, emptyHeadOperatorState);
 
@@ -262,7 +268,7 @@ public class RestoreStreamTaskTest extends TestLogger {
 
 		testHarness.taskStateManager.setWaitForReportLatch(new OneShotLatch());
 
-		streamTask.triggerCheckpointAsync(checkpointMetaData, CheckpointOptions.forCheckpointWithDefaultLocation(), false);
+		while (!streamTask.triggerCheckpoint(checkpointMetaData, CheckpointOptions.forCheckpointWithDefaultLocation())) {}
 
 		testHarness.taskStateManager.getWaitForReportLatch().await();
 		long reportedCheckpointId = testHarness.taskStateManager.getReportedCheckpointId();

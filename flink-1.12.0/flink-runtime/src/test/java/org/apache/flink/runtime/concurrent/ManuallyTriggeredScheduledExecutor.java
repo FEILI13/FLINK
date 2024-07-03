@@ -18,112 +18,152 @@
 
 package org.apache.flink.runtime.concurrent;
 
-import javax.annotation.Nonnull;
+import org.apache.flink.core.testutils.ManuallyTriggeredDirectExecutor;
+import org.apache.flink.util.Preconditions;
 
+import java.util.ArrayList;
 import java.util.Collection;
-import java.util.NoSuchElementException;
+import java.util.Iterator;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Delayed;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Simple {@link ScheduledExecutor} implementation for testing purposes.
  */
-public class ManuallyTriggeredScheduledExecutor implements ScheduledExecutor {
+public class ManuallyTriggeredScheduledExecutor extends ManuallyTriggeredDirectExecutor implements ScheduledExecutor {
 
-	/**
-	 * The service that we redirect to. We wrap this rather than extending it to limit the
-	 * surfaced interface.
-	 */
-	org.apache.flink.core.testutils.ManuallyTriggeredScheduledExecutorService execService =
-			new org.apache.flink.core.testutils.ManuallyTriggeredScheduledExecutorService();
-
-	@Override
-	public void execute(@Nonnull Runnable command) {
-		execService.execute(command);
-	}
-
-	/** Triggers all {@code queuedRunnables}. */
-	public void triggerAll() {
-		execService.triggerAll();
-	}
-
-	/**
-	 * Triggers the next queued runnable and executes it synchronously.
-	 * This method throws an exception if no Runnable is currently queued.
-	 */
-	public void trigger() {
-		execService.trigger();
-	}
-
-	/**
-	 * Gets the number of Runnables currently queued.
-	 */
-	public int numQueuedRunnables() {
-		return execService.numQueuedRunnables();
-	}
+	private final ConcurrentLinkedQueue<ScheduledTask<?>> scheduledTasks = new ConcurrentLinkedQueue<>();
 
 	@Override
 	public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
-		return execService.schedule(command, delay, unit);
+		return insertRunnable(command, false);
 	}
 
 	@Override
 	public <V> ScheduledFuture<V> schedule(Callable<V> callable, long delay, TimeUnit unit) {
-		return execService.schedule(callable, delay, unit);
+		final ScheduledTask<V> scheduledTask = new ScheduledTask<>(callable, false);
+
+		scheduledTasks.offer(scheduledTask);
+
+		return scheduledTask;
 	}
 
 	@Override
 	public ScheduledFuture<?> scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit) {
-		return execService.scheduleAtFixedRate(command, initialDelay, period, unit);
+		return insertRunnable(command, true);
 	}
 
 	@Override
 	public ScheduledFuture<?> scheduleWithFixedDelay(Runnable command, long initialDelay, long delay, TimeUnit unit) {
-		return execService.scheduleWithFixedDelay(command, initialDelay, delay, unit);
+		return insertRunnable(command, true);
 	}
 
-	public Collection<ScheduledFuture<?>> getScheduledTasks() {
-		return execService.getScheduledTasks();
-	}
-
-	public Collection<ScheduledFuture<?>> getPeriodicScheduledTask() {
-		return execService.getPeriodicScheduledTask();
-	}
-
-	public Collection<ScheduledFuture<?>> getNonPeriodicScheduledTask() {
-		return execService.getNonPeriodicScheduledTask();
+	Collection<ScheduledFuture<?>> getScheduledTasks() {
+		return new ArrayList<>(scheduledTasks);
 	}
 
 	/**
 	 * Triggers all registered tasks.
 	 */
 	public void triggerScheduledTasks() {
-		execService.triggerScheduledTasks();
+		final Iterator<ScheduledTask<?>> iterator = scheduledTasks.iterator();
+
+		while (iterator.hasNext()) {
+			final ScheduledTask<?> scheduledTask = iterator.next();
+
+			scheduledTask.execute();
+
+			if (!scheduledTask.isPeriodic) {
+				iterator.remove();
+			}
+		}
 	}
 
-	/**
-	 * Triggers a single non-periodically scheduled task.
-	 *
-	 * @throws NoSuchElementException If there is no such task.
-	 */
-	public void triggerNonPeriodicScheduledTask() {
-		execService.triggerNonPeriodicScheduledTask();
+	private ScheduledFuture<?> insertRunnable(Runnable command, boolean isPeriodic) {
+		final ScheduledTask<?> scheduledTask = new ScheduledTask<>(
+			() -> {
+				command.run();
+				return null;
+			},
+			isPeriodic);
+
+		scheduledTasks.offer(scheduledTask);
+
+		return scheduledTask;
 	}
 
-	/**
-	 * Triggers all non-periodically scheduled tasks. In contrast to {@link #triggerNonPeriodicScheduledTasks()},
-	 * if such a task schedules another non-periodically schedule task, then this new task will also be triggered.
-	 */
-	public void triggerNonPeriodicScheduledTasksWithRecursion() {
-		execService.triggerNonPeriodicScheduledTasksWithRecursion();
-	}
+	private static final class ScheduledTask<T> implements ScheduledFuture<T> {
 
-	public void triggerNonPeriodicScheduledTasks() {
-		execService.triggerNonPeriodicScheduledTasks();
-	}
+		private final Callable<T> callable;
 
-	public void triggerPeriodicScheduledTasks() {
-		execService.triggerPeriodicScheduledTasks();
+		private final boolean isPeriodic;
+
+		private final CompletableFuture<T> result;
+
+		private ScheduledTask(Callable<T> callable, boolean isPeriodic) {
+			this.callable = Preconditions.checkNotNull(callable);
+			this.isPeriodic = isPeriodic;
+
+			this.result = new CompletableFuture<>();
+		}
+
+		public void execute() {
+			if (!result.isDone()) {
+				if (!isPeriodic) {
+					try {
+						result.complete(callable.call());
+					} catch (Exception e) {
+						result.completeExceptionally(e);
+					}
+				} else {
+					try {
+						callable.call();
+					} catch (Exception e) {
+						result.completeExceptionally(e);
+					}
+				}
+			}
+		}
+
+		@Override
+		public long getDelay(TimeUnit unit) {
+			return 0;
+		}
+
+		@Override
+		public int compareTo(Delayed o) {
+			return 0;
+		}
+
+		@Override
+		public boolean cancel(boolean mayInterruptIfRunning) {
+			return result.cancel(mayInterruptIfRunning);
+		}
+
+		@Override
+		public boolean isCancelled() {
+			return result.isCancelled();
+		}
+
+		@Override
+		public boolean isDone() {
+			return result.isDone();
+		}
+
+		@Override
+		public T get() throws InterruptedException, ExecutionException {
+			return result.get();
+		}
+
+		@Override
+		public T get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
+			return result.get(timeout, unit);
+		}
 	}
 }

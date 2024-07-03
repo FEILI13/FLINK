@@ -20,9 +20,9 @@ package org.apache.flink.runtime.resourcemanager.slotmanager;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
+import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.instance.InstanceID;
-import org.apache.flink.runtime.resourcemanager.WorkerResourceSpec;
-import org.apache.flink.runtime.slots.ResourceRequirement;
+import org.apache.flink.runtime.resourcemanager.exceptions.ResourceManagerException;
 
 import java.util.Collection;
 
@@ -40,12 +40,13 @@ public interface ResourceActions {
 	void releaseResource(InstanceID instanceId, Exception cause);
 
 	/**
-	 * Requests to allocate a resource with the given {@link WorkerResourceSpec}.
+	 * Requests to allocate a resource with the given {@link ResourceProfile}.
 	 *
-	 * @param workerResourceSpec for the to be allocated worker
-	 * @return whether the resource can be allocated
+	 * @param resourceProfile for the to be allocated resource
+	 * @return Collection of {@link ResourceProfile} describing the allocated slots
+	 * @throws ResourceManagerException if the resource cannot be allocated
 	 */
-	boolean allocateResource(WorkerResourceSpec workerResourceSpec);
+	Collection<ResourceProfile> allocateResource(ResourceProfile resourceProfile) throws ResourceManagerException;
 
 	/**
 	 * Notifies that an allocation failure has occurred.
@@ -55,12 +56,4 @@ public interface ResourceActions {
 	 * @param cause of the allocation failure
 	 */
 	void notifyAllocationFailure(JobID jobId, AllocationID allocationId, Exception cause);
-
-	/**
-	 * Notifies that not enough resources are available to fulfill the resource requirements of a job.
-	 *
-	 * @param jobId job for which not enough resources are available
-	 * @param acquiredResources the resources that have been acquired for the job
-	 */
-	void notifyNotEnoughResourcesAvailable(JobID jobId, Collection<ResourceRequirement> acquiredResources);
 }

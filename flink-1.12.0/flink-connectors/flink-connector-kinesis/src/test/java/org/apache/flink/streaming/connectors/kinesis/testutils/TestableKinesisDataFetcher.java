@@ -25,7 +25,6 @@ import org.apache.flink.streaming.connectors.kinesis.internals.KinesisDataFetche
 import org.apache.flink.streaming.connectors.kinesis.model.KinesisStreamShardState;
 import org.apache.flink.streaming.connectors.kinesis.model.StreamShardHandle;
 import org.apache.flink.streaming.connectors.kinesis.proxy.KinesisProxyInterface;
-import org.apache.flink.streaming.connectors.kinesis.proxy.KinesisProxyV2Interface;
 import org.apache.flink.streaming.connectors.kinesis.serialization.KinesisDeserializationSchema;
 
 import org.mockito.Mockito;
@@ -36,11 +35,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -49,37 +45,10 @@ import static org.mockito.Mockito.when;
  */
 public class TestableKinesisDataFetcher<T> extends KinesisDataFetcher<T> {
 
-	private final OneShotLatch runWaiter;
-	private final OneShotLatch initialDiscoveryWaiter;
-	private final OneShotLatch shutdownWaiter;
+	private OneShotLatch runWaiter;
+	private OneShotLatch initialDiscoveryWaiter;
 
 	private volatile boolean running;
-
-	public TestableKinesisDataFetcher(
-		List<String> fakeStreams,
-		SourceFunction.SourceContext<T> sourceContext,
-		Properties fakeConfiguration,
-		KinesisDeserializationSchema<T> deserializationSchema,
-		int fakeTotalCountOfSubtasks,
-		int fakeIndexOfThisSubtask,
-		AtomicReference<Throwable> thrownErrorUnderTest,
-		LinkedList<KinesisStreamShardState> subscribedShardsStateUnderTest,
-		HashMap<String, String> subscribedStreamsToLastDiscoveredShardIdsStateUnderTest,
-		KinesisProxyInterface fakeKinesis) {
-
-		this(
-			fakeStreams,
-			sourceContext,
-			fakeConfiguration,
-			deserializationSchema,
-			fakeTotalCountOfSubtasks,
-			fakeIndexOfThisSubtask,
-			thrownErrorUnderTest,
-			subscribedShardsStateUnderTest,
-			subscribedStreamsToLastDiscoveredShardIdsStateUnderTest,
-			fakeKinesis,
-			null);
-	}
 
 	public TestableKinesisDataFetcher(
 			List<String> fakeStreams,
@@ -91,8 +60,7 @@ public class TestableKinesisDataFetcher<T> extends KinesisDataFetcher<T> {
 			AtomicReference<Throwable> thrownErrorUnderTest,
 			LinkedList<KinesisStreamShardState> subscribedShardsStateUnderTest,
 			HashMap<String, String> subscribedStreamsToLastDiscoveredShardIdsStateUnderTest,
-			KinesisProxyInterface fakeKinesis,
-			KinesisProxyV2Interface fakeKinesisV2) {
+			KinesisProxyInterface fakeKinesis) {
 		super(
 			fakeStreams,
 			sourceContext,
@@ -101,17 +69,13 @@ public class TestableKinesisDataFetcher<T> extends KinesisDataFetcher<T> {
 			fakeConfiguration,
 			deserializationSchema,
 			DEFAULT_SHARD_ASSIGNER,
-			null,
-			null,
 			thrownErrorUnderTest,
 			subscribedShardsStateUnderTest,
 			subscribedStreamsToLastDiscoveredShardIdsStateUnderTest,
-			properties -> fakeKinesis,
-			properties -> fakeKinesisV2);
+			(properties) -> fakeKinesis);
 
 		this.runWaiter = new OneShotLatch();
 		this.initialDiscoveryWaiter = new OneShotLatch();
-		this.shutdownWaiter = new OneShotLatch();
 
 		this.running = true;
 	}
@@ -126,20 +90,11 @@ public class TestableKinesisDataFetcher<T> extends KinesisDataFetcher<T> {
 		runWaiter.await();
 	}
 
-	public void waitUntilShutdown(long timeout, TimeUnit timeUnit) throws Exception {
-		shutdownWaiter.await(timeout, timeUnit);
-	}
-
 	@Override
 	protected ExecutorService createShardConsumersThreadPool(String subtaskName) {
 		// this is just a dummy fetcher, so no need to create a thread pool for shard consumers
 		ExecutorService mockExecutor = mock(ExecutorService.class);
 		when(mockExecutor.isTerminated()).thenAnswer((InvocationOnMock invocation) -> !running);
-		try {
-			when(mockExecutor.awaitTermination(anyLong(), any())).thenReturn(!running);
-		} catch (InterruptedException e) {
-			// We're just trying to stub the method. Must acknowledge the checked exception.
-		}
 		return mockExecutor;
 	}
 
@@ -147,12 +102,6 @@ public class TestableKinesisDataFetcher<T> extends KinesisDataFetcher<T> {
 	public void awaitTermination() throws InterruptedException {
 		this.running = false;
 		super.awaitTermination();
-	}
-
-	@Override
-	public void shutdownFetcher() {
-		super.shutdownFetcher();
-		shutdownWaiter.trigger();
 	}
 
 	@Override

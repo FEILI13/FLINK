@@ -24,6 +24,7 @@ import org.apache.flink.runtime.instance.SlotSharingGroupId;
 import org.apache.flink.runtime.jobmanager.scheduler.ScheduledUnit;
 import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.jobmaster.SlotRequestId;
+import org.apache.flink.runtime.messages.Acknowledge;
 
 import javax.annotation.Nullable;
 
@@ -46,49 +47,39 @@ public interface SlotProvider {
 	 * Allocating slot with specific requirement.
 	 *
 	 * @param slotRequestId identifying the slot request
-	 * @param scheduledUnit The task to allocate the slot for
+	 * @param task The task to allocate the slot for
+	 * @param allowQueued Whether allow the task be queued if we do not have enough resource
 	 * @param slotProfile profile of the requested slot
-	 * @param allocationTimeout after which the allocation fails with a timeout exception
+	 * @param timeout after which the allocation fails with a timeout exception
 	 * @return The future of the allocation
 	 */
 	CompletableFuture<LogicalSlot> allocateSlot(
 		SlotRequestId slotRequestId,
-		ScheduledUnit scheduledUnit,
+		ScheduledUnit task,
+		boolean allowQueued,
 		SlotProfile slotProfile,
-		Time allocationTimeout);
-
-	/**
-	 * Allocating batch slot with specific requirement.
-	 *
-	 * @param slotRequestId identifying the slot request
-	 * @param scheduledUnit The task to allocate the slot for
-	 * @param slotProfile profile of the requested slot
-	 * @return The future of the allocation
-	 */
-	default CompletableFuture<LogicalSlot> allocateBatchSlot(
-			SlotRequestId slotRequestId,
-			ScheduledUnit scheduledUnit,
-			SlotProfile slotProfile) {
-		throw new UnsupportedOperationException("Not properly implemented.");
-	}
+		Time timeout);
 
 	/**
 	 * Allocating slot with specific requirement.
 	 *
-	 * @param scheduledUnit The task to allocate the slot for
+	 * @param task The task to allocate the slot for
+	 * @param allowQueued Whether allow the task be queued if we do not have enough resource
 	 * @param slotProfile profile of the requested slot
-	 * @param allocationTimeout after which the allocation fails with a timeout exception
+	 * @param timeout after which the allocation fails with a timeout exception
 	 * @return The future of the allocation
 	 */
 	default CompletableFuture<LogicalSlot> allocateSlot(
-		ScheduledUnit scheduledUnit,
+		ScheduledUnit task,
+		boolean allowQueued,
 		SlotProfile slotProfile,
-		Time allocationTimeout) {
+		Time timeout) {
 		return allocateSlot(
 			new SlotRequestId(),
-			scheduledUnit,
+			task,
+			allowQueued,
 			slotProfile,
-			allocationTimeout);
+			timeout);
 	}
 
 	/**
@@ -97,8 +88,9 @@ public interface SlotProvider {
 	 * @param slotRequestId identifying the slot request to cancel
 	 * @param slotSharingGroupId identifying the slot request to cancel
 	 * @param cause of the cancellation
+	 * @return Future which is completed once the slot request has been cancelled
 	 */
-	void cancelSlotRequest(
+	CompletableFuture<Acknowledge> cancelSlotRequest(
 		SlotRequestId slotRequestId,
 		@Nullable SlotSharingGroupId slotSharingGroupId,
 		Throwable cause);

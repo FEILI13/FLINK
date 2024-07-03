@@ -119,14 +119,6 @@
                 (map :status)
                 (every? #(= "RUNNING" %)))))))
 
-(defn jobs-running?
-  "Checks if multiple jobs are running. Returns a map where the keys are job ids and the values are
-  booleans indicating whether the job is running or not."
-  [base-url job-ids]
-  (let [job-running-on-current-master? (partial job-running? base-url)
-        make-job-id-running?-pair (juxt identity job-running-on-current-master?)]
-    (into {} (map make-job-id-running?-pair job-ids))))
-
 (defn- cancel-job!
   "Cancels the specified job. Returns true if the job could be canceled.
   Returns false if the job does not exist. Throws an exception if the HTTP status
@@ -138,10 +130,6 @@
       (http/missing? response) false
       (not (http/success? response)) (throw (ex-info "Job cancellation unsuccessful" {:job-id job-id :error error}))
       :else true)))
-
-(defn- cancel-jobs!
-  [base-url job-ids]
-  (doseq [job-id job-ids] (cancel-job! base-url job-id)))
 
 (defmacro dispatch-operation
   [op & body]
@@ -160,23 +148,24 @@
                                                                     (System/exit 1)))))
 
 (defn- dispatch-rest-operation!
-  [rest-url job-ids op]
-  (assert job-ids)
+  [rest-url job-id op]
+  (assert job-id)
   (if-not rest-url
     (assoc op :type :fail :error "Have not determined REST URL yet.")
     (case (:f op)
-      :jobs-running? (dispatch-operation op (fu/retry
-                                              (partial jobs-running? rest-url job-ids)
-                                              :retries 3
-                                              :fallback #(throw %)))
-      :cancel-jobs (dispatch-operation-or-fatal op (cancel-jobs! rest-url job-ids)))))
+      :job-running? (dispatch-operation op (fu/retry
+                                             (partial job-running? rest-url job-id)
+                                             :retries 3
+                                             :fallback #(throw %)))
+      :cancel-job (dispatch-operation-or-fatal op (cancel-job! rest-url job-id)))))
 
 (defrecord Client
-  [closer                                                   ; function that closes the ZK client
+  [deploy-cluster!                                          ; function that starts a non-standalone cluster and submits the job
+   closer                                                   ; function that closes the ZK client
    rest-url                                                 ; atom storing the current rest-url
    init-future                                              ; future that completes if rest-url is set to an initial value
-   job-ids                                                  ; atom storing the job-ids
-   client-setup?]                                           ; Has the client already been setup? Used to avoid running setup! again if the client is re-opened.
+   job-id                                                   ; atom storing the job-id
+   job-submitted?]                                          ; Has the job already been submitted? Used to avoid re-submission if the client is re-opened.
   client/Client
   (open! [this test _]
     (info "Open client.")
@@ -185,21 +174,23 @@
                   :rest-url rest-url-atom
                   :init-future init-future)))
 
-  (setup! [_ _]
+  (setup! [_ test]
     (info "Setup client.")
-    (when (compare-and-set! client-setup? false true)
+    (when (compare-and-set! job-submitted? false true)
+      (deploy-cluster! test)
       (deref init-future)
       (let [jobs (fu/retry (fn [] (list-jobs! @rest-url))
                            :fallback (fn [e]
                                        (fatal e "Could not get running jobs.")
                                        (System/exit 1)))
-            num-jobs (count jobs)]
-        (assert (pos? num-jobs) (str "Expected at least 1 job, was " num-jobs))
-        (info "Submitted jobs" jobs)
-        (reset! job-ids jobs))))
+            num-jobs (count jobs)
+            job (first jobs)]
+        (assert (= 1 num-jobs) (str "Expected 1 job, was " num-jobs))
+        (info "Submitted job" job)
+        (reset! job-id job))))
 
   (invoke! [_ _ op]
-    (dispatch-rest-operation! @rest-url @job-ids op))
+    (dispatch-rest-operation! @rest-url @job-id op))
 
   (teardown! [_ _])
   (close! [_ _]
@@ -207,5 +198,5 @@
     (closer)))
 
 (defn create-client
-  []
-  (Client. nil nil nil (atom nil) (atom false)))
+  [deploy-cluster!]
+  (Client. deploy-cluster! nil nil nil (atom nil) (atom false)))

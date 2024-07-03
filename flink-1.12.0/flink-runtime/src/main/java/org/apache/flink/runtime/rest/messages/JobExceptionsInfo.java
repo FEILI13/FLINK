@@ -22,7 +22,6 @@ import org.apache.flink.runtime.rest.handler.job.JobExceptionsHandler;
 import org.apache.flink.util.Preconditions;
 
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonCreator;
-import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonIgnore;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
@@ -80,26 +79,6 @@ public class JobExceptionsInfo implements ResponseBody {
 	@Override
 	public int hashCode() {
 		return Objects.hash(rootException, rootTimestamp, allExceptions, truncated);
-	}
-
-	@JsonIgnore
-	public String getRootException() {
-		return rootException;
-	}
-
-	@JsonIgnore
-	public Long getRootTimestamp() {
-		return rootTimestamp;
-	}
-
-	@JsonIgnore
-	public List<ExecutionExceptionInfo> getAllExceptions() {
-		return allExceptions;
-	}
-
-	@JsonIgnore
-	public boolean isTruncated() {
-		return truncated;
 	}
 
 	//---------------------------------------------------------------------------------

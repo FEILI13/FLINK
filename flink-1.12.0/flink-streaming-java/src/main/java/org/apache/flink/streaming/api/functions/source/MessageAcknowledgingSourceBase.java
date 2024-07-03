@@ -20,16 +20,14 @@ package org.apache.flink.streaming.api.functions.source;
 
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.common.ExecutionConfig;
-import org.apache.flink.api.common.state.CheckpointListener;
 import org.apache.flink.api.common.state.ListState;
-import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.typeutils.TypeExtractor;
+import org.apache.flink.runtime.state.CheckpointListener;
 import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
-import org.apache.flink.runtime.state.JavaSerializer;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.util.Preconditions;
 
@@ -72,9 +70,8 @@ import java.util.Set;
  *     while (running) {
  *         Message msg = queue.retrieve();
  *         synchronized (ctx.getCheckpointLock()) {
- *             if (addId(msg.getMessageId())) {
- *                 ctx.collect(msg.getMessageData());
- *             }
+ *             ctx.collect(msg.getMessageData());
+ *             addId(msg.getMessageId());
  *         }
  *     }
  * }
@@ -140,13 +137,9 @@ public abstract class MessageAcknowledgingSourceBase<Type, UId>
 		Preconditions.checkState(this.checkpointedState == null,
 			"The " + getClass().getSimpleName() + " has already been initialized.");
 
-		// We are using JavaSerializer from the flink-runtime module here. This is very naughty and
-		// we shouldn't be doing it because ideally nothing in the API modules/connector depends
-		// directly on flink-runtime. We are doing it here because we need to maintain backwards
-		// compatibility with old state and because we will have to rework/remove this code soon.
 		this.checkpointedState = context
 			.getOperatorStateStore()
-			.getListState(new ListStateDescriptor<>("message-acknowledging-source-state", new JavaSerializer<>()));
+			.getSerializableListState("message-acknowledging-source-state");
 
 		this.idsForCurrentCheckpoint = new HashSet<>(64);
 		this.pendingCheckpoints = new ArrayDeque<>();
@@ -194,8 +187,7 @@ public abstract class MessageAcknowledgingSourceBase<Type, UId>
 	protected abstract void acknowledgeIDs(long checkpointId, Set<UId> uIds);
 
 	/**
-	 * Adds an ID to be stored with the current checkpoint. In order to achieve exactly-once guarantees, implementing
-	 * classes should only emit records with IDs for which this method return true.
+	 * Adds an ID to be stored with the current checkpoint.
 	 * @param uid The ID to add.
 	 * @return True if the id has not been processed previously.
 	 */
@@ -215,7 +207,7 @@ public abstract class MessageAcknowledgingSourceBase<Type, UId>
 			"The " + getClass().getSimpleName() + " has not been properly initialized.");
 
 		if (LOG.isDebugEnabled()) {
-			LOG.debug("Checkpointing: Messages: {}, checkpoint id: {}, timestamp: {}",
+			LOG.debug("{} checkpointing: Messages: {}, checkpoint id: {}, timestamp: {}",
 				idsForCurrentCheckpoint, context.getCheckpointId(), context.getCheckpointTimestamp());
 		}
 
@@ -246,9 +238,5 @@ public abstract class MessageAcknowledgingSourceBase<Type, UId>
 				break;
 			}
 		}
-	}
-
-	@Override
-	public void notifyCheckpointAborted(long checkpointId) {
 	}
 }

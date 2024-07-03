@@ -21,6 +21,7 @@ package org.apache.flink.runtime.dispatcher;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.WebOptions;
 import org.apache.flink.runtime.blob.TransientBlobService;
 import org.apache.flink.runtime.leaderelection.LeaderElectionService;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
@@ -28,24 +29,21 @@ import org.apache.flink.runtime.rest.RestServerEndpointConfiguration;
 import org.apache.flink.runtime.rest.handler.RestHandlerConfiguration;
 import org.apache.flink.runtime.rest.handler.RestHandlerSpecification;
 import org.apache.flink.runtime.rest.handler.job.JobSubmitHandler;
-import org.apache.flink.runtime.rest.handler.legacy.ExecutionGraphCache;
-import org.apache.flink.runtime.rest.handler.legacy.metrics.MetricFetcher;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.webmonitor.WebMonitorEndpoint;
 import org.apache.flink.runtime.webmonitor.WebMonitorExtension;
 import org.apache.flink.runtime.webmonitor.WebMonitorUtils;
 import org.apache.flink.runtime.webmonitor.retriever.GatewayRetriever;
+import org.apache.flink.runtime.webmonitor.retriever.MetricQueryServiceRetriever;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelInboundHandler;
 
 import java.io.IOException;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ExecutorService;
 
 /**
  * REST endpoint for the {@link Dispatcher} component.
@@ -61,10 +59,9 @@ public class DispatcherRestEndpoint extends WebMonitorEndpoint<DispatcherGateway
 			RestHandlerConfiguration restConfiguration,
 			GatewayRetriever<ResourceManagerGateway> resourceManagerRetriever,
 			TransientBlobService transientBlobService,
-			ScheduledExecutorService executor,
-			MetricFetcher metricFetcher,
+			ExecutorService executor,
+			MetricQueryServiceRetriever metricQueryServiceRetriever,
 			LeaderElectionService leaderElectionService,
-			ExecutionGraphCache executionGraphCache,
 			FatalErrorHandler fatalErrorHandler) throws IOException {
 
 		super(
@@ -75,50 +72,42 @@ public class DispatcherRestEndpoint extends WebMonitorEndpoint<DispatcherGateway
 			resourceManagerRetriever,
 			transientBlobService,
 			executor,
-			metricFetcher,
+			metricQueryServiceRetriever,
 			leaderElectionService,
-			executionGraphCache,
 			fatalErrorHandler);
 
 		webSubmissionExtension = WebMonitorExtension.empty();
 	}
 
 	@Override
-	protected List<Tuple2<RestHandlerSpecification, ChannelInboundHandler>> initializeHandlers(final CompletableFuture<String> localAddressFuture) {
-		List<Tuple2<RestHandlerSpecification, ChannelInboundHandler>> handlers = super.initializeHandlers(localAddressFuture);
+	protected List<Tuple2<RestHandlerSpecification, ChannelInboundHandler>> initializeHandlers(CompletableFuture<String> restAddressFuture) {
+		List<Tuple2<RestHandlerSpecification, ChannelInboundHandler>> handlers = super.initializeHandlers(restAddressFuture);
 
 		// Add the Dispatcher specific handlers
 
 		final Time timeout = restConfiguration.getTimeout();
 
 		JobSubmitHandler jobSubmitHandler = new JobSubmitHandler(
+			restAddressFuture,
 			leaderRetriever,
 			timeout,
 			responseHeaders,
 			executor,
 			clusterConfiguration);
 
-		handlers.add(Tuple2.of(jobSubmitHandler.getMessageHeaders(), jobSubmitHandler));
-
-		return handlers;
-	}
-
-	@Override
-	protected Collection<Tuple2<RestHandlerSpecification, ChannelInboundHandler>> initializeWebSubmissionHandlers(CompletableFuture<String> localAddressFuture) {
-		if (restConfiguration.isWebSubmitEnabled()) {
+		if (clusterConfiguration.getBoolean(WebOptions.SUBMIT_ENABLE)) {
 			try {
-				final Time timeout = restConfiguration.getTimeout();
-
 				webSubmissionExtension = WebMonitorUtils.loadWebSubmissionExtension(
 					leaderRetriever,
+					restAddressFuture,
 					timeout,
 					responseHeaders,
-					localAddressFuture,
 					uploadDir,
 					executor,
 					clusterConfiguration);
 
-				return webSubmissionExtension.getHandlers();
+				// register extension handlers
+				handlers.addAll(webSubmissionExtension.getHandlers());
 			} catch (FlinkException e) {
 				if (log.isDebugEnabled()) {
 					log.debug("Failed to load web based job submission extension.", e);
@@ -131,7 +120,9 @@ public class DispatcherRestEndpoint extends WebMonitorEndpoint<DispatcherGateway
 			log.info("Web-based job submission is not enabled.");
 		}
 
-		return Collections.emptyList();
+		handlers.add(Tuple2.of(jobSubmitHandler.getMessageHeaders(), jobSubmitHandler));
+
+		return handlers;
 	}
 
 	@Override

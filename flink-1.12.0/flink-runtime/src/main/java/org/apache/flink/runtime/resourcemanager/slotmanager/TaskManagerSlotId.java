@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.resourcemanager.slotmanager;
 
+import org.apache.flink.runtime.clusterframework.types.TaskManagerSlot;
 import org.apache.flink.util.AbstractID;
 
 /**

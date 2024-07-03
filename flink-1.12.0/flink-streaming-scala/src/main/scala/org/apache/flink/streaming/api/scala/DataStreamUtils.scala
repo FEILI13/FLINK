@@ -20,7 +20,6 @@ package org.apache.flink.streaming.api.scala
 
 import org.apache.flink.annotation.Experimental
 import org.apache.flink.api.common.typeinfo.TypeInformation
-import org.apache.flink.api.java.functions.KeySelector
 import org.apache.flink.streaming.api.datastream.{DataStreamUtils => JavaStreamUtils}
 
 import scala.collection.JavaConverters._
@@ -40,8 +39,6 @@ class DataStreamUtils[T: TypeInformation : ClassTag](val self: DataStream[T]) {
   /**
     * Returns a scala iterator to iterate over the elements of the DataStream.
     * @return The iterator
-    *
-    * @deprecated Replaced with [[DataStream#executeAndCollect]].
     */
   def collect() : Iterator[T] = {
     JavaStreamUtils.collect(self.javaStream).asScala
@@ -49,11 +46,11 @@ class DataStreamUtils[T: TypeInformation : ClassTag](val self: DataStream[T]) {
 
   /**
     * Reinterprets the given [[DataStream]] as a [[KeyedStream]], which extracts keys with the
-    * given [[KeySelector]].
+    * given [[KeySelectorWithType]].
     *
     * IMPORTANT: For every partition of the base stream, the keys of events in the base stream
     * must be partitioned exactly in the same way as if it was created through a
-    * [[DataStream#keyBy(KeySelector)]].
+    * [[DataStream#keyBy(KeySelectorWithType)]].
     *
     * @param keySelector Function that defines how keys are extracted from the data stream.
     * @return The reinterpretation of the [[DataStream]] as a [[KeyedStream]].
@@ -61,12 +58,11 @@ class DataStreamUtils[T: TypeInformation : ClassTag](val self: DataStream[T]) {
   def reinterpretAsKeyedStream[K: TypeInformation](
         keySelector: T => K): KeyedStream[T, K] = {
 
-    val keyTypeInfo = implicitly[TypeInformation[K]]
-    val cleanSelector = clean(keySelector)
-    val javaKeySelector = new JavaKeySelector[T, K](cleanSelector)
+    val keySelectorWithType =
+      new KeySelectorWithType[T, K](clean(keySelector), implicitly[TypeInformation[K]])
 
     asScalaStream(
-      JavaStreamUtils.reinterpretAsKeyedStream(self.javaStream, javaKeySelector, keyTypeInfo))
+      JavaStreamUtils.reinterpretAsKeyedStream(self.javaStream, keySelectorWithType))
   }
 
   private[flink] def clean[F <: AnyRef](f: F): F = {

@@ -236,12 +236,7 @@ public class TypeSerializerSerializationUtilTest implements Serializable {
 	@Test
 	public void testAnonymousSerializerClassWithChangedSerialVersionUID() throws Exception {
 
-		TypeSerializer anonymousClassSerializer = new AbstractIntSerializer() {
-			@Override
-			public TypeSerializerSnapshot<Integer> snapshotConfiguration() {
-				return null;
-			}
-		};
+		TypeSerializer anonymousClassSerializer = new AbstractIntSerializer() {};
 		// assert that our assumption holds
 		Assert.assertTrue(anonymousClassSerializer.getClass().isAnonymousClass());
 
@@ -410,8 +405,23 @@ public class TypeSerializerSerializationUtilTest implements Serializable {
 		}
 
 		@Override
+		public TypeSerializerSnapshot<Integer> snapshotConfiguration() {
+			return IntSerializer.INSTANCE.snapshotConfiguration();
+		}
+
+		@Override
+		public CompatibilityResult<Integer> ensureCompatibility(TypeSerializerConfigSnapshot<?> configSnapshot) {
+			return IntSerializer.INSTANCE.ensureCompatibility(configSnapshot);
+		}
+
+		@Override
 		public int getLength() {
 			return IntSerializer.INSTANCE.getLength();
+		}
+
+		@Override
+		public boolean canEqual(Object obj) {
+			return IntSerializer.INSTANCE.canEqual(obj);
 		}
 
 		@Override
@@ -428,19 +438,5 @@ public class TypeSerializerSerializationUtilTest implements Serializable {
 	/** Just some serializer used for tests. */
 	public static class TestIntSerializer extends AbstractIntSerializer {
 		private static final long serialVersionUID = -3684467698271707216L;
-
-		@Override
-		public TypeSerializerSnapshot<Integer> snapshotConfiguration() {
-			return new TestIntSerializerSnapshot();
-		}
-	}
-
-	/**
-	 * Test serializer snapshot.
-	 */
-	public static class TestIntSerializerSnapshot extends SimpleTypeSerializerSnapshot<Integer> {
-		public TestIntSerializerSnapshot() {
-			super(TestIntSerializer::new);
-		}
 	}
 }

@@ -43,23 +43,23 @@ class TtlReducingStateTestContext
 
 	@SuppressWarnings("unchecked")
 	@Override
-	public <US extends State, SV> StateDescriptor<US, SV> createStateDescriptor() {
+	<US extends State, SV> StateDescriptor<US, SV> createStateDescriptor() {
 		return (StateDescriptor<US, SV>) new ReducingStateDescriptor<>(
-			getName(), REDUCE, IntSerializer.INSTANCE);
+			"TtlTestReducingState", REDUCE, IntSerializer.INSTANCE);
 	}
 
 	@Override
-	public void update(Integer value) throws Exception {
+	void update(Integer value) throws Exception {
 		ttlState.add(value);
 	}
 
 	@Override
-	public Integer get() throws Exception {
+	Integer get() throws Exception {
 		return ttlState.get();
 	}
 
 	@Override
-	public Object getOriginal() throws Exception {
+	Object getOriginal() throws Exception {
 		return ttlState.original.get();
 	}
 

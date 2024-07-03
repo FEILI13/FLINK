@@ -19,6 +19,7 @@
 package org.apache.flink.core.fs;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.configuration.Configuration;
 
 import javax.annotation.Nullable;
 
@@ -50,6 +51,11 @@ class UnsupportedSchemeFactory implements FileSystemFactory {
 	@Override
 	public String getScheme() {
 		return "n/a";
+	}
+
+	@Override
+	public void configure(Configuration config) {
+		// nothing to do here
 	}
 
 	@Override

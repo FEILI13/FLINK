@@ -18,9 +18,8 @@
 
 package org.apache.flink.graph.types.valuearray;
 
-import org.apache.flink.api.common.typeutils.SimpleTypeSerializerSnapshot;
-import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
 import org.apache.flink.api.common.typeutils.base.TypeSerializerSingleton;
+import org.apache.flink.api.common.typeutils.base.array.StringArraySerializer;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
 
@@ -80,21 +79,14 @@ public final class StringValueArraySerializer extends TypeSerializerSingleton<St
 		StringValueArray.copyInternal(source, target);
 	}
 
-	// -----------------------------------------------------------------------------------
-
 	@Override
-	public TypeSerializerSnapshot<StringValueArray> snapshotConfiguration() {
-		return new StringValueArraySerializerSnapshot();
+	public boolean canEqual(Object obj) {
+		return obj instanceof StringValueArraySerializer;
 	}
 
-	/**
-	 * Serializer configuration snapshot for compatibility and format evolution.
-	 */
-	@SuppressWarnings("WeakerAccess")
-	public static final class StringValueArraySerializerSnapshot extends SimpleTypeSerializerSnapshot<StringValueArray> {
-
-		public StringValueArraySerializerSnapshot() {
-			super(StringValueArraySerializer::new);
-		}
+	@Override
+	protected boolean isCompatibleSerializationFormatIdentifier(String identifier) {
+		return super.isCompatibleSerializationFormatIdentifier(identifier)
+			|| identifier.equals(StringArraySerializer.class.getCanonicalName());
 	}
 }

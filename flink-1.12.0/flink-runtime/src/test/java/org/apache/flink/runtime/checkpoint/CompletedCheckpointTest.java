@@ -19,8 +19,8 @@
 package org.apache.flink.runtime.checkpoint;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.core.testutils.CommonTestUtils;
+import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.SharedStateRegistry;
@@ -60,16 +60,14 @@ public class CompletedCheckpointTest {
 			new HashMap<>(),
 			Collections.emptyList(),
 			CheckpointProperties.forCheckpoint(CheckpointRetentionPolicy.RETAIN_ON_FAILURE),
-			new TestCompletedCheckpointStorageLocation()
-		);
+			new TestCompletedCheckpointStorageLocation());
 
 		CompletedCheckpoint checkpoint2 = new CompletedCheckpoint(
 			new JobID(), 1, 0, 1,
 			new HashMap<>(),
 			Collections.emptyList(),
 			CheckpointProperties.forCheckpoint(CheckpointRetentionPolicy.RETAIN_ON_FAILURE),
-			new TestCompletedCheckpointStorageLocation()
-		);
+			new TestCompletedCheckpointStorageLocation());
 
 		List<CompletedCheckpoint> checkpoints1= new ArrayList<>();
 		checkpoints1.add(checkpoint1);
@@ -92,16 +90,14 @@ public class CompletedCheckpointTest {
 			new HashMap<>(),
 			Collections.emptyList(),
 			CheckpointProperties.forCheckpoint(CheckpointRetentionPolicy.RETAIN_ON_FAILURE),
-			new TestCompletedCheckpointStorageLocation()
-		);
+			new TestCompletedCheckpointStorageLocation());
 
 		CompletedCheckpoint checkpoint2 = new CompletedCheckpoint(
 			new JobID(), 1, 0, 1,
 			new HashMap<>(),
 			Collections.emptyList(),
 			CheckpointProperties.forCheckpoint(CheckpointRetentionPolicy.RETAIN_ON_FAILURE),
-			new TestCompletedCheckpointStorageLocation()
-		);
+			new TestCompletedCheckpointStorageLocation());
 
 		List<CompletedCheckpoint> checkpoints1= new ArrayList<>();
 		checkpoints1.add(checkpoint1);
@@ -128,16 +124,14 @@ public class CompletedCheckpointTest {
 			new HashMap<>(),
 			Collections.emptyList(),
 			CheckpointProperties.forCheckpoint(CheckpointRetentionPolicy.RETAIN_ON_FAILURE),
-			new TestCompletedCheckpointStorageLocation()
-		);
+			new TestCompletedCheckpointStorageLocation());
 
 		CompletedCheckpoint checkpoint2 = new CompletedCheckpoint(
 			jobID, 1, 0, 1,
 			new HashMap<>(),
 			Collections.emptyList(),
 			CheckpointProperties.forCheckpoint(CheckpointRetentionPolicy.RETAIN_ON_FAILURE),
-			new TestCompletedCheckpointStorageLocation()
-		);
+			new TestCompletedCheckpointStorageLocation());
 
 		List<CompletedCheckpoint> checkpoints1= new ArrayList<>();
 		checkpoints1.add(checkpoint1);
@@ -161,16 +155,14 @@ public class CompletedCheckpointTest {
 			new HashMap<>(),
 			Collections.emptyList(),
 			CheckpointProperties.forCheckpoint(CheckpointRetentionPolicy.RETAIN_ON_FAILURE),
-			new TestCompletedCheckpointStorageLocation()
-		);
+			new TestCompletedCheckpointStorageLocation());
 
 		CompletedCheckpoint checkpoint2 = new CompletedCheckpoint(
 			jobID2, 0, 0, 1,
 			new HashMap<>(),
 			Collections.emptyList(),
 			CheckpointProperties.forCheckpoint(CheckpointRetentionPolicy.RETAIN_ON_FAILURE),
-			new TestCompletedCheckpointStorageLocation()
-		);
+			new TestCompletedCheckpointStorageLocation());
 
 		List<CompletedCheckpoint> checkpoints1= new ArrayList<>();
 		checkpoints1.add(checkpoint1);
@@ -192,8 +184,7 @@ public class CompletedCheckpointTest {
 				operatorStates,
 				Collections.emptyList(),
 				CheckpointProperties.forCheckpoint(CheckpointRetentionPolicy.RETAIN_ON_FAILURE),
-				new TestCompletedCheckpointStorageLocation()
-		);
+				new TestCompletedCheckpointStorageLocation());
 
 		SharedStateRegistry sharedStateRegistry = new SharedStateRegistry();
 		checkpoint.registerSharedStatesAfterRestored(sharedStateRegistry);
@@ -220,8 +211,7 @@ public class CompletedCheckpointTest {
 				operatorStates,
 				Collections.emptyList(),
 				props,
-				location
-		);
+				location);
 
 		SharedStateRegistry sharedStateRegistry = new SharedStateRegistry();
 		checkpoint.registerSharedStatesAfterRestored(sharedStateRegistry);
@@ -261,8 +251,7 @@ public class CompletedCheckpointTest {
 					new HashMap<>(operatorStates),
 					Collections.emptyList(),
 					retainProps,
-					retainedLocation
-			);
+					retainedLocation);
 
 			checkpoint.discardOnShutdown(status);
 
@@ -283,8 +272,7 @@ public class CompletedCheckpointTest {
 					new HashMap<>(operatorStates),
 					Collections.emptyList(),
 					discardProps,
-					discardLocation
-			);
+					discardLocation);
 
 			checkpoint.discardOnShutdown(status);
 
@@ -307,8 +295,7 @@ public class CompletedCheckpointTest {
 			Collections.emptyMap(),
 			Collections.emptyList(),
 			CheckpointProperties.forCheckpoint(CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION),
-			new TestCompletedCheckpointStorageLocation()
-		);
+			new TestCompletedCheckpointStorageLocation());
 
 		CompletedCheckpointStats.DiscardCallback callback = mock(CompletedCheckpointStats.DiscardCallback.class);
 		completed.setDiscardCallback(callback);
@@ -334,9 +321,8 @@ public class CompletedCheckpointTest {
 			taskStats,
 			1337,
 			123129837912L,
-			42L,
-			44L,
-			new SubtaskStateStats(123, 213123, 123123, 0, 0, 0, 0, 0, 0),
+			123819239812L,
+			new SubtaskStateStats(123, 213123, 123123, 0, 0, 0, 0),
 			null);
 
 		CompletedCheckpointStats copy = CommonTestUtils.createCopySerializable(completed);
@@ -348,8 +334,6 @@ public class CompletedCheckpointTest {
 		assertEquals(completed.getNumberOfAcknowledgedSubtasks(), copy.getNumberOfAcknowledgedSubtasks());
 		assertEquals(completed.getEndToEndDuration(), copy.getEndToEndDuration());
 		assertEquals(completed.getStateSize(), copy.getStateSize());
-		assertEquals(completed.getProcessedData(), copy.getProcessedData());
-		assertEquals(completed.getPersistedData(), copy.getPersistedData());
 		assertEquals(completed.getLatestAcknowledgedSubtaskStats().getSubtaskIndex(), copy.getLatestAcknowledgedSubtaskStats().getSubtaskIndex());
 		assertEquals(completed.getStatus(), copy.getStatus());
 	}

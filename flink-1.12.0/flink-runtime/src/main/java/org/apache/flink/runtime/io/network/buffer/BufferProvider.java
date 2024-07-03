@@ -18,9 +18,7 @@
 
 package org.apache.flink.runtime.io.network.buffer;
 
-import org.apache.flink.runtime.io.AvailabilityProvider;
-
-import javax.annotation.Nullable;
+import java.io.IOException;
 
 /**
  * A buffer provider to request buffers from in a synchronous or asynchronous fashion.
@@ -28,49 +26,30 @@ import javax.annotation.Nullable;
  * <p>The data producing side (result partition writers) request buffers in a synchronous fashion,
  * whereas the input side requests asynchronously.
  */
-public interface BufferProvider extends AvailabilityProvider {
+public interface BufferProvider {
 
 	/**
 	 * Returns a {@link Buffer} instance from the buffer provider, if one is available.
 	 *
-	 * @return {@code null} if no buffer is available or the buffer provider has been destroyed.
+	 * <p>Returns <code>null</code> if no buffer is available or the buffer provider has been destroyed.
 	 */
-	@Nullable Buffer requestBuffer();
+	Buffer requestBuffer() throws IOException;
 
 	/**
-	 * Returns a {@link BufferBuilder} instance from the buffer provider. This equals to {@link #requestBufferBuilder(int)}
-	 * with unknown target channel.
-	 *
-	 * @return {@code null} if no buffer is available or the buffer provider has been destroyed.
-	 */
-	@Nullable BufferBuilder requestBufferBuilder();
-
-	/**
-	 * Returns a {@link BufferBuilder} instance from the buffer provider.
-	 *
-	 * @param targetChannel to which the request will be accounted to.
-	 * @return {@code null} if no buffer is available or the buffer provider has been destroyed.
-	 */
-	@Nullable BufferBuilder requestBufferBuilder(int targetChannel);
-
-	/**
-	 * Returns a {@link BufferBuilder} instance from the buffer provider. This equals to {@link #requestBufferBuilderBlocking(int)}
-	 * with unknown target channel.
+	 * Returns a {@link Buffer} instance from the buffer provider.
 	 *
 	 * <p>If there is no buffer available, the call will block until one becomes available again or the
 	 * buffer provider has been destroyed.
 	 */
-	BufferBuilder requestBufferBuilderBlocking() throws InterruptedException;
+	Buffer requestBufferBlocking() throws IOException, InterruptedException;
 
 	/**
 	 * Returns a {@link BufferBuilder} instance from the buffer provider.
 	 *
 	 * <p>If there is no buffer available, the call will block until one becomes available again or the
 	 * buffer provider has been destroyed.
-	 *
-	 * @param targetChannel to which the request will be accounted to.
 	 */
-	BufferBuilder requestBufferBuilderBlocking(int targetChannel) throws InterruptedException;
+	BufferBuilder requestBufferBuilderBlocking() throws IOException, InterruptedException;
 
 	/**
 	 * Adds a buffer availability listener to the buffer provider.
@@ -84,4 +63,11 @@ public interface BufferProvider extends AvailabilityProvider {
 	 * Returns whether the buffer provider has been destroyed.
 	 */
 	boolean isDestroyed();
+
+	/**
+	 * Returns the size of the underlying memory segments. This is the maximum size a {@link Buffer}
+	 * instance can have.
+	 */
+	int getMemorySegmentSize();
+
 }

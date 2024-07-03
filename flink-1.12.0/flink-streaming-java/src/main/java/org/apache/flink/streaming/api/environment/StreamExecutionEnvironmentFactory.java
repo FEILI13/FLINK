@@ -18,13 +18,11 @@
 package org.apache.flink.streaming.api.environment;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.configuration.Configuration;
 
 /**
  * Factory class for stream execution environments.
  */
 @PublicEvolving
-@FunctionalInterface
 public interface StreamExecutionEnvironmentFactory {
 
 	/**
@@ -32,6 +30,5 @@ public interface StreamExecutionEnvironmentFactory {
 	 *
 	 * @return A StreamExecutionEnvironment.
 	 */
-	StreamExecutionEnvironment createExecutionEnvironment(Configuration configuration);
-
+	StreamExecutionEnvironment createExecutionEnvironment();
 }

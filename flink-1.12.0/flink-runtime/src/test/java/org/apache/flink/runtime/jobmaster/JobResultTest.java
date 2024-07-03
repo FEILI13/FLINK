@@ -19,10 +19,10 @@
 package org.apache.flink.runtime.jobmaster;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.runtime.client.JobCancellationException;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.executiongraph.ErrorInfo;
+import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.rest.handler.legacy.utils.ArchivedExecutionGraphBuilder;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.SerializedThrowable;
@@ -32,7 +32,6 @@ import org.junit.Test;
 
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
-import static org.hamcrest.core.IsNull.nullValue;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 
@@ -111,8 +110,7 @@ public class JobResultTest extends TestLogger {
 			jobResult.toJobExecutionResult(getClass().getClassLoader());
 			fail("Job should fail with an JobCancellationException.");
 		} catch (JobCancellationException expected) {
-			// the failure cause in the execution graph should not be the cause of the canceled job result
-			assertThat(expected.getCause(), is(nullValue()));
+			assertThat(expected.getCause(), is(equalTo(cause)));
 		}
 	}
 
@@ -132,14 +130,5 @@ public class JobResultTest extends TestLogger {
 		} catch (JobExecutionException expected) {
 			assertThat(expected.getCause(), is(equalTo(cause)));
 		}
-	}
-
-	@Test(expected = NullPointerException.class)
-	public void testFailureResultRequiresFailureCause() {
-		JobResult.createFrom(
-			new ArchivedExecutionGraphBuilder()
-				.setJobID(new JobID())
-				.setState(JobStatus.FAILED)
-				.build());
 	}
 }

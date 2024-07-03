@@ -21,6 +21,7 @@ package org.apache.flink.streaming.api.scala
 import java.util.concurrent.TimeUnit
 
 import org.apache.flink.api.java.tuple.Tuple
+import org.apache.flink.streaming.api.TimeCharacteristic
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks
 import org.apache.flink.streaming.api.functions.sink.SinkFunction
 import org.apache.flink.streaming.api.functions.source.SourceFunction
@@ -43,6 +44,7 @@ class WindowFunctionITCase extends TestLogger {
     CheckingIdentityRichWindowFunction.reset()
     
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     env.setParallelism(1)
 
     val source1 = env.addSource(new SourceFunction[(String, Int)]() {
@@ -91,6 +93,7 @@ class WindowFunctionITCase extends TestLogger {
     CheckingIdentityRichProcessWindowFunction.reset()
 
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     env.setParallelism(1)
 
     val source1 = env.addSource(new SourceFunction[(String, Int)]() {
@@ -139,6 +142,7 @@ class WindowFunctionITCase extends TestLogger {
     CheckingIdentityRichAllWindowFunction.reset()
 
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     env.setParallelism(1)
 
     val source1 = env.addSource(new SourceFunction[(String, Int)]() {
@@ -186,6 +190,7 @@ class WindowFunctionITCase extends TestLogger {
     CheckingIdentityRichProcessAllWindowFunction.reset()
 
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     env.setParallelism(1)
 
     val source1 = env.addSource(new SourceFunction[(String, Int)]() {

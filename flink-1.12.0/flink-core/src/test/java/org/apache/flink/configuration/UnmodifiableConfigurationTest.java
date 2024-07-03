@@ -74,8 +74,7 @@ public class UnmodifiableConfigurationTest extends TestLogger {
 			UnmodifiableConfiguration config = new UnmodifiableConfiguration(new Configuration());
 
 			for (Method m : clazz.getMethods()) {
-				// ignore WritableConfig#set as it is covered in ReadableWritableConfigurationTest
-				if (m.getName().startsWith("set") && !m.getName().equals("set")) {
+				if (m.getName().startsWith("set")) {
 
 					Class<?> keyClass = m.getParameterTypes()[0];
 					Class<?> parameterClass = m.getParameterTypes()[1];

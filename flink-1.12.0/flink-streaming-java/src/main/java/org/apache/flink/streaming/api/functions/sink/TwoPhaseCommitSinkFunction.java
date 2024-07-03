@@ -20,20 +20,24 @@ package org.apache.flink.streaming.api.functions.sink;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.api.common.state.CheckpointListener;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeutils.CompatibilityResult;
+import org.apache.flink.api.common.typeutils.CompatibilityUtil;
 import org.apache.flink.api.common.typeutils.CompositeTypeSerializerConfigSnapshot;
-import org.apache.flink.api.common.typeutils.CompositeTypeSerializerSnapshot;
-import org.apache.flink.api.common.typeutils.CompositeTypeSerializerUtil;
+import org.apache.flink.api.common.typeutils.TypeDeserializerAdapter;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.TypeSerializerConfigSnapshot;
-import org.apache.flink.api.common.typeutils.TypeSerializerSchemaCompatibility;
 import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
+import org.apache.flink.api.common.typeutils.UnloadableDummyTypeSerializer;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
+import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
+import org.apache.flink.runtime.state.CheckpointListener;
 import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
@@ -49,7 +53,6 @@ import java.io.IOException;
 import java.time.Clock;
 import java.util.AbstractMap;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -109,6 +112,10 @@ public abstract class TwoPhaseCommitSinkFunction<IN, TXN, CONTEXT>
 	 */
 	private double transactionTimeoutWarningRatio = -1;
 
+	private boolean isRestored;
+
+	protected boolean hasUninitializedState;
+
 	/**
 	 * Use default {@link ListStateDescriptor} for internal state serialization. Helpful utilities for using this
 	 * constructor are {@link TypeInformation#of(Class)}, {@link org.apache.flink.api.common.typeinfo.TypeHint} and
@@ -133,6 +140,8 @@ public abstract class TwoPhaseCommitSinkFunction<IN, TXN, CONTEXT>
 		TypeSerializer<TXN> transactionSerializer,
 		TypeSerializer<CONTEXT> contextSerializer,
 		Clock clock) {
+		this.isRestored = false;
+		this.hasUninitializedState = false;
 		this.stateDescriptor =
 			new ListStateDescriptor<>(
 				"state",
@@ -211,13 +220,7 @@ public abstract class TwoPhaseCommitSinkFunction<IN, TXN, CONTEXT>
 		abort(transaction);
 	}
 
-	/**
-	 * Callback for subclasses which is called after restoring (each) user context.
-	 *
-	 * @param handledTransactions
-	 * 		transactions which were already committed or aborted and do not need further handling
-	 */
-	protected void finishRecoveringContext(Collection<TXN> handledTransactions) {
+	protected void finishRecoveringContext() {
 	}
 
 	// ------ entry points for above methods implementing {@CheckPointedFunction} and {@CheckpointListener} ------
@@ -271,6 +274,7 @@ public abstract class TwoPhaseCommitSinkFunction<IN, TXN, CONTEXT>
 		//
 
 		Iterator<Map.Entry<Long, TransactionHolder<TXN>>> pendingTransactionIterator = pendingCommitTransactions.entrySet().iterator();
+		checkState(pendingTransactionIterator.hasNext(), "checkpoint completed, but no transaction pending");
 		Throwable firstError = null;
 
 		while (pendingTransactionIterator.hasNext()) {
@@ -302,10 +306,6 @@ public abstract class TwoPhaseCommitSinkFunction<IN, TXN, CONTEXT>
 			throw new FlinkRuntimeException("Committing one of transactions failed, logging first encountered failure",
 				firstError);
 		}
-	}
-
-	@Override
-	public void notifyCheckpointAborted(long checkpointId) {
 	}
 
 	@Override
@@ -349,30 +349,40 @@ public abstract class TwoPhaseCommitSinkFunction<IN, TXN, CONTEXT>
 		// for the reasons discussed in the 'notifyCheckpointComplete()' method.
 
 		state = context.getOperatorStateStore().getListState(stateDescriptor);
+		isRestored = context.isRestored();
+		if(!context.isStandby())
+			restoreTransactionStateCorrectness();
+		else
+			hasUninitializedState = true;
+	}
 
+	@Override
+	public void open(Configuration parameters) throws Exception {
+		if(hasUninitializedState){
+			restoreTransactionStateCorrectness();
+			hasUninitializedState = false;
+		}
+		super.open(parameters);
+	}
+
+	private void restoreTransactionStateCorrectness() throws Exception {
 		boolean recoveredUserContext = false;
-		if (context.isRestored()) {
+		if (isRestored) {
 			LOG.info("{} - restoring state", name());
 			for (State<TXN, CONTEXT> operatorState : state.get()) {
 				userContext = operatorState.getContext();
 				List<TransactionHolder<TXN>> recoveredTransactions = operatorState.getPendingCommitTransactions();
-				List<TXN> handledTransactions = new ArrayList<>(recoveredTransactions.size() + 1);
 				for (TransactionHolder<TXN> recoveredTransaction : recoveredTransactions) {
 					// If this fails to succeed eventually, there is actually data loss
 					recoverAndCommitInternal(recoveredTransaction);
-					handledTransactions.add(recoveredTransaction.handle);
 					LOG.info("{} committed recovered transaction {}", name(), recoveredTransaction);
 				}
 
-				{
-					TXN transaction = operatorState.getPendingTransaction().handle;
-					recoverAndAbort(transaction);
-					handledTransactions.add(transaction);
-					LOG.info("{} aborted recovered transaction {}", name(), operatorState.getPendingTransaction());
-				}
+				recoverAndAbort(operatorState.getPendingTransaction().handle);
+				LOG.info("{} aborted recovered transaction {}", name(), operatorState.getPendingTransaction());
 
 				if (userContext.isPresent()) {
-					finishRecoveringContext(handledTransactions);
+					finishRecoveringContext();
 					recoveredUserContext = true;
 				}
 			}
@@ -488,7 +498,7 @@ public abstract class TwoPhaseCommitSinkFunction<IN, TXN, CONTEXT>
 		return String.format(
 			"%s %s/%s",
 			this.getClass().getSimpleName(),
-			getRuntimeContext().getIndexOfThisSubtask() + 1,
+			getRuntimeContext().getIndexOfThisSubtask(),
 			getRuntimeContext().getNumberOfParallelSubtasks());
 	}
 
@@ -773,6 +783,11 @@ public abstract class TwoPhaseCommitSinkFunction<IN, TXN, CONTEXT>
 		}
 
 		@Override
+		public boolean canEqual(Object obj) {
+			return obj instanceof StateSerializer;
+		}
+
+		@Override
 		public boolean equals(Object o) {
 			if (this == o) {
 				return true;
@@ -797,8 +812,42 @@ public abstract class TwoPhaseCommitSinkFunction<IN, TXN, CONTEXT>
 		}
 
 		@Override
-		public StateSerializerSnapshot<TXN, CONTEXT> snapshotConfiguration() {
-			return new StateSerializerSnapshot<>(this);
+		public TypeSerializerConfigSnapshot<State<TXN, CONTEXT>> snapshotConfiguration() {
+			return new StateSerializerConfigSnapshot<>(transactionSerializer, contextSerializer);
+		}
+
+		@Override
+		public CompatibilityResult<State<TXN, CONTEXT>> ensureCompatibility(
+				TypeSerializerConfigSnapshot<?> configSnapshot) {
+			if (configSnapshot instanceof StateSerializerConfigSnapshot) {
+				List<Tuple2<TypeSerializer<?>, TypeSerializerSnapshot<?>>> previousSerializersAndConfigs =
+						((StateSerializerConfigSnapshot<?, ?>) configSnapshot).getNestedSerializersAndConfigs();
+
+				CompatibilityResult<TXN> txnCompatResult = CompatibilityUtil.resolveCompatibilityResult(
+						previousSerializersAndConfigs.get(0).f0,
+						UnloadableDummyTypeSerializer.class,
+						previousSerializersAndConfigs.get(0).f1,
+						transactionSerializer);
+
+				CompatibilityResult<CONTEXT> contextCompatResult = CompatibilityUtil.resolveCompatibilityResult(
+						previousSerializersAndConfigs.get(1).f0,
+						UnloadableDummyTypeSerializer.class,
+						previousSerializersAndConfigs.get(1).f1,
+						contextSerializer);
+
+				if (!txnCompatResult.isRequiresMigration() && !contextCompatResult.isRequiresMigration()) {
+					return CompatibilityResult.compatible();
+				} else {
+					if (txnCompatResult.getConvertDeserializer() != null && contextCompatResult.getConvertDeserializer() != null) {
+						return CompatibilityResult.requiresMigration(
+								new StateSerializer<>(
+										new TypeDeserializerAdapter<>(txnCompatResult.getConvertDeserializer()),
+										new TypeDeserializerAdapter<>(contextCompatResult.getConvertDeserializer())));
+					}
+				}
+			}
+
+			return CompatibilityResult.requiresMigration();
 		}
 	}
 
@@ -806,13 +855,8 @@ public abstract class TwoPhaseCommitSinkFunction<IN, TXN, CONTEXT>
 	 * {@link TypeSerializerConfigSnapshot} for sink state. This has to be public so that
 	 * it can be deserialized/instantiated, should not be used anywhere outside
 	 * {@code TwoPhaseCommitSinkFunction}.
-	 *
-	 * @deprecated this snapshot class is no longer in use, and is maintained only
-	 *             for backwards compatibility purposes. It is fully replaced by
-	 *             {@link StateSerializerSnapshot}.
 	 */
 	@Internal
-	@Deprecated
 	public static final class StateSerializerConfigSnapshot<TXN, CONTEXT>
 			extends CompositeTypeSerializerConfigSnapshot<State<TXN, CONTEXT>> {
 
@@ -830,62 +874,6 @@ public abstract class TwoPhaseCommitSinkFunction<IN, TXN, CONTEXT>
 		@Override
 		public int getVersion() {
 			return VERSION;
-		}
-
-		@Override
-		public TypeSerializerSchemaCompatibility<State<TXN, CONTEXT>> resolveSchemaCompatibility(
-				TypeSerializer<State<TXN, CONTEXT>> newSerializer) {
-
-			final TypeSerializerSnapshot<?>[] nestedSnapshots = getNestedSerializersAndConfigs()
-				.stream()
-				.map(t -> t.f1)
-				.toArray(TypeSerializerSnapshot[]::new);
-
-			return CompositeTypeSerializerUtil.delegateCompatibilityCheckToNewSnapshot(
-				newSerializer,
-				new StateSerializerSnapshot<>(),
-				nestedSnapshots
-			);
-		}
-	}
-
-	/**
-	 * Snapshot for the {@link StateSerializer}.
-	 */
-	@Internal
-	public static final class StateSerializerSnapshot<TXN, CONTEXT>
-			extends CompositeTypeSerializerSnapshot<State<TXN, CONTEXT>, StateSerializer<TXN, CONTEXT>> {
-
-		private static final int VERSION = 2;
-
-		@SuppressWarnings("WeakerAccess")
-		public StateSerializerSnapshot() {
-			super(StateSerializer.class);
-		}
-
-		StateSerializerSnapshot(StateSerializer<TXN, CONTEXT> serializerInstance) {
-			super(serializerInstance);
-		}
-
-		@Override
-		protected int getCurrentOuterSnapshotVersion() {
-			return VERSION;
-		}
-
-		@Override
-		protected StateSerializer<TXN, CONTEXT> createOuterSerializerWithNestedSerializers(TypeSerializer<?>[] nestedSerializers) {
-			@SuppressWarnings("unchecked")
-			final TypeSerializer<TXN> transactionSerializer = (TypeSerializer<TXN>) nestedSerializers[0];
-
-			@SuppressWarnings("unchecked")
-			final TypeSerializer<CONTEXT> contextSerializer = (TypeSerializer<CONTEXT>) nestedSerializers[1];
-
-			return new StateSerializer<>(transactionSerializer, contextSerializer);
-		}
-
-		@Override
-		protected TypeSerializer<?>[] getNestedSerializers(StateSerializer<TXN, CONTEXT> outerSerializer) {
-			return new TypeSerializer<?>[] { outerSerializer.transactionSerializer, outerSerializer.contextSerializer };
 		}
 	}
 }

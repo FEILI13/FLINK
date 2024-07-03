@@ -22,7 +22,6 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.assigners.WindowAssigner;
-import org.apache.flink.streaming.api.windowing.assigners.WindowStagger;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.api.windowing.triggers.EventTimeTrigger;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
@@ -30,7 +29,7 @@ import org.apache.flink.util.TestLogger;
 
 import org.junit.Test;
 
-import static org.apache.flink.streaming.util.StreamRecordMatchers.timeWindow;
+import static org.apache.flink.streaming.runtime.operators.windowing.StreamRecordMatchers.timeWindow;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.instanceOf;
@@ -39,7 +38,6 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
  * Tests for {@link TumblingEventTimeWindows}.
@@ -59,20 +57,7 @@ public class TumblingEventTimeWindowsTest extends TestLogger {
 	}
 
 	@Test
-	public void testWindowAssignmentWithStagger() {
-		WindowAssigner.WindowAssignerContext mockContext =
-			mock(WindowAssigner.WindowAssignerContext.class);
-
-		TumblingEventTimeWindows assigner = TumblingEventTimeWindows.of(Time.milliseconds(5000), Time.milliseconds(0), WindowStagger.NATURAL);
-
-		when(mockContext.getCurrentProcessingTime()).thenReturn(150L);
-		assertThat(assigner.assignWindows("String", 150L, mockContext), contains(timeWindow(150, 5150)));
-		assertThat(assigner.assignWindows("String", 5099L, mockContext), contains(timeWindow(150, 5150)));
-		assertThat(assigner.assignWindows("String", 5300L, mockContext), contains(timeWindow(5150, 10150)));
-	}
-
-	@Test
-	public void testWindowAssignmentWithGlobalOffset() {
+	public void testWindowAssignmentWithOffset() {
 		WindowAssigner.WindowAssignerContext mockContext =
 				mock(WindowAssigner.WindowAssignerContext.class);
 
@@ -81,18 +66,6 @@ public class TumblingEventTimeWindowsTest extends TestLogger {
 		assertThat(assigner.assignWindows("String", 100L, mockContext), contains(timeWindow(100, 5100)));
 		assertThat(assigner.assignWindows("String", 5099L, mockContext), contains(timeWindow(100, 5100)));
 		assertThat(assigner.assignWindows("String", 5100L, mockContext), contains(timeWindow(5100, 10100)));
-	}
-
-	@Test
-	public void testWindowAssignmentWithNegativeGlobalOffset() {
-		WindowAssigner.WindowAssignerContext mockContext =
-			mock(WindowAssigner.WindowAssignerContext.class);
-
-		TumblingEventTimeWindows assigner = TumblingEventTimeWindows.of(Time.milliseconds(5000), Time.milliseconds(-100));
-
-		assertThat(assigner.assignWindows("String", 0L, mockContext), contains(timeWindow(-100, 4900)));
-		assertThat(assigner.assignWindows("String", 4899L, mockContext), contains(timeWindow(-100, 4900)));
-		assertThat(assigner.assignWindows("String", 4900L, mockContext), contains(timeWindow(4900, 9900)));
 	}
 
 	@Test
@@ -115,21 +88,21 @@ public class TumblingEventTimeWindowsTest extends TestLogger {
 			TumblingEventTimeWindows.of(Time.seconds(-1));
 			fail("should fail");
 		} catch (IllegalArgumentException e) {
-			assertThat(e.toString(), containsString("abs(offset) < size"));
+			assertThat(e.toString(), containsString("0 <= offset < size"));
 		}
 
 		try {
 			TumblingEventTimeWindows.of(Time.seconds(10), Time.seconds(20));
 			fail("should fail");
 		} catch (IllegalArgumentException e) {
-			assertThat(e.toString(), containsString("abs(offset) < size"));
+			assertThat(e.toString(), containsString("0 <= offset < size"));
 		}
 
 		try {
-			TumblingEventTimeWindows.of(Time.seconds(10), Time.seconds(-11));
+			TumblingEventTimeWindows.of(Time.seconds(10), Time.seconds(-1));
 			fail("should fail");
 		} catch (IllegalArgumentException e) {
-			assertThat(e.toString(), containsString("abs(offset) < size"));
+			assertThat(e.toString(), containsString("0 <= offset < size"));
 		}
 	}
 

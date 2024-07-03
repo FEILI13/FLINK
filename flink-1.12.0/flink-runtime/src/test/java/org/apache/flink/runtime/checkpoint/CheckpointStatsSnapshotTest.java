@@ -41,8 +41,8 @@ public class CheckpointStatsSnapshotTest {
 		counts.incrementRestoredCheckpoints();
 
 		CompletedCheckpointStatsSummary summary = new CompletedCheckpointStatsSummary();
-		summary.updateSummary(createCompletedCheckpointsStats(12398, 9919));
-		summary.updateSummary(createCompletedCheckpointsStats(2221, 3333));
+		summary.updateSummary(createCompletedCheckpointsStats(12398, 9919, 12));
+		summary.updateSummary(createCompletedCheckpointsStats(2221, 3333, 9122));
 
 		CheckpointStatsHistory history = new CheckpointStatsHistory(1);
 		RestoredCheckpointStats restored = new RestoredCheckpointStats(
@@ -67,17 +67,20 @@ public class CheckpointStatsSnapshotTest {
 
 		assertEquals(summary.getStateSizeStats().getSum(), copy.getSummaryStats().getStateSizeStats().getSum());
 		assertEquals(summary.getEndToEndDurationStats().getSum(), copy.getSummaryStats().getEndToEndDurationStats().getSum());
+		assertEquals(summary.getAlignmentBufferedStats().getSum(), copy.getSummaryStats().getAlignmentBufferedStats().getSum());
 
 		assertEquals(restored.getCheckpointId(), copy.getLatestRestoredCheckpoint().getCheckpointId());
 	}
 
 	private CompletedCheckpointStats createCompletedCheckpointsStats(
 			long stateSize,
-			long endToEndDuration) {
+			long endToEndDuration,
+			long alignmentBuffered) {
 
 		CompletedCheckpointStats completed = mock(CompletedCheckpointStats.class);
 		when(completed.getStateSize()).thenReturn(stateSize);
 		when(completed.getEndToEndDuration()).thenReturn(endToEndDuration);
+		when(completed.getAlignmentBuffered()).thenReturn(alignmentBuffered);
 
 		return completed;
 	}

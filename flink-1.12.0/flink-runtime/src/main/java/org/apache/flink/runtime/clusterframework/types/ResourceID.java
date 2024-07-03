@@ -20,12 +20,11 @@ package org.apache.flink.runtime.clusterframework.types;
 
 import org.apache.flink.util.AbstractID;
 import org.apache.flink.util.Preconditions;
-import org.apache.flink.util.StringUtils;
 
 import java.io.Serializable;
 
 /**
- * Class for Resource Ids identifying Flink's distributed components.
+ * Class for Resource Ids assigned at the FlinkResourceManager.
  */
 public final class ResourceID implements ResourceIDRetrievable, Serializable {
 
@@ -33,30 +32,17 @@ public final class ResourceID implements ResourceIDRetrievable, Serializable {
 
 	private final String resourceId;
 
-	private final String metadata;
-
 	public ResourceID(String resourceId) {
-		this(resourceId, "");
-	}
-
-	public ResourceID(String resourceId, String metadata) {
-		Preconditions.checkNotNull(resourceId, "The identifier must not be null");
-		Preconditions.checkNotNull(metadata, "The metadata must not be null");
+		Preconditions.checkNotNull(resourceId, "ResourceID must not be null");
 		this.resourceId = resourceId;
-		this.metadata = metadata;
 	}
 
 	/**
-	 * Gets the Resource Id as string.
-	 *
+	 * Gets the Resource Id as string
 	 * @return Stringified version of the ResourceID
 	 */
 	public final String getResourceIdString() {
 		return resourceId;
-	}
-
-	public final String getStringWithMetadata() {
-		return StringUtils.isNullOrWhitespaceOnly(metadata) ? resourceId : String.format("%s(%s)", resourceId, metadata);
 	}
 
 	@Override
@@ -88,14 +74,9 @@ public final class ResourceID implements ResourceIDRetrievable, Serializable {
 	public ResourceID getResourceID() {
 		return this;
 	}
-
-	public String getMetadata() {
-		return metadata;
-	}
-
+	
 	/**
 	 * Generate a random resource id.
-	 *
 	 * @return A random resource id.
 	 */
 	public static ResourceID generate() {

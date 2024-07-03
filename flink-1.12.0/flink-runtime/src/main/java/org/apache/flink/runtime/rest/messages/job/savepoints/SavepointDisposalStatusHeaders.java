@@ -69,7 +69,7 @@ public class SavepointDisposalStatusHeaders extends AsynchronousOperationStatusM
 	}
 
 	@Override
-	public Class<AsynchronousOperationInfo> getValueClass() {
+	protected Class<AsynchronousOperationInfo> getValueClass() {
 		return AsynchronousOperationInfo.class;
 	}
 

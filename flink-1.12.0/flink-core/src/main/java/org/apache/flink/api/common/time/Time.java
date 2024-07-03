@@ -21,7 +21,6 @@ package org.apache.flink.api.common.time;
 import org.apache.flink.annotation.PublicEvolving;
 
 import java.io.Serializable;
-import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -82,24 +81,7 @@ public final class Time implements Serializable {
 		return toMilliseconds() + " ms";
 	}
 
-	@Override
-	public boolean equals(Object o) {
-		if (this == o) {
-			return true;
-		}
-		if (o == null || getClass() != o.getClass()) {
-			return false;
-		}
-		Time time = (Time) o;
-		return toMilliseconds() == time.toMilliseconds();
-	}
-
-	@Override
-	public int hashCode() {
-		return Objects.hash(toMilliseconds());
-	}
-
-// ------------------------------------------------------------------------
+	// ------------------------------------------------------------------------
 	//  Factory
 	// ------------------------------------------------------------------------
 

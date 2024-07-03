@@ -48,12 +48,18 @@ class WordCountMapredITCase extends JavaProgramTestBase {
                                                 resultPath, Array[String](".", "_"))
   }
 
-  private def internalRun (): Unit = {
+  private def internalRun (testDeprecatedAPI: Boolean): Unit = {
     val env = ExecutionEnvironment.getExecutionEnvironment
 
     val input =
-      env.createInput(HadoopInputs.readHadoopFile(new TextInputFormat, classOf[LongWritable],
-        classOf[Text], textPath))
+      if (testDeprecatedAPI) {
+        env.createInput(
+          HadoopInputs.readHadoopFile(
+            new TextInputFormat, classOf[LongWritable], classOf[Text], textPath))
+      } else {
+        env.createInput(HadoopInputs.readHadoopFile(new TextInputFormat, classOf[LongWritable],
+          classOf[Text], textPath))
+      }
 
     val counts = input
       .map(_._2.toString)
@@ -77,7 +83,10 @@ class WordCountMapredITCase extends JavaProgramTestBase {
   }
 
   protected def testProgram() {
-    internalRun()
+    internalRun(testDeprecatedAPI = true)
+    postSubmit()
+    resultPath = getTempDirPath("result2")
+    internalRun(testDeprecatedAPI = false)
     postSubmit()
   }
 }

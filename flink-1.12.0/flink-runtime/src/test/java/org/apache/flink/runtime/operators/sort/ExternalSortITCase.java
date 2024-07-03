@@ -27,7 +27,6 @@ import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.memory.MemoryManager;
-import org.apache.flink.runtime.memory.MemoryManagerBuilder;
 import org.apache.flink.runtime.operators.testutils.DummyInvokable;
 import org.apache.flink.runtime.operators.testutils.RandomIntPairGenerator;
 import org.apache.flink.runtime.operators.testutils.TestData;
@@ -78,7 +77,7 @@ public class ExternalSortITCase extends TestLogger {
 	@SuppressWarnings("unchecked")
 	@Before
 	public void beforeTest() {
-		this.memoryManager = MemoryManagerBuilder.newBuilder().setMemorySize(MEMORY_SIZE).build();
+		this.memoryManager = new MemoryManager(MEMORY_SIZE, 1);
 		this.ioManager = new IOManagerAsync();
 		
 		this.pactRecordSerializer = TestData.getIntStringTupleSerializerFactory();
@@ -86,8 +85,11 @@ public class ExternalSortITCase extends TestLogger {
 	}
 
 	@After
-	public void afterTest() throws Exception {
-		this.ioManager.close();
+	public void afterTest() {
+		this.ioManager.shutdown();
+		if (!this.ioManager.isProperlyShutDown()) {
+			Assert.fail("I/O Manager was not properly shut down.");
+		}
 		
 		if (this.memoryManager != null && testSuccess) {
 			Assert.assertTrue("Memory leak: not all segments have been returned to the memory manager.",
@@ -111,19 +113,10 @@ public class ExternalSortITCase extends TestLogger {
 			// merge iterator
 			LOG.debug("Initializing sortmerger...");
 			
-			Sorter<Tuple2<Integer, String>> merger =
-				ExternalSorter.newBuilder(
-						this.memoryManager,
-						this.parentTask,
-						pactRecordSerializer.getSerializer(),
-						pactRecordComparator)
-					.maxNumFileHandles(2)
-					.enableSpilling(ioManager, 0.9f)
-					.memoryFraction((double)64/78)
-					.objectReuse(true)
-					.largeRecords(true)
-					.build(source);
-
+			Sorter<Tuple2<Integer, String>> merger = new UnilateralSortMerger<>(this.memoryManager, this.ioManager,
+				source, this.parentTask, this.pactRecordSerializer, this.pactRecordComparator,
+					(double)64/78, 2, 0.9f, true /*use large record handler*/, true);
+	
 			// emit data
 			LOG.debug("Reading and sorting data...");
 	
@@ -169,20 +162,10 @@ public class ExternalSortITCase extends TestLogger {
 			// merge iterator
 			LOG.debug("Initializing sortmerger...");
 			
-			Sorter<Tuple2<Integer, String>> merger =
-				ExternalSorter.newBuilder(
-						this.memoryManager,
-						this.parentTask,
-						pactRecordSerializer.getSerializer(),
-						pactRecordComparator)
-					.maxNumFileHandles(2)
-					.sortBuffers(10)
-					.enableSpilling(ioManager, 0.9f)
-					.memoryFraction((double)64/78)
-					.objectReuse(false)
-					.largeRecords(true)
-					.build(source);
-
+			Sorter<Tuple2<Integer, String>> merger = new UnilateralSortMerger<>(this.memoryManager, this.ioManager,
+					source, this.parentTask, this.pactRecordSerializer, this.pactRecordComparator,
+					(double)64/78, 10, 2, 0.9f, true /*use large record handler*/, false);
+	
 			// emit data
 			LOG.debug("Reading and sorting data...");
 	
@@ -228,19 +211,10 @@ public class ExternalSortITCase extends TestLogger {
 			// merge iterator
 			LOG.debug("Initializing sortmerger...");
 			
-			Sorter<Tuple2<Integer, String>> merger =
-				ExternalSorter.newBuilder(
-						this.memoryManager,
-						this.parentTask,
-						pactRecordSerializer.getSerializer(),
-						pactRecordComparator)
-					.maxNumFileHandles(64)
-					.enableSpilling(ioManager, 0.7f)
-					.memoryFraction((double)16/78)
-					.objectReuse(true)
-					.largeRecords(true)
-					.build(source);
-
+			Sorter<Tuple2<Integer, String>> merger = new UnilateralSortMerger<>(this.memoryManager, this.ioManager,
+					source, this.parentTask, this.pactRecordSerializer, this.pactRecordComparator,
+					(double)16/78, 64, 0.7f, true /*use large record handler*/, true);
+	
 			// emit data
 			LOG.debug("Reading and sorting data...");
 	
@@ -289,19 +263,10 @@ public class ExternalSortITCase extends TestLogger {
 			// merge iterator
 			LOG.debug("Initializing sortmerger...");
 			
-			Sorter<Tuple2<Integer, String>> merger =
-				ExternalSorter.newBuilder(
-						this.memoryManager,
-						this.parentTask,
-						pactRecordSerializer.getSerializer(),
-						pactRecordComparator)
-					.maxNumFileHandles(16)
-					.enableSpilling(ioManager, 0.7f)
-					.memoryFraction((double)64/78)
-					.objectReuse(false)
-					.largeRecords(true)
-					.build(source);
-
+			Sorter<Tuple2<Integer, String>> merger = new UnilateralSortMerger<>(this.memoryManager, this.ioManager,
+					source, this.parentTask, this.pactRecordSerializer, this.pactRecordComparator,
+					(double)64/78, 16, 0.7f, true /*use large record handler*/, false);
+			
 			// emit data
 			LOG.debug("Emitting data...");
 	
@@ -356,19 +321,10 @@ public class ExternalSortITCase extends TestLogger {
 			// merge iterator
 			LOG.debug("Initializing sortmerger...");
 			
-			Sorter<IntPair> merger =
-				ExternalSorter.newBuilder(
-						this.memoryManager,
-						this.parentTask,
-						serializerFactory.getSerializer(),
-						comparator)
-					.maxNumFileHandles(4)
-					.enableSpilling(ioManager, 0.7f)
-					.memoryFraction((double)64/78)
-					.objectReuse(true)
-					.largeRecords(true)
-					.build(generator);
-
+			Sorter<IntPair> merger = new UnilateralSortMerger<IntPair>(this.memoryManager, this.ioManager, 
+					generator, this.parentTask, serializerFactory, comparator, (double)64/78, 4, 0.7f,
+					true /*use large record handler*/, true);
+	
 			// emit data
 			LOG.debug("Emitting data...");
 			

@@ -19,12 +19,11 @@ package org.apache.flink.streaming.examples.wordcount;
 
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.api.java.utils.MultipleParameterTool;
+import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.examples.wordcount.util.WordCountData;
 import org.apache.flink.util.Collector;
-import org.apache.flink.util.Preconditions;
 
 /**
  * Implements the "WordCount" program that computes a simple word occurrence
@@ -52,26 +51,20 @@ public class WordCount {
 	public static void main(String[] args) throws Exception {
 
 		// Checking input parameters
-		final MultipleParameterTool params = MultipleParameterTool.fromArgs(args);
+		final ParameterTool params = ParameterTool.fromArgs(args);
 
 		// set up the execution environment
 		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-
 		// make parameters available in the web interface
 		env.getConfig().setGlobalJobParameters(params);
+		env.setParallelism(1);
+		env.setMaxParallelism(1);
 
 		// get input data
-		DataStream<String> text = null;
+		DataStream<String> text;
 		if (params.has("input")) {
-			// union all the inputs from text files
-			for (String input : params.getMultiParameterRequired("input")) {
-				if (text == null) {
-					text = env.readTextFile(input);
-				} else {
-					text = text.union(env.readTextFile(input));
-				}
-			}
-			Preconditions.checkNotNull(text, "Input DataStream should not be null.");
+			// read the text file from given input path
+			text = env.readTextFile(params.get("input"));
 		} else {
 			System.out.println("Executing WordCount example with default input data set.");
 			System.out.println("Use --input to specify file input.");
@@ -83,7 +76,7 @@ public class WordCount {
 			// split up the lines in pairs (2-tuples) containing: (word,1)
 			text.flatMap(new Tokenizer())
 			// group by the tuple field "0" and sum up tuple field "1"
-			.keyBy(value -> value.f0).sum(1);
+			.keyBy(0).sum(1);
 
 		// emit result
 		if (params.has("output")) {
@@ -92,6 +85,7 @@ public class WordCount {
 			System.out.println("Printing result to stdout. Use --output to specify output path.");
 			counts.print();
 		}
+
 		// execute program
 		env.execute("Streaming WordCount");
 	}

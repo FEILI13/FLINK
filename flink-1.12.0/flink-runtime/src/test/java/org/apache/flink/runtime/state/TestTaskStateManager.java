@@ -22,10 +22,10 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
+import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
 import org.apache.flink.runtime.checkpoint.PrioritizedOperatorSubtaskState;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
-import org.apache.flink.runtime.checkpoint.channel.SequentialChannelStateReader;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.taskmanager.CheckpointResponder;
@@ -46,8 +46,6 @@ import java.util.Map;
 public class TestTaskStateManager implements TaskStateManager {
 
 	private long reportedCheckpointId;
-	private long notifiedCompletedCheckpointId;
-	private long notifiedAbortedCheckpointId;
 
 	private JobID jobId;
 	private ExecutionAttemptID executionAttemptID;
@@ -88,8 +86,6 @@ public class TestTaskStateManager implements TaskStateManager {
 		this.jobManagerTaskStateSnapshotsByCheckpointId = new HashMap<>();
 		this.taskManagerTaskStateSnapshotsByCheckpointId = new HashMap<>();
 		this.reportedCheckpointId = -1L;
-		this.notifiedCompletedCheckpointId = -1L;
-		this.notifiedAbortedCheckpointId = -1L;
 	}
 
 	@Override
@@ -98,6 +94,7 @@ public class TestTaskStateManager implements TaskStateManager {
 		@Nonnull CheckpointMetrics checkpointMetrics,
 		@Nullable TaskStateSnapshot acknowledgedState,
 		@Nullable TaskStateSnapshot localState) {
+
 
 		jobManagerTaskStateSnapshotsByCheckpointId.put(
 			checkpointMetaData.getCheckpointId(),
@@ -163,23 +160,23 @@ public class TestTaskStateManager implements TaskStateManager {
 			"Local state directory was never set for this test object!");
 	}
 
-	@Override
-	public SequentialChannelStateReader getSequentialChannelStateReader() {
-		return SequentialChannelStateReader.NO_OP;
-	}
-
 	public void setLocalRecoveryConfig(LocalRecoveryConfig recoveryDirectoryProvider) {
 		this.localRecoveryDirectoryProvider = recoveryDirectoryProvider;
 	}
 
 	@Override
 	public void notifyCheckpointComplete(long checkpointId) throws Exception {
-		this.notifiedCompletedCheckpointId = checkpointId;
+
 	}
 
 	@Override
-	public void notifyCheckpointAborted(long checkpointId) {
-		this.notifiedAbortedCheckpointId = checkpointId;
+	public void setTaskRestore(JobManagerTaskRestore taskRestore) {
+
+	}
+
+	@Override
+	public long getCurrentCheckpointRestoreID() {
+		return reportedCheckpointId;
 	}
 
 	public JobID getJobId() {
@@ -230,14 +227,6 @@ public class TestTaskStateManager implements TaskStateManager {
 		return reportedCheckpointId;
 	}
 
-	public long getNotifiedCompletedCheckpointId() {
-		return notifiedCompletedCheckpointId;
-	}
-
-	public long getNotifiedAbortedCheckpointId() {
-		return notifiedAbortedCheckpointId;
-	}
-
 	public void setReportedCheckpointId(long reportedCheckpointId) {
 		this.reportedCheckpointId = reportedCheckpointId;
 	}
@@ -279,9 +268,5 @@ public class TestTaskStateManager implements TaskStateManager {
 
 		setReportedCheckpointId(latestId);
 		setJobManagerTaskStateSnapshotsByCheckpointId(taskStateSnapshotsByCheckpointId);
-	}
-
-	@Override
-	public void close() throws Exception {
 	}
 }

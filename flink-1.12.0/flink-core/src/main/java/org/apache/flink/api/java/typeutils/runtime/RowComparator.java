@@ -32,21 +32,16 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 
-import static org.apache.flink.api.java.typeutils.runtime.MaskUtils.readIntoMask;
-import static org.apache.flink.api.java.typeutils.runtime.RowSerializer.ROW_KIND_OFFSET;
+import static org.apache.flink.api.java.typeutils.runtime.NullMaskUtils.readIntoNullMask;
 import static org.apache.flink.util.Preconditions.checkArgument;
 
 /**
- * Comparator for {@link Row}.
- *
- * <p>Note: Since comparators are used only in DataSet API for batch use cases, this comparator assumes the
- * latest serialization format and ignores {@link Row#getKind()} for simplicity of the implementation
- * and efficiency.
+ * Comparator for {@link Row}
  */
 @Internal
 public class RowComparator extends CompositeTypeComparator<Row> {
 
-	private static final long serialVersionUID = 2L;
+	private static final long serialVersionUID = 1L;
 	/** The number of fields of the Row */
 	private final int arity;
 	/** key positions describe which fields are keys in what order */
@@ -61,10 +56,9 @@ public class RowComparator extends CompositeTypeComparator<Row> {
 	private final int normalizableKeyPrefixLen;
 	private final boolean invertNormKey;
 
-	// bitmask for serialized comparison
-	// see serializer for more information about the bitmask encoding
-	private final boolean[] mask1;
-	private final boolean[] mask2;
+	// null masks for serialized comparison
+	private final boolean[] nullMask1;
+	private final boolean[] nullMask2;
 
 	// cache for the deserialized key field objects
 	transient private final Object[] deserializedKeyFields1;
@@ -150,8 +144,8 @@ public class RowComparator extends CompositeTypeComparator<Row> {
 		this.numLeadingNormalizableKeys = numLeadingNormalizableKeys;
 		this.normalizableKeyPrefixLen = normalizableKeyPrefixLen;
 		this.invertNormKey = invertNormKey;
-		this.mask1 = new boolean[ROW_KIND_OFFSET + arity];
-		this.mask2 = new boolean[ROW_KIND_OFFSET + arity];
+		this.nullMask1 = new boolean[arity];
+		this.nullMask2 = new boolean[arity];
 		deserializedKeyFields1 = instantiateDeserializationFields();
 		deserializedKeyFields2 = instantiateDeserializationFields();
 	}
@@ -257,43 +251,43 @@ public class RowComparator extends CompositeTypeComparator<Row> {
 
 	@Override
 	public int compareSerialized(
-			DataInputView firstSource,
-			DataInputView secondSource) throws IOException {
-		final int len = serializers.length;
-		final int keyLen = keyPositions.length;
+		DataInputView firstSource,
+		DataInputView secondSource) throws IOException {
 
-		// read bitmask
-		readIntoMask(firstSource, mask1);
-		readIntoMask(secondSource, mask2);
+		int len = serializers.length;
+		int keyLen = keyPositions.length;
 
-		// deserialize fields
-		for (int fieldPos = 0; fieldPos < len; fieldPos++) {
-			final TypeSerializer<Object> serializer = serializers[fieldPos];
+		readIntoNullMask(arity, firstSource, nullMask1);
+		readIntoNullMask(arity, secondSource, nullMask2);
+
+		// deserialize
+		for (int i = 0; i < len; i++) {
+			TypeSerializer<Object> serializer = serializers[i];
 
 			// deserialize field 1
-			if (!mask1[ROW_KIND_OFFSET + fieldPos]) {
-				deserializedKeyFields1[fieldPos] = serializer.deserialize(
-					deserializedKeyFields1[fieldPos],
+			if (!nullMask1[i]) {
+				deserializedKeyFields1[i] = serializer.deserialize(
+					deserializedKeyFields1[i],
 					firstSource);
 			}
 
 			// deserialize field 2
-			if (!mask2[ROW_KIND_OFFSET + fieldPos]) {
-				deserializedKeyFields2[fieldPos] = serializer.deserialize(
-					deserializedKeyFields2[fieldPos],
+			if (!nullMask2[i]) {
+				deserializedKeyFields2[i] = serializer.deserialize(
+					deserializedKeyFields2[i],
 					secondSource);
 			}
 		}
 
 		// compare
-		for (int fieldPos = 0; fieldPos < keyLen; fieldPos++) {
-			final int keyPos = keyPositions[fieldPos];
-			final TypeComparator<Object> comparator = comparators[fieldPos];
+		for (int i = 0; i < keyLen; i++) {
+			int keyPos = keyPositions[i];
+			TypeComparator<Object> comparator = comparators[i];
 
-			final boolean isNull1 = mask1[ROW_KIND_OFFSET + keyPos];
-			final boolean isNull2 = mask2[ROW_KIND_OFFSET + keyPos];
+			boolean isNull1 = nullMask1[keyPos];
+			boolean isNull2 = nullMask2[keyPos];
 
-			int cmp;
+			int cmp = 0;
 			// both values are null -> equality
 			if (isNull1 && isNull2) {
 				cmp = 0;

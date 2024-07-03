@@ -16,16 +16,12 @@
 # limitations under the License.
 ################################################################################
 
-apiVersion: apps/v1
+apiVersion: extensions/v1beta1
 kind: Deployment
 metadata:
   name: flink-task-manager
 spec:
   replicas: ${FLINK_JOB_PARALLELISM}
-  selector:
-    matchLabels:
-      app: flink
-      component: task-manager
   template:
     metadata:
       labels:
@@ -36,15 +32,10 @@ spec:
       - name: flink-task-manager
         image: ${FLINK_IMAGE_NAME}
         imagePullPolicy: Never
-        args: ["taskmanager", "-Djobmanager.rpc.address=flink-job-cluster"]
+        args: ["task-manager", "-Djobmanager.rpc.address=flink-job-cluster"]
         volumeMounts:
-        - mountPath: /cache
-          name: cache-volume
-        - name: job-artifacts-volume
-          mountPath: /opt/flink/usrlib
+            - mountPath: /cache
+              name: cache-volume
       volumes:
       - name: cache-volume
         emptyDir: {}
-      - name: job-artifacts-volume
-        hostPath:
-          path: ${USER_LIB}

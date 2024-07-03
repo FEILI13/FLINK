@@ -20,7 +20,6 @@ package org.apache.flink.runtime.metrics.groups;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.metrics.CharacterFilter;
-import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.metrics.MetricRegistry;
@@ -50,7 +49,7 @@ public class TaskMetricGroup extends ComponentMetricGroup<TaskManagerJobMetricGr
 	private final TaskIOMetricGroup ioMetrics;
 
 	/** The execution Id uniquely identifying the executed task represented by this metrics group. */
-	private final ExecutionAttemptID executionId;
+	private final AbstractID executionId;
 
 	@Nullable
 	protected final JobVertexID vertexId;
@@ -68,7 +67,7 @@ public class TaskMetricGroup extends ComponentMetricGroup<TaskManagerJobMetricGr
 			MetricRegistry registry,
 			TaskManagerJobMetricGroup parent,
 			@Nullable JobVertexID vertexId,
-			ExecutionAttemptID executionId,
+			AbstractID executionId,
 			@Nullable String taskName,
 			int subtaskIndex,
 			int attemptNumber) {
@@ -92,7 +91,7 @@ public class TaskMetricGroup extends ComponentMetricGroup<TaskManagerJobMetricGr
 		return parent;
 	}
 
-	public ExecutionAttemptID executionId() {
+	public AbstractID executionId() {
 		return executionId;
 	}
 
@@ -140,19 +139,24 @@ public class TaskMetricGroup extends ComponentMetricGroup<TaskManagerJobMetricGr
 	}
 
 	public OperatorMetricGroup getOrAddOperator(OperatorID operatorID, String name) {
-		final String metricName;
 		if (name != null && name.length() > METRICS_OPERATOR_NAME_MAX_LENGTH) {
 			LOG.warn("The operator name {} exceeded the {} characters length limit and was truncated.", name, METRICS_OPERATOR_NAME_MAX_LENGTH);
-			metricName = name.substring(0, METRICS_OPERATOR_NAME_MAX_LENGTH);
-		} else {
-			metricName = name;
+			name = name.substring(0, METRICS_OPERATOR_NAME_MAX_LENGTH);
 		}
-
+		OperatorMetricGroup operator = new OperatorMetricGroup(this.registry, this, operatorID, name);
 		// unique OperatorIDs only exist in streaming, so we have to rely on the name for batch operators
-		final String key = operatorID + metricName;
+		final String key = operatorID + name;
 
 		synchronized (this) {
-			return operators.computeIfAbsent(key, operator -> new OperatorMetricGroup(this.registry, this, operatorID, metricName));
+			OperatorMetricGroup previous = operators.put(key, operator);
+			if (previous == null) {
+				// no operator group so far
+				return operator;
+			} else {
+				// already had an operator group. restore that one.
+				operators.put(key, previous);
+				return previous;
+			}
 		}
 	}
 

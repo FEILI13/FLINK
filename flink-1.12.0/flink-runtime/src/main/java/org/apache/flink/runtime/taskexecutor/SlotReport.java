@@ -22,7 +22,6 @@ import java.io.Serializable;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
-import java.util.stream.Collectors;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -50,10 +49,6 @@ public class SlotReport implements Serializable, Iterable<SlotStatus> {
 		this.slotsStatus = checkNotNull(slotsStatus);
 	}
 
-	public int getNumSlotStatus() {
-		return slotsStatus.size();
-	}
-
 	@Override
 	public Iterator<SlotStatus> iterator() {
 		return slotsStatus.iterator();
@@ -61,12 +56,8 @@ public class SlotReport implements Serializable, Iterable<SlotStatus> {
 
 	@Override
 	public String toString() {
-		final String lineSeparator = slotsStatus.size() == 1 || slotsStatus.size() > 10
-			? ""
-			: System.lineSeparator() + "\t";
-
-		return slotsStatus.stream()
-			.map(SlotStatus::toString)
-			.collect(Collectors.joining(lineSeparator, "SlotReport{" + lineSeparator, "}"));
+		return "SlotReport{" +
+			"slotsStatus=" + slotsStatus +
+			'}';
 	}
 }

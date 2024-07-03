@@ -25,7 +25,6 @@ import org.apache.flink.runtime.leaderelection.LeaderElectionService;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalListener;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.util.TestLogger;
-
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -39,6 +38,7 @@ import static org.mockito.Mockito.verify;
  */
 public class StandaloneHaServicesTest extends TestLogger {
 
+	private final String jobManagerAddress = "jobManager";
 	private final String dispatcherAddress = "dispatcher";
 	private final String resourceManagerAddress = "resourceManager";
 	private final String webMonitorAddress = "webMonitor";
@@ -51,6 +51,7 @@ public class StandaloneHaServicesTest extends TestLogger {
 		standaloneHaServices = new StandaloneHaServices(
 			resourceManagerAddress,
 			dispatcherAddress,
+			jobManagerAddress,
 			webMonitorAddress);
 	}
 
@@ -102,8 +103,8 @@ public class StandaloneHaServicesTest extends TestLogger {
 		jmLeaderRetrievalService2.start(jmListener2);
 		rmLeaderRetrievalService.start(rmListener);
 
-		verify(jmListener1).notifyLeaderAddress(eq("UNKNOWN"), eq(HighAvailabilityServices.DEFAULT_LEADER_ID));
-		verify(jmListener2).notifyLeaderAddress(eq("UNKNOWN"), eq(HighAvailabilityServices.DEFAULT_LEADER_ID));
+		verify(jmListener1).notifyLeaderAddress(eq(jobManagerAddress), eq(HighAvailabilityServices.DEFAULT_LEADER_ID));
+		verify(jmListener2).notifyLeaderAddress(eq(jobManagerAddress), eq(HighAvailabilityServices.DEFAULT_LEADER_ID));
 		verify(rmListener).notifyLeaderAddress(eq(resourceManagerAddress), eq(HighAvailabilityServices.DEFAULT_LEADER_ID));
 	}
 

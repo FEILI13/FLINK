@@ -26,10 +26,10 @@ import java.util.concurrent.CompletableFuture;
 public interface MetricQueryServiceRetriever {
 
 	/**
-	 * Retrieves for the given query service address a {@link MetricQueryServiceGateway}.
+	 * Retrieves for the given query service path a {@link MetricQueryServiceGateway}.
 	 *
-	 * @param rpcServiceAddress under which the QueryService can be reached
+	 * @param queryServicePath under which the QueryService can be reached
 	 * @return Future containing the resolved QueryServiceGateway
 	 */
-	CompletableFuture<MetricQueryServiceGateway> retrieveService(String rpcServiceAddress);
+	CompletableFuture<MetricQueryServiceGateway> retrieveService(String queryServicePath);
 }

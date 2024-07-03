@@ -342,10 +342,7 @@ public class CheckpointStatsTracker {
 	static final String LATEST_COMPLETED_CHECKPOINT_DURATION_METRIC = "lastCheckpointDuration";
 
 	@VisibleForTesting
-	static final String LATEST_COMPLETED_CHECKPOINT_PROCESSED_DATA_METRIC = "lastCheckpointProcessedData";
-
-	@VisibleForTesting
-	static final String LATEST_COMPLETED_CHECKPOINT_PERSISTED_DATA_METRIC = "lastCheckpointPersistedData";
+	static final String LATEST_COMPLETED_CHECKPOINT_ALIGNMENT_BUFFERED_METRIC = "lastCheckpointAlignmentBuffered";
 
 	@VisibleForTesting
 	static final String LATEST_COMPLETED_CHECKPOINT_EXTERNAL_PATH_METRIC = "lastCheckpointExternalPath";
@@ -363,8 +360,7 @@ public class CheckpointStatsTracker {
 		metricGroup.gauge(LATEST_RESTORED_CHECKPOINT_TIMESTAMP_METRIC, new LatestRestoredCheckpointTimestampGauge());
 		metricGroup.gauge(LATEST_COMPLETED_CHECKPOINT_SIZE_METRIC, new LatestCompletedCheckpointSizeGauge());
 		metricGroup.gauge(LATEST_COMPLETED_CHECKPOINT_DURATION_METRIC, new LatestCompletedCheckpointDurationGauge());
-		metricGroup.gauge(LATEST_COMPLETED_CHECKPOINT_PROCESSED_DATA_METRIC, new LatestCompletedCheckpointProcessedDataGauge());
-		metricGroup.gauge(LATEST_COMPLETED_CHECKPOINT_PERSISTED_DATA_METRIC, new LatestCompletedCheckpointPersistedDataGauge());
+		metricGroup.gauge(LATEST_COMPLETED_CHECKPOINT_ALIGNMENT_BUFFERED_METRIC, new LatestCompletedCheckpointAlignmentBufferedGauge());
 		metricGroup.gauge(LATEST_COMPLETED_CHECKPOINT_EXTERNAL_PATH_METRIC, new LatestCompletedCheckpointExternalPathGauge());
 	}
 
@@ -432,24 +428,12 @@ public class CheckpointStatsTracker {
 		}
 	}
 
-	private class LatestCompletedCheckpointProcessedDataGauge implements Gauge<Long> {
+	private class LatestCompletedCheckpointAlignmentBufferedGauge implements Gauge<Long> {
 		@Override
 		public Long getValue() {
 			CompletedCheckpointStats completed = latestCompletedCheckpoint;
 			if (completed != null) {
-				return completed.getProcessedData();
-			} else {
-				return -1L;
-			}
-		}
-	}
-
-	private class LatestCompletedCheckpointPersistedDataGauge implements Gauge<Long> {
-		@Override
-		public Long getValue() {
-			CompletedCheckpointStats completed = latestCompletedCheckpoint;
-			if (completed != null) {
-				return completed.getPersistedData();
+				return completed.getAlignmentBuffered();
 			} else {
 				return -1L;
 			}

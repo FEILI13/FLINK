@@ -24,12 +24,12 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-parent</artifactId>
-		<version>1.12.0</version>
+		<version>1.7-CLONOS-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 
 	<artifactId>flink-container_${scala.binary.version}</artifactId>
-	<name>Flink : Container</name>
+	<name>flink-container</name>
 	<packaging>jar</packaging>
 
 	<dependencies>

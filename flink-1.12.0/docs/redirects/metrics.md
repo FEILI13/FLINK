@@ -1,7 +1,7 @@
 ---
 title: "Metrics"
 layout: redirect
-redirect: /ops/metrics.html
+redirect: /monitoring/metrics.html
 permalink: /apis/metrics.html
 ---
 <!--

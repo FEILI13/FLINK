@@ -18,17 +18,11 @@
 
 package org.apache.flink.runtime.io.network.buffer;
 
-import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.api.common.time.Deadline;
-import org.apache.flink.configuration.NettyShuffleEnvironmentOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
-import org.apache.flink.core.memory.MemorySegmentProvider;
-import org.apache.flink.runtime.io.AvailabilityProvider;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.MathUtils;
-import org.apache.flink.util.Preconditions;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,15 +30,13 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
-import java.time.Duration;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -57,7 +49,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * the buffers for the network data transfer. When new local buffer pools are created, the
  * NetworkBufferPool dynamically redistributes the buffers between the pools.
  */
-public class NetworkBufferPool implements BufferPoolFactory, MemorySegmentProvider, AvailabilityProvider {
+public class NetworkBufferPool implements BufferPoolFactory {
 
 	private static final Logger LOG = LoggerFactory.getLogger(NetworkBufferPool.class);
 
@@ -65,7 +57,7 @@ public class NetworkBufferPool implements BufferPoolFactory, MemorySegmentProvid
 
 	private final int memorySegmentSize;
 
-	private final ArrayDeque<MemorySegment> availableMemorySegments;
+	private final ArrayBlockingQueue<MemorySegment> availableMemorySegments;
 
 	private volatile boolean isDestroyed;
 
@@ -77,34 +69,18 @@ public class NetworkBufferPool implements BufferPoolFactory, MemorySegmentProvid
 
 	private int numTotalRequiredBuffers;
 
-	private final Duration requestSegmentsTimeout;
-
-	private final AvailabilityHelper availabilityHelper = new AvailabilityHelper();
-
-	@VisibleForTesting
-	public NetworkBufferPool(int numberOfSegmentsToAllocate, int segmentSize) {
-		this(numberOfSegmentsToAllocate, segmentSize, Duration.ofMillis(Integer.MAX_VALUE));
-	}
-
 	/**
 	 * Allocates all {@link MemorySegment} instances managed by this pool.
 	 */
-	public NetworkBufferPool(
-			int numberOfSegmentsToAllocate,
-			int segmentSize,
-			Duration requestSegmentsTimeout) {
+	public NetworkBufferPool(int numberOfSegmentsToAllocate, int segmentSize) {
+
 		this.totalNumberOfMemorySegments = numberOfSegmentsToAllocate;
 		this.memorySegmentSize = segmentSize;
-
-		Preconditions.checkNotNull(requestSegmentsTimeout);
-		checkArgument(requestSegmentsTimeout.toMillis() > 0,
-				"The timeout for requesting exclusive buffers should be positive.");
-		this.requestSegmentsTimeout = requestSegmentsTimeout;
 
 		final long sizeInLong = (long) segmentSize;
 
 		try {
-			this.availableMemorySegments = new ArrayDeque<>(numberOfSegmentsToAllocate);
+			this.availableMemorySegments = new ArrayBlockingQueue<>(numberOfSegmentsToAllocate);
 		}
 		catch (OutOfMemoryError err) {
 			throw new OutOfMemoryError("Could not allocate buffer queue of length "
@@ -132,8 +108,6 @@ public class NetworkBufferPool implements BufferPoolFactory, MemorySegmentProvid
 					", missing (Mb): " + missingMb + "). Cause: " + err.getMessage());
 		}
 
-		availabilityHelper.resetAvailable();
-
 		long allocatedMb = (sizeInLong * availableMemorySegments.size()) >> 20;
 
 		LOG.info("Allocated {} MB for network buffer pool (number of memory segments: {}, bytes per segment: {}).",
@@ -142,116 +116,97 @@ public class NetworkBufferPool implements BufferPoolFactory, MemorySegmentProvid
 
 	@Nullable
 	public MemorySegment requestMemorySegment() {
-		synchronized (availableMemorySegments) {
-			return internalRequestMemorySegment();
-		}
+		return availableMemorySegments.poll();
 	}
 
 	public void recycle(MemorySegment segment) {
 		// Adds the segment back to the queue, which does not immediately free the memory
 		// however, since this happens when references to the global pool are also released,
 		// making the availableMemorySegments queue and its contained object reclaimable
-		internalRecycleMemorySegments(Collections.singleton(checkNotNull(segment)));
+		availableMemorySegments.add(checkNotNull(segment));
 	}
 
-	@Override
-	public List<MemorySegment> requestMemorySegments(int numberOfSegmentsToRequest) throws IOException {
-		checkArgument(numberOfSegmentsToRequest > 0, "Number of buffers to request must be larger than 0.");
+	public List<MemorySegment> requestMemorySegments(int numRequiredBuffers) throws IOException {
+		checkArgument(numRequiredBuffers > 0, "The number of required buffers should be larger than 0.");
 
 		synchronized (factoryLock) {
 			if (isDestroyed) {
 				throw new IllegalStateException("Network buffer pool has already been destroyed.");
 			}
 
-			tryRedistributeBuffers(numberOfSegmentsToRequest);
+			if (numTotalRequiredBuffers + numRequiredBuffers > totalNumberOfMemorySegments) {
+				throw new IOException(String.format("Insufficient number of network buffers: " +
+								"required %d, but only %d available. The total number of network " +
+								"buffers is currently set to %d of %d bytes each. You can increase this " +
+								"number by setting the configuration keys '%s', '%s', and '%s'.",
+						numRequiredBuffers,
+						totalNumberOfMemorySegments - numTotalRequiredBuffers,
+						totalNumberOfMemorySegments,
+						memorySegmentSize,
+						TaskManagerOptions.NETWORK_BUFFERS_MEMORY_FRACTION.key(),
+						TaskManagerOptions.NETWORK_BUFFERS_MEMORY_MIN.key(),
+						TaskManagerOptions.NETWORK_BUFFERS_MEMORY_MAX.key()));
+			}
+
+			this.numTotalRequiredBuffers += numRequiredBuffers;
+
+			try {
+				redistributeBuffers();
+			} catch (Throwable t) {
+				this.numTotalRequiredBuffers -= numRequiredBuffers;
+
+				try {
+					redistributeBuffers();
+				} catch (IOException inner) {
+					t.addSuppressed(inner);
+				}
+				ExceptionUtils.rethrowIOException(t);
+			}
 		}
 
-		final List<MemorySegment> segments = new ArrayList<>(numberOfSegmentsToRequest);
+		final List<MemorySegment> segments = new ArrayList<>(numRequiredBuffers);
 		try {
-			final Deadline deadline = Deadline.fromNow(requestSegmentsTimeout);
-			while (true) {
+			while (segments.size() < numRequiredBuffers) {
 				if (isDestroyed) {
 					throw new IllegalStateException("Buffer pool is destroyed.");
 				}
 
-				MemorySegment segment;
-				synchronized (availableMemorySegments) {
-					if ((segment = internalRequestMemorySegment()) == null) {
-						availableMemorySegments.wait(2000);
-					}
-				}
+				final MemorySegment segment = availableMemorySegments.poll(2, TimeUnit.SECONDS);
 				if (segment != null) {
 					segments.add(segment);
 				}
-
-				if (segments.size() >= numberOfSegmentsToRequest) {
-					break;
-				}
-
-				if (!deadline.hasTimeLeft()) {
-					throw new IOException(String.format("Timeout triggered when requesting exclusive buffers: %s, " +
-									" or you may increase the timeout which is %dms by setting the key '%s'.",
-							getConfigDescription(),
-							requestSegmentsTimeout.toMillis(),
-							NettyShuffleEnvironmentOptions.NETWORK_EXCLUSIVE_BUFFERS_REQUEST_TIMEOUT_MILLISECONDS.key()));
-				}
 			}
 		} catch (Throwable e) {
-			recycleMemorySegments(segments, numberOfSegmentsToRequest);
+			try {
+				recycleMemorySegments(segments, numRequiredBuffers);
+			} catch (IOException inner) {
+				e.addSuppressed(inner);
+			}
 			ExceptionUtils.rethrowIOException(e);
 		}
 
 		return segments;
 	}
 
-	@Nullable
-	private MemorySegment internalRequestMemorySegment() {
-		assert Thread.holdsLock(availableMemorySegments);
-
-		final MemorySegment segment = availableMemorySegments.poll();
-		if (availableMemorySegments.isEmpty() && segment != null) {
-			availabilityHelper.resetUnavailable();
-		}
-		return segment;
-	}
-
-	@Override
-	public void recycleMemorySegments(Collection<MemorySegment> segments) {
+	public void recycleMemorySegments(List<MemorySegment> segments) throws IOException {
 		recycleMemorySegments(segments, segments.size());
 	}
 
-	private void recycleMemorySegments(Collection<MemorySegment> segments, int size) {
-		internalRecycleMemorySegments(segments);
-
+	private void recycleMemorySegments(List<MemorySegment> segments, int size) throws IOException {
 		synchronized (factoryLock) {
 			numTotalRequiredBuffers -= size;
+
+			availableMemorySegments.addAll(segments);
 
 			// note: if this fails, we're fine for the buffer pool since we already recycled the segments
 			redistributeBuffers();
 		}
 	}
 
-	private void internalRecycleMemorySegments(Collection<MemorySegment> segments) {
-		CompletableFuture<?> toNotify = null;
-		synchronized (availableMemorySegments) {
-			if (availableMemorySegments.isEmpty() && !segments.isEmpty()) {
-				toNotify = availabilityHelper.getUnavailableToResetAvailable();
-			}
-			availableMemorySegments.addAll(segments);
-			availableMemorySegments.notifyAll();
-		}
-
-		if (toNotify != null) {
-			toNotify.complete(null);
-		}
-	}
-
 	public void destroy() {
 		synchronized (factoryLock) {
 			isDestroyed = true;
-		}
 
-		synchronized (availableMemorySegments) {
 			MemorySegment segment;
 			while ((segment = availableMemorySegments.poll()) != null) {
 				segment.free();
@@ -263,30 +218,16 @@ public class NetworkBufferPool implements BufferPoolFactory, MemorySegmentProvid
 		return isDestroyed;
 	}
 
-	public int getTotalNumberOfMemorySegments() {
-		return isDestroyed() ? 0 : totalNumberOfMemorySegments;
+	public int getMemorySegmentSize() {
+		return memorySegmentSize;
 	}
 
-	public long getTotalMemory() {
-		return getTotalNumberOfMemorySegments() * memorySegmentSize;
+	public int getTotalNumberOfMemorySegments() {
+		return totalNumberOfMemorySegments;
 	}
 
 	public int getNumberOfAvailableMemorySegments() {
-		synchronized (availableMemorySegments) {
-			return availableMemorySegments.size();
-		}
-	}
-
-	public long getAvailableMemory() {
-		return getNumberOfAvailableMemorySegments() * memorySegmentSize;
-	}
-
-	public int getNumberOfUsedMemorySegments() {
-		return getTotalNumberOfMemorySegments() - getNumberOfAvailableMemorySegments();
-	}
-
-	public long getUsedMemory() {
-		return getNumberOfUsedMemorySegments() * memorySegmentSize;
+		return availableMemorySegments.size();
 	}
 
 	public int getNumberOfRegisteredBufferPools() {
@@ -307,47 +248,17 @@ public class NetworkBufferPool implements BufferPoolFactory, MemorySegmentProvid
 		return buffers;
 	}
 
-	/**
-	 * Returns a future that is completed when there are free segments
-	 * in this pool.
-	 */
-	@Override
-	public CompletableFuture<?> getAvailableFuture() {
-		return availabilityHelper.getAvailableFuture();
-	}
-
 	// ------------------------------------------------------------------------
 	// BufferPoolFactory
 	// ------------------------------------------------------------------------
 
 	@Override
 	public BufferPool createBufferPool(int numRequiredBuffers, int maxUsedBuffers) throws IOException {
-		return internalCreateBufferPool(
-			numRequiredBuffers,
-			maxUsedBuffers,
-			0,
-			Integer.MAX_VALUE);
+		return createBufferPool(numRequiredBuffers, maxUsedBuffers, Optional.empty());
 	}
 
 	@Override
-	public BufferPool createBufferPool(
-			int numRequiredBuffers,
-			int maxUsedBuffers,
-			int numSubpartitions,
-			int maxBuffersPerChannel) throws IOException {
-		return internalCreateBufferPool(
-			numRequiredBuffers,
-			maxUsedBuffers,
-			numSubpartitions,
-			maxBuffersPerChannel);
-	}
-
-	private BufferPool internalCreateBufferPool(
-			int numRequiredBuffers,
-			int maxUsedBuffers,
-			int numSubpartitions,
-			int maxBuffersPerChannel) throws IOException {
-
+	public BufferPool createBufferPool(int numRequiredBuffers, int maxUsedBuffers, Optional<BufferPoolOwner> owner) throws IOException {
 		// It is necessary to use a separate lock from the one used for buffer
 		// requests to ensure deadlock freedom for failure cases.
 		synchronized (factoryLock) {
@@ -359,10 +270,16 @@ public class NetworkBufferPool implements BufferPoolFactory, MemorySegmentProvid
 			// With dynamic memory management this should become obsolete.
 			if (numTotalRequiredBuffers + numRequiredBuffers > totalNumberOfMemorySegments) {
 				throw new IOException(String.format("Insufficient number of network buffers: " +
-								"required %d, but only %d available. %s.",
+								"required %d, but only %d available. The total number of network " +
+								"buffers is currently set to %d of %d bytes each. You can increase this " +
+								"number by setting the configuration keys '%s', '%s', and '%s'.",
 						numRequiredBuffers,
 						totalNumberOfMemorySegments - numTotalRequiredBuffers,
-						getConfigDescription()));
+						totalNumberOfMemorySegments,
+						memorySegmentSize,
+						TaskManagerOptions.NETWORK_BUFFERS_MEMORY_FRACTION.key(),
+						TaskManagerOptions.NETWORK_BUFFERS_MEMORY_MIN.key(),
+						TaskManagerOptions.NETWORK_BUFFERS_MEMORY_MAX.key()));
 			}
 
 			this.numTotalRequiredBuffers += numRequiredBuffers;
@@ -370,23 +287,27 @@ public class NetworkBufferPool implements BufferPoolFactory, MemorySegmentProvid
 			// We are good to go, create a new buffer pool and redistribute
 			// non-fixed size buffers.
 			LocalBufferPool localBufferPool =
-				new LocalBufferPool(
-					this,
-					numRequiredBuffers,
-					maxUsedBuffers,
-					numSubpartitions,
-					maxBuffersPerChannel);
+				new LocalBufferPool(this, numRequiredBuffers, maxUsedBuffers, owner);
 
 			allBufferPools.add(localBufferPool);
 
-			redistributeBuffers();
+			try {
+				redistributeBuffers();
+			} catch (IOException e) {
+				try {
+					destroyBufferPool(localBufferPool);
+				} catch (IOException inner) {
+					e.addSuppressed(inner);
+				}
+				ExceptionUtils.rethrowIOException(e);
+			}
 
 			return localBufferPool;
 		}
 	}
 
 	@Override
-	public void destroyBufferPool(BufferPool bufferPool) {
+	public void destroyBufferPool(BufferPool bufferPool) throws IOException {
 		if (!(bufferPool instanceof LocalBufferPool)) {
 			throw new IllegalArgumentException("bufferPool is no LocalBufferPool");
 		}
@@ -421,31 +342,7 @@ public class NetworkBufferPool implements BufferPoolFactory, MemorySegmentProvid
 	}
 
 	// Must be called from synchronized block
-	private void tryRedistributeBuffers(int numberOfSegmentsToRequest) throws IOException {
-		assert Thread.holdsLock(factoryLock);
-
-		if (numTotalRequiredBuffers + numberOfSegmentsToRequest > totalNumberOfMemorySegments) {
-			throw new IOException(String.format("Insufficient number of network buffers: " +
-							"required %d, but only %d available. %s.",
-					numberOfSegmentsToRequest,
-					totalNumberOfMemorySegments - numTotalRequiredBuffers,
-					getConfigDescription()));
-		}
-
-		this.numTotalRequiredBuffers += numberOfSegmentsToRequest;
-
-		try {
-			redistributeBuffers();
-		} catch (Throwable t) {
-			this.numTotalRequiredBuffers -= numberOfSegmentsToRequest;
-
-			redistributeBuffers();
-			ExceptionUtils.rethrow(t);
-		}
-	}
-
-	// Must be called from synchronized block
-	private void redistributeBuffers() {
+	private void redistributeBuffers() throws IOException {
 		assert Thread.holdsLock(factoryLock);
 
 		// All buffers, which are not among the required ones
@@ -511,15 +408,5 @@ public class NetworkBufferPool implements BufferPoolFactory, MemorySegmentProvid
 
 		assert (totalPartsUsed == totalCapacity);
 		assert (numDistributedMemorySegment == memorySegmentsToDistribute);
-	}
-
-	private String getConfigDescription() {
-		return String.format("The total number of network buffers is currently set to %d of %d bytes each. " +
-						"You can increase this number by setting the configuration keys '%s', '%s', and '%s'",
-				totalNumberOfMemorySegments,
-				memorySegmentSize,
-				TaskManagerOptions.NETWORK_MEMORY_FRACTION.key(),
-				TaskManagerOptions.NETWORK_MEMORY_MIN.key(),
-				TaskManagerOptions.NETWORK_MEMORY_MAX.key());
 	}
 }

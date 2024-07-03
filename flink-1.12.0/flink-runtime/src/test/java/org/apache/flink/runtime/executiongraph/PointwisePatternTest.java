@@ -18,11 +18,18 @@
 
 package org.apache.flink.runtime.executiongraph;
 
-import org.apache.flink.runtime.JobException;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
+import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.runtime.akka.AkkaUtils;
+import org.apache.flink.runtime.executiongraph.restart.NoRestartStrategy;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
-import org.apache.flink.runtime.jobgraph.DistributionPattern;
-import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
+import org.apache.flink.runtime.jobmanager.scheduler.Scheduler;
+import org.apache.flink.runtime.testingUtils.TestingUtils;
+import org.apache.flink.util.SerializedValue;
 
 import org.junit.Test;
 
@@ -30,12 +37,18 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.JobException;
+import org.apache.flink.runtime.jobgraph.JobVertex;
+import org.apache.flink.runtime.jobgraph.DistributionPattern;
+import org.apache.flink.api.common.JobID;
 
 
 public class PointwisePatternTest {
+
+	private final JobID jobId = new JobID();
+	private final String jobName = "Test Job Sample Name";
+	private final Configuration cfg = new Configuration();
 	
 	@Test
 	public void testNToN() throws Exception {
@@ -54,7 +67,16 @@ public class PointwisePatternTest {
 	
 		List<JobVertex> ordered = new ArrayList<JobVertex>(Arrays.asList(v1, v2));
 
-		ExecutionGraph eg = getDummyExecutionGraph();
+		ExecutionGraph eg = new ExecutionGraph(
+			TestingUtils.defaultExecutor(), 
+			TestingUtils.defaultExecutor(),
+			jobId, 
+			jobName, 
+			cfg,
+			new SerializedValue<>(new ExecutionConfig()),
+			AkkaUtils.getDefaultTimeout(),
+			new NoRestartStrategy(),
+			new Scheduler(TestingUtils.defaultExecutionContext()));
 		try {
 			eg.attachJobGraph(ordered);
 		}
@@ -92,7 +114,16 @@ public class PointwisePatternTest {
 	
 		List<JobVertex> ordered = new ArrayList<JobVertex>(Arrays.asList(v1, v2));
 
-		ExecutionGraph eg = getDummyExecutionGraph();
+		ExecutionGraph eg = new ExecutionGraph(
+			TestingUtils.defaultExecutor(),
+			TestingUtils.defaultExecutor(),
+			jobId, 
+			jobName, 
+			cfg,
+			new SerializedValue<>(new ExecutionConfig()),
+			AkkaUtils.getDefaultTimeout(),
+			new NoRestartStrategy(),
+			new Scheduler(TestingUtils.defaultExecutionContext()));
 		try {
 			eg.attachJobGraph(ordered);
 		}
@@ -131,7 +162,16 @@ public class PointwisePatternTest {
 	
 		List<JobVertex> ordered = new ArrayList<JobVertex>(Arrays.asList(v1, v2));
 
-		ExecutionGraph eg = getDummyExecutionGraph();
+		ExecutionGraph eg = new ExecutionGraph(
+			TestingUtils.defaultExecutor(),
+			TestingUtils.defaultExecutor(),
+			jobId, 
+			jobName, 
+			cfg,
+			new SerializedValue<>(new ExecutionConfig()),
+			AkkaUtils.getDefaultTimeout(),
+			new NoRestartStrategy(),
+			new Scheduler(TestingUtils.defaultExecutionContext()));
 		try {
 			eg.attachJobGraph(ordered);
 		}
@@ -171,7 +211,16 @@ public class PointwisePatternTest {
 	
 		List<JobVertex> ordered = new ArrayList<JobVertex>(Arrays.asList(v1, v2));
 
-		ExecutionGraph eg = getDummyExecutionGraph();
+		ExecutionGraph eg = new ExecutionGraph(
+			TestingUtils.defaultExecutor(),
+			TestingUtils.defaultExecutor(),
+			jobId, 
+			jobName,
+			cfg,
+			new SerializedValue<>(new ExecutionConfig()),
+			AkkaUtils.getDefaultTimeout(),
+			new NoRestartStrategy(),
+			new Scheduler(TestingUtils.defaultExecutionContext()));
 		try {
 			eg.attachJobGraph(ordered);
 		}
@@ -209,7 +258,16 @@ public class PointwisePatternTest {
 	
 		List<JobVertex> ordered = new ArrayList<JobVertex>(Arrays.asList(v1, v2));
 
-		ExecutionGraph eg = getDummyExecutionGraph();
+		ExecutionGraph eg = new ExecutionGraph(
+			TestingUtils.defaultExecutor(),
+			TestingUtils.defaultExecutor(),
+			jobId, 
+			jobName, 
+			cfg,
+			new SerializedValue<>(new ExecutionConfig()),
+			AkkaUtils.getDefaultTimeout(),
+			new NoRestartStrategy(),
+			new Scheduler(TestingUtils.defaultExecutionContext()));
 		try {
 			eg.attachJobGraph(ordered);
 		}
@@ -245,11 +303,7 @@ public class PointwisePatternTest {
 		testHighToLow(20, 15);
 		testHighToLow(31, 11);
 	}
-
-	private ExecutionGraph getDummyExecutionGraph() throws Exception {
-		return TestingExecutionGraphBuilder.newBuilder().build();
-	}
-
+	
 	private void testLowToHigh(int lowDop, int highDop) throws Exception {
 		if (highDop < lowDop) {
 			throw new IllegalArgumentException();
@@ -271,7 +325,16 @@ public class PointwisePatternTest {
 	
 		List<JobVertex> ordered = new ArrayList<JobVertex>(Arrays.asList(v1, v2));
 
-		ExecutionGraph eg = getDummyExecutionGraph();
+		ExecutionGraph eg = new ExecutionGraph(
+			TestingUtils.defaultExecutor(),
+			TestingUtils.defaultExecutor(),
+			jobId, 
+			jobName, 
+			cfg,
+			new SerializedValue<>(new ExecutionConfig()),
+			AkkaUtils.getDefaultTimeout(),
+			new NoRestartStrategy(),
+			new Scheduler(TestingUtils.defaultExecutionContext()));
 		try {
 			eg.attachJobGraph(ordered);
 		}
@@ -320,7 +383,16 @@ public class PointwisePatternTest {
 	
 		List<JobVertex> ordered = new ArrayList<JobVertex>(Arrays.asList(v1, v2));
 
-		ExecutionGraph eg = getDummyExecutionGraph();
+		ExecutionGraph eg = new ExecutionGraph(
+			TestingUtils.defaultExecutor(),
+			TestingUtils.defaultExecutor(),
+			jobId, 
+			jobName, 
+			cfg,
+			new SerializedValue<>(new ExecutionConfig()),
+			AkkaUtils.getDefaultTimeout(),
+			new NoRestartStrategy(),
+			new Scheduler(TestingUtils.defaultExecutionContext()));
 		try {
 			eg.attachJobGraph(ordered);
 		}

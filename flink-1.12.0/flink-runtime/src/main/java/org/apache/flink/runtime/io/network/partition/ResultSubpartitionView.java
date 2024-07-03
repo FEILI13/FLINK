@@ -18,6 +18,8 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
+import org.apache.flink.api.common.JobID;
+import org.apache.flink.runtime.causal.VertexID;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartition.BufferAndBacklog;
 
@@ -42,23 +44,28 @@ public interface ResultSubpartitionView {
 	 * after it has been consumed.
 	 */
 	@Nullable
-	BufferAndBacklog getNextBuffer() throws IOException;
+	BufferAndBacklog getNextBuffer() throws IOException, InterruptedException;
 
 	void notifyDataAvailable();
 
-	default void notifyPriorityEvent(int priorityBufferNumber) {
-	}
-
 	void releaseAllResources() throws IOException;
+
+	void notifySubpartitionConsumed() throws IOException;
+
+	void sendFailConsumerTrigger(Throwable cause);
 
 	boolean isReleased();
 
-	void resumeConsumption();
-
 	Throwable getFailureCause();
 
-	boolean isAvailable(int numCreditsAvailable);
+	/**
+	 * Returns whether the next buffer is an event or not.
+	 */
+	boolean nextBufferIsEvent();
 
-	int unsynchronizedGetNumberOfQueuedBuffers();
+	boolean isAvailable();
 
+    JobID getJobID();
+
+    short getVertexID();
 }

@@ -19,10 +19,11 @@
 package org.apache.flink.runtime.dispatcher;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.runtime.executiongraph.ArchivedExecutionGraph;
+import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.messages.webmonitor.JobDetails;
 import org.apache.flink.runtime.messages.webmonitor.JobsOverview;
+import org.apache.flink.runtime.webmonitor.WebMonitorUtils;
 
 import javax.annotation.Nullable;
 
@@ -68,7 +69,7 @@ public class MemoryArchivedExecutionGraphStore implements ArchivedExecutionGraph
 	@Override
 	public Collection<JobDetails> getAvailableJobDetails() {
 		return serializableExecutionGraphs.values().stream()
-			.map(JobDetails::createDetailsForJob)
+			.map(WebMonitorUtils::createDetailsForJob)
 			.collect(Collectors.toList());
 	}
 
@@ -78,7 +79,7 @@ public class MemoryArchivedExecutionGraphStore implements ArchivedExecutionGraph
 		final ArchivedExecutionGraph archivedExecutionGraph = serializableExecutionGraphs.get(jobId);
 
 		if (archivedExecutionGraph != null) {
-			return JobDetails.createDetailsForJob(archivedExecutionGraph);
+			return WebMonitorUtils.createDetailsForJob(archivedExecutionGraph);
 		} else {
 			return null;
 		}

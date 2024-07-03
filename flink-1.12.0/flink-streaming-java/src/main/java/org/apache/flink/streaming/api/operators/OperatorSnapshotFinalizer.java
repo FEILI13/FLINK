@@ -19,20 +19,14 @@
 package org.apache.flink.streaming.api.operators;
 
 import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
-import org.apache.flink.runtime.checkpoint.StateObjectCollection;
-import org.apache.flink.runtime.concurrent.FutureUtils;
-import org.apache.flink.runtime.state.InputChannelStateHandle;
 import org.apache.flink.runtime.state.KeyedStateHandle;
 import org.apache.flink.runtime.state.OperatorStateHandle;
-import org.apache.flink.runtime.state.ResultSubpartitionStateHandle;
 import org.apache.flink.runtime.state.SnapshotResult;
+import org.apache.flink.util.FutureUtil;
 
 import javax.annotation.Nonnull;
 
 import java.util.concurrent.ExecutionException;
-
-import static org.apache.flink.runtime.checkpoint.StateObjectCollection.emptyIfNull;
-import static org.apache.flink.runtime.checkpoint.StateObjectCollection.singletonOrEmpty;
 
 /**
  * This class finalizes {@link OperatorSnapshotFutures}. Each object is created with a {@link OperatorSnapshotFutures}
@@ -50,38 +44,30 @@ public class OperatorSnapshotFinalizer {
 		@Nonnull OperatorSnapshotFutures snapshotFutures) throws ExecutionException, InterruptedException {
 
 		SnapshotResult<KeyedStateHandle> keyedManaged =
-			FutureUtils.runIfNotDoneAndGet(snapshotFutures.getKeyedStateManagedFuture());
+			FutureUtil.runIfNotDoneAndGet(snapshotFutures.getKeyedStateManagedFuture());
 
 		SnapshotResult<KeyedStateHandle> keyedRaw =
-			FutureUtils.runIfNotDoneAndGet(snapshotFutures.getKeyedStateRawFuture());
+			FutureUtil.runIfNotDoneAndGet(snapshotFutures.getKeyedStateRawFuture());
 
 		SnapshotResult<OperatorStateHandle> operatorManaged =
-			FutureUtils.runIfNotDoneAndGet(snapshotFutures.getOperatorStateManagedFuture());
+			FutureUtil.runIfNotDoneAndGet(snapshotFutures.getOperatorStateManagedFuture());
 
 		SnapshotResult<OperatorStateHandle> operatorRaw =
-			FutureUtils.runIfNotDoneAndGet(snapshotFutures.getOperatorStateRawFuture());
+			FutureUtil.runIfNotDoneAndGet(snapshotFutures.getOperatorStateRawFuture());
 
-		SnapshotResult<StateObjectCollection<InputChannelStateHandle>> inputChannel = snapshotFutures.getInputChannelStateFuture().get();
+		jobManagerOwnedState = new OperatorSubtaskState(
+			operatorManaged.getJobManagerOwnedSnapshot(),
+			operatorRaw.getJobManagerOwnedSnapshot(),
+			keyedManaged.getJobManagerOwnedSnapshot(),
+			keyedRaw.getJobManagerOwnedSnapshot()
+		);
 
-		SnapshotResult<StateObjectCollection<ResultSubpartitionStateHandle>> resultSubpartition = snapshotFutures.getResultSubpartitionStateFuture().get();
-
-		jobManagerOwnedState = OperatorSubtaskState.builder()
-			.setManagedOperatorState(singletonOrEmpty(operatorManaged.getJobManagerOwnedSnapshot()))
-			.setRawOperatorState(singletonOrEmpty(operatorRaw.getJobManagerOwnedSnapshot()))
-			.setManagedKeyedState(singletonOrEmpty(keyedManaged.getJobManagerOwnedSnapshot()))
-			.setRawKeyedState(singletonOrEmpty(keyedRaw.getJobManagerOwnedSnapshot()))
-			.setInputChannelState(emptyIfNull(inputChannel.getJobManagerOwnedSnapshot()))
-			.setResultSubpartitionState(emptyIfNull(resultSubpartition.getJobManagerOwnedSnapshot()))
-			.build();
-
-		taskLocalState = OperatorSubtaskState.builder()
-			.setManagedOperatorState(singletonOrEmpty(operatorManaged.getTaskLocalSnapshot()))
-			.setRawOperatorState(singletonOrEmpty(operatorRaw.getTaskLocalSnapshot()))
-			.setManagedKeyedState(singletonOrEmpty(keyedManaged.getTaskLocalSnapshot()))
-			.setRawKeyedState(singletonOrEmpty(keyedRaw.getTaskLocalSnapshot()))
-			.setInputChannelState(emptyIfNull(inputChannel.getTaskLocalSnapshot()))
-			.setResultSubpartitionState(emptyIfNull(resultSubpartition.getTaskLocalSnapshot()))
-			.build();
+		taskLocalState = new OperatorSubtaskState(
+			operatorManaged.getTaskLocalSnapshot(),
+			operatorRaw.getTaskLocalSnapshot(),
+			keyedManaged.getTaskLocalSnapshot(),
+			keyedRaw.getTaskLocalSnapshot()
+		);
 	}
 
 	public OperatorSubtaskState getTaskLocalState() {

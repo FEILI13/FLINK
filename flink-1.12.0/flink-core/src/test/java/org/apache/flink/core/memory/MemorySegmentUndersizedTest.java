@@ -47,7 +47,7 @@ public class MemorySegmentUndersizedTest {
 
 	@Test
 	public void testZeroSizeHeapHybridSegment() {
-		MemorySegment segment = MemorySegmentFactory.allocateUnpooledSegment(0);
+		MemorySegment segment = new HybridMemorySegment(new byte[0]);
 
 		testZeroSizeBuffer(segment);
 		testSegmentWithSizeLargerZero(segment);
@@ -55,15 +55,7 @@ public class MemorySegmentUndersizedTest {
 
 	@Test
 	public void testZeroSizeOffHeapHybridSegment() {
-		MemorySegment segment = MemorySegmentFactory.allocateUnpooledOffHeapMemory(0);
-
-		testZeroSizeBuffer(segment);
-		testSegmentWithSizeLargerZero(segment);
-	}
-
-	@Test
-	public void testZeroSizeOffHeapUnsafeHybridSegment() {
-		MemorySegment segment = MemorySegmentFactory.allocateOffHeapUnsafeMemory(0);
+		MemorySegment segment = new HybridMemorySegment(ByteBuffer.allocateDirect(0));
 
 		testZeroSizeBuffer(segment);
 		testSegmentWithSizeLargerZero(segment);
@@ -76,17 +68,12 @@ public class MemorySegmentUndersizedTest {
 
 	@Test
 	public void testSizeOneHeapHybridSegment() {
-		testSegmentWithSizeLargerZero(MemorySegmentFactory.allocateUnpooledSegment(1));
+		testSegmentWithSizeLargerZero(new HybridMemorySegment(new byte[1]));
 	}
 
 	@Test
 	public void testSizeOneOffHeapHybridSegment() {
-		testSegmentWithSizeLargerZero(MemorySegmentFactory.allocateUnpooledOffHeapMemory(1));
-	}
-
-	@Test
-	public void testSizeOneOffHeapUnsafeHybridSegment() {
-		testSegmentWithSizeLargerZero(MemorySegmentFactory.allocateOffHeapUnsafeMemory(1));
+		testSegmentWithSizeLargerZero(new HybridMemorySegment(ByteBuffer.allocateDirect(1)));
 	}
 
 	private static void testZeroSizeBuffer(MemorySegment segment) {

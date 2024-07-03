@@ -34,7 +34,7 @@ class TtlReducingStateVerifier extends AbstractTtlStateVerifier<
 	ReducingStateDescriptor<Integer>, ReducingState<Integer>, Integer, Integer, Integer> {
 	TtlReducingStateVerifier() {
 		super(new ReducingStateDescriptor<>(
-			TtlReducingStateVerifier.class.getSimpleName(),
+			"TtlReducingStateVerifier",
 			(ReduceFunction<Integer>) (value1, value2) -> value1 + value2,
 			IntSerializer.INSTANCE));
 	}

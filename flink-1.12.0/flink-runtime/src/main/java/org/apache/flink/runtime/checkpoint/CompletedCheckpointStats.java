@@ -41,9 +41,8 @@ public class CompletedCheckpointStats extends AbstractCheckpointStats {
 	/** Total checkpoint state size over all subtasks. */
 	private final long stateSize;
 
-	private final long processedData;
-
-	private final long persistedData;
+	/** Buffered bytes during alignment over all subtasks. */
+	private final long alignmentBuffered;
 
 	/** The latest acknowledged subtask stats. */
 	private final SubtaskStateStats latestAcknowledgedSubtask;
@@ -64,8 +63,7 @@ public class CompletedCheckpointStats extends AbstractCheckpointStats {
 	 * @param taskStats Task stats for each involved operator.
 	 * @param numAcknowledgedSubtasks Number of acknowledged subtasks.
 	 * @param stateSize Total checkpoint state size over all subtasks.
-	 * @param processedData Processed data during the checkpoint.
-	 * @param persistedData Persisted data during the checkpoint.
+	 * @param alignmentBuffered Buffered bytes during alignment over all subtasks.
 	 * @param latestAcknowledgedSubtask The latest acknowledged subtask stats.
 	 * @param externalPointer Optional external path if persisted externally.
 	 */
@@ -77,8 +75,7 @@ public class CompletedCheckpointStats extends AbstractCheckpointStats {
 			Map<JobVertexID, TaskStateStats> taskStats,
 			int numAcknowledgedSubtasks,
 			long stateSize,
-			long processedData,
-			long persistedData,
+			long alignmentBuffered,
 			SubtaskStateStats latestAcknowledgedSubtask,
 			String externalPointer) {
 
@@ -86,8 +83,7 @@ public class CompletedCheckpointStats extends AbstractCheckpointStats {
 		checkArgument(numAcknowledgedSubtasks == totalSubtaskCount, "Did not acknowledge all subtasks.");
 		checkArgument(stateSize >= 0, "Negative state size");
 		this.stateSize = stateSize;
-		this.processedData = processedData;
-		this.persistedData = persistedData;
+		this.alignmentBuffered = alignmentBuffered;
 		this.latestAcknowledgedSubtask = checkNotNull(latestAcknowledgedSubtask);
 		this.externalPointer = externalPointer;
 	}
@@ -108,13 +104,8 @@ public class CompletedCheckpointStats extends AbstractCheckpointStats {
 	}
 
 	@Override
-	public long getProcessedData() {
-		return processedData;
-	}
-
-	@Override
-	public long getPersistedData() {
-		return persistedData;
+	public long getAlignmentBuffered() {
+		return alignmentBuffered;
 	}
 
 	@Override

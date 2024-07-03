@@ -70,7 +70,7 @@ public class StreamSink<IN> extends AbstractUdfStreamOperator<Object, SinkFuncti
 		this.currentWatermark = mark.getTimestamp();
 	}
 
-	private class SimpleContext<IN> implements SinkFunction.Context {
+	private class SimpleContext<IN> implements SinkFunction.Context<IN> {
 
 		private StreamRecord<IN> element;
 
@@ -82,7 +82,7 @@ public class StreamSink<IN> extends AbstractUdfStreamOperator<Object, SinkFuncti
 
 		@Override
 		public long currentProcessingTime() {
-			return processingTimeService.getCurrentProcessingTime();
+			return processingTimeService.getCurrentProcessingTimeCausal();
 		}
 
 		@Override

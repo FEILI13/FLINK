@@ -19,13 +19,20 @@
 package org.apache.flink.runtime.io.network.netty;
 
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.runtime.causal.log.CausalLogManager;
+import org.apache.flink.runtime.causal.log.job.CausalLogID;
 import org.apache.flink.runtime.io.network.NetworkSequenceViewReader;
+import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
+import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.netty.NettyMessage.ErrorResponse;
+import org.apache.flink.runtime.io.network.netty.exception.RemoteTransportException;
 import org.apache.flink.runtime.io.network.partition.ProducerFailedException;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel.BufferAndAvailability;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 
+import org.apache.flink.shaded.guava18.com.google.common.collect.Sets;
 import org.apache.flink.shaded.netty4.io.netty.channel.Channel;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelFuture;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelFutureListener;
@@ -38,10 +45,11 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
+import java.net.SocketAddress;
 import java.util.ArrayDeque;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.function.Consumer;
 
 import static org.apache.flink.runtime.io.network.netty.NettyMessage.BufferResponse;
 
@@ -61,9 +69,21 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 	/** All the readers created for the consumers' partition requests. */
 	private final ConcurrentMap<InputChannelID, NetworkSequenceViewReader> allReaders = new ConcurrentHashMap<>();
 
+	private final Set<InputChannelID> released = Sets.newHashSet();
+
+	private final CausalLogManager causalLogManager;
+
 	private boolean fatalError;
 
 	private ChannelHandlerContext ctx;
+
+	public PartitionRequestQueue(){
+		this(null);
+	}
+
+	public PartitionRequestQueue(CausalLogManager causalLogManager){
+		this.causalLogManager = causalLogManager;
+	}
 
 	@Override
 	public void channelRegistered(final ChannelHandlerContext ctx) throws Exception {
@@ -124,36 +144,38 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 	public void notifyReaderCreated(final NetworkSequenceViewReader reader) {
 		allReaders.put(reader.getReceiverId(), reader);
 	}
+	public void notifyReaderCreated(final NetworkSequenceViewReader reader, ResultPartitionID partitionId, int queueIndex) {
+		allReaders.put(reader.getReceiverId(), reader);
+		CausalLogID consumerSpecificCausalLog = new CausalLogID(reader.getVertexID(),
+			partitionId.getPartitionId().getLowerPart(), partitionId.getPartitionId().getUpperPart(), (byte) queueIndex);
+		causalLogManager.registerNewDownstreamConsumer(reader.getReceiverId(), reader.getJobID(), consumerSpecificCausalLog);
+	}
 
 	public void cancel(InputChannelID receiverId) {
 		ctx.pipeline().fireUserEventTriggered(receiverId);
 	}
 
-	public void close() throws IOException {
+	public void close() {
 		if (ctx != null) {
 			ctx.channel().close();
 		}
-
-		releaseAllResources();
 	}
 
 	/**
-	 * Adds unannounced credits from the consumer or resumes data consumption after an exactly-once
-	 * checkpoint and enqueues the corresponding reader for this consumer (if not enqueued yet).
+	 * Adds unannounced credits from the consumer and enqueues the corresponding reader for this
+	 * consumer (if not enqueued yet).
 	 *
 	 * @param receiverId The input channel id to identify the consumer.
-	 * @param operation The operation to be performed (add credit or resume data consumption).
+	 * @param credit The unannounced credits of the consumer.
 	 */
-	void addCreditOrResumeConsumption(
-			InputChannelID receiverId,
-			Consumer<NetworkSequenceViewReader> operation) throws Exception {
+	void addCredit(InputChannelID receiverId, int credit) throws Exception {
 		if (fatalError) {
 			return;
 		}
 
 		NetworkSequenceViewReader reader = allReaders.get(receiverId);
 		if (reader != null) {
-			operation.accept(reader);
+			reader.addCredit(credit);
 
 			enqueueAvailableReader(reader);
 		} else {
@@ -171,15 +193,25 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 		} else if (msg.getClass() == InputChannelID.class) {
 			// Release partition view that get a cancel request.
 			InputChannelID toCancel = (InputChannelID) msg;
-
-			// remove reader from queue of available readers
-			availableReaders.removeIf(reader -> reader.getReceiverId().equals(toCancel));
-
-			// remove reader from queue of all readers and release its resource
-			final NetworkSequenceViewReader toRelease = allReaders.remove(toCancel);
-			if (toRelease != null) {
-				releaseViewReader(toRelease);
+			if (released.contains(toCancel)) {
+				return;
 			}
+
+			// Cancel the request for the input channel
+			int size = availableReaders.size();
+			for (int i = 0; i < size; i++) {
+				NetworkSequenceViewReader reader = pollAvailableReader();
+				if (reader.getReceiverId().equals(toCancel)) {
+					LOG.warn("Reader {} received cancel request from channel {}. Remove it from readers.", reader, toCancel);
+					reader.releaseAllResources();
+					markAsReleased(reader.getReceiverId());
+				} else {
+					registerAvailableReader(reader);
+				}
+			}
+
+			allReaders.remove(toCancel);
+			causalLogManager.unregisterDownstreamConsumer(toCancel);
 		} else {
 			ctx.fireUserEventTriggered(msg);
 		}
@@ -192,6 +224,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 	private void writeAndFlushNextMessageIfPossible(final Channel channel) throws IOException {
 		if (fatalError || !channel.isWritable()) {
+			LOG.debug("Fatal error ({}) or channel not writable.", fatalError);
 			return;
 		}
 
@@ -203,6 +236,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 		try {
 			while (true) {
 				NetworkSequenceViewReader reader = pollAvailableReader();
+				LOG.debug("writeAndFlushNextMessageIfPossible(): Reader {} is available.", reader);
 
 				// No queue with available data. We allow this here, because
 				// of the write callbacks that are executed after each write.
@@ -215,6 +249,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 					if (!reader.isReleased()) {
 						continue;
 					}
+					markAsReleased(reader.getReceiverId());
 
 					Throwable cause = reader.getFailureCause();
 					if (cause != null) {
@@ -233,12 +268,22 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 					BufferResponse msg = new BufferResponse(
 						next.buffer(),
-						next.getSequenceNumber(),
+						reader.getSequenceNumber(),
 						reader.getReceiverId(),
-						next.buffersInBacklog());
+						next.buffersInBacklog(),
+						next.getEpochID());
+
+					if (isEndOfPartitionEvent(next.buffer())) {
+						LOG.warn("Reader {} received end of partition event.", reader);
+						reader.notifySubpartitionConsumed();
+						reader.releaseAllResources();
+
+						markAsReleased(reader.getReceiverId());
+					}
 
 					// Write and flush and wait until this is done before
 					// trying to continue with the next buffer.
+					LOG.debug("writeAndFlushNextMessageIfPossible(): Send buffer {}.", next.buffer());
 					channel.writeAndFlush(msg).addListener(writeListener);
 
 					return;
@@ -248,7 +293,6 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 			if (next != null) {
 				next.buffer().recycleBuffer();
 			}
-
 			throw new IOException(t.getMessage(), t);
 		}
 	}
@@ -267,8 +311,17 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 		return reader;
 	}
 
+	private boolean isEndOfPartitionEvent(Buffer buffer) throws IOException {
+		return EventSerializer.isEvent(buffer, EndOfPartitionEvent.class);
+	}
+
 	@Override
 	public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+		final SocketAddress remoteAddr = ctx.channel().remoteAddress();
+		RemoteTransportException cause = new RemoteTransportException(
+				"In producer side: Connection unexpectedly closed by remote task manager '" + remoteAddr + "'. "
+					+ "This might indicate that the remote task manager was lost.", remoteAddr);
+		LOG.error("Channel {} inactive. Release all resources.", ctx.channel(), cause);
 		releaseAllResources();
 
 		ctx.fireChannelInactive();
@@ -282,27 +335,42 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 	private void handleException(Channel channel, Throwable cause) throws IOException {
 		LOG.error("Encountered error while consuming partitions", cause);
 
-		fatalError = true;
-		releaseAllResources();
+		releaseAllResources(cause);
 
 		if (channel.isActive()) {
 			channel.writeAndFlush(new ErrorResponse(cause)).addListener(ChannelFutureListener.CLOSE);
 		}
 	}
 
-	private void releaseAllResources() throws IOException {
+	private void releaseAllResources(Throwable cause) throws IOException {
 		// note: this is only ever executed by one thread: the Netty IO thread!
+		LOG.info("Release resources of {} readers with cause {}.", allReaders.size(), cause);
 		for (NetworkSequenceViewReader reader : allReaders.values()) {
-			releaseViewReader(reader);
+			if (cause != null) {
+				LOG.info("Release reader {} because of {}).", reader, cause);
+				reader.releaseAllResources(cause);
+			} else {
+				LOG.debug("Release reader {} with no error.", reader, cause);
+				reader.releaseAllResources();
+			}
+			markAsReleased(reader.getReceiverId());
 		}
 
+		// This doesn't look right for StandbyTask failover strategy
+		// One idea is to store the channel with a reader on creation time (PartitionRequestServerHandler) so that we can kill only the reader related to a channel that errored. I'm not yet sure this makes sense.
 		availableReaders.clear();
 		allReaders.clear();
 	}
 
-	private void releaseViewReader(NetworkSequenceViewReader reader) throws IOException {
-		reader.setRegisteredAsAvailable(false);
-		reader.releaseAllResources();
+	private void releaseAllResources() throws IOException {
+		releaseAllResources(null);
+	}
+
+	/**
+	 * Marks a receiver as released.
+	 */
+	private void markAsReleased(InputChannelID receiverId) {
+		released.add(receiverId);
 	}
 
 	// This listener is called after an element of the current nonEmptyReader has been

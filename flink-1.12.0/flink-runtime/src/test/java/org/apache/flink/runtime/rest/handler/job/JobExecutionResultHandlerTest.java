@@ -19,10 +19,10 @@
 package org.apache.flink.runtime.rest.handler.job;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.executiongraph.ArchivedExecutionGraph;
+import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobmaster.JobResult;
 import org.apache.flink.runtime.messages.FlinkJobNotFoundException;
 import org.apache.flink.runtime.rest.handler.HandlerRequest;
@@ -65,9 +65,10 @@ public class JobExecutionResultHandlerTest extends TestLogger {
 
 	@Before
 	public void setUp() throws Exception {
-		final TestingRestfulGateway testingRestfulGateway = new TestingRestfulGateway.Builder().build();
+		final TestingRestfulGateway testingRestfulGateway = TestingRestfulGateway.newBuilder().build();
 
 		jobExecutionResultHandler = new JobExecutionResultHandler(
+			CompletableFuture.completedFuture("localhost:12345"),
 			() -> CompletableFuture.completedFuture(testingRestfulGateway),
 			Time.seconds(10),
 			Collections.emptyMap());
@@ -81,7 +82,7 @@ public class JobExecutionResultHandlerTest extends TestLogger {
 
 	@Test
 	public void testResultInProgress() throws Exception {
-		final TestingRestfulGateway testingRestfulGateway = new TestingRestfulGateway.Builder()
+		final TestingRestfulGateway testingRestfulGateway = TestingRestfulGateway.newBuilder()
 			.setRequestJobStatusFunction(
 				jobId -> CompletableFuture.completedFuture(JobStatus.RUNNING))
 			.build();
@@ -103,7 +104,7 @@ public class JobExecutionResultHandlerTest extends TestLogger {
 			.setState(jobStatus)
 			.build();
 
-		final TestingRestfulGateway testingRestfulGateway = new TestingRestfulGateway.Builder()
+		final TestingRestfulGateway testingRestfulGateway = TestingRestfulGateway.newBuilder()
 			.setRequestJobStatusFunction(
 				jobId -> {
 					assertThat(jobId, equalTo(TEST_JOB_ID));
@@ -129,7 +130,7 @@ public class JobExecutionResultHandlerTest extends TestLogger {
 
 	@Test
 	public void testPropagateFlinkJobNotFoundExceptionAsRestHandlerException() throws Exception {
-		final TestingRestfulGateway testingRestfulGateway = new TestingRestfulGateway.Builder()
+		final TestingRestfulGateway testingRestfulGateway = TestingRestfulGateway.newBuilder()
 			.setRequestJobStatusFunction(
 				jobId -> FutureUtils.completedExceptionally(new FlinkJobNotFoundException(jobId))
 			)

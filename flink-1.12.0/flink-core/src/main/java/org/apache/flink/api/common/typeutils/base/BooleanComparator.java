@@ -60,7 +60,13 @@ public final class BooleanComparator extends BasicTypeComparator<Boolean> {
 
 	@Override
 	public void putNormalizedKey(Boolean value, MemorySegment target, int offset, int numBytes) {
-		NormalizedKeyUtil.putBooleanNormalizedKey(value, target, offset, numBytes);
+		if (numBytes > 0) {
+			target.put(offset, (byte) (value.booleanValue() ? 1 : 0));
+			
+			for (offset = offset + 1; numBytes > 1; numBytes--) {
+				target.put(offset++, (byte) 0);
+			}
+		}
 	}
 
 	@Override

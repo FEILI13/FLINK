@@ -18,7 +18,6 @@
 package org.apache.flink.streaming.connectors.rabbitmq;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.api.common.serialization.RuntimeContextInitializationContextAdapters;
 import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
@@ -122,7 +121,7 @@ public class RMQSink<IN> extends RichSinkFunction<IN> {
 	 */
 	protected void setupQueue() throws IOException {
 		if (queueName != null) {
-			Util.declareQueueDefaults(channel, queueName);
+			channel.queueDeclare(queueName, false, false, false, null);
 		}
 	}
 
@@ -138,31 +137,11 @@ public class RMQSink<IN> extends RichSinkFunction<IN> {
 		this.logFailuresOnly = logFailuresOnly;
 	}
 
-	/**
-	 * Initializes the connection to RMQ with a default connection factory. The user may override
-	 * this method to setup and configure their own {@link ConnectionFactory}.
-	 */
-	protected ConnectionFactory setupConnectionFactory() throws Exception {
-		return rmqConnectionConfig.getConnectionFactory();
-	}
-
-	/**
-	 * Initializes the connection to RMQ using the default connection factory from {@link #setupConnectionFactory()}.
-	 * The user may override this method to setup and configure their own {@link Connection}.
-	 */
-	protected Connection setupConnection() throws Exception {
-		return setupConnectionFactory().newConnection();
-	}
-
 	@Override
 	public void open(Configuration config) throws Exception {
-		schema.open(RuntimeContextInitializationContextAdapters.serializationAdapter(
-				getRuntimeContext(),
-				metricGroup -> metricGroup.addGroup("user")
-		));
-
+		ConnectionFactory factory = rmqConnectionConfig.getConnectionFactory();
 		try {
-			connection = setupConnection();
+			connection = factory.newConnection();
 			channel = connection.createChannel();
 			if (channel == null) {
 				throw new RuntimeException("None of RabbitMQ channels are available");

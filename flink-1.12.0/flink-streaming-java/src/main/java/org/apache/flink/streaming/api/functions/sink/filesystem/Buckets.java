@@ -21,7 +21,9 @@ package org.apache.flink.streaming.api.functions.sink.filesystem;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.state.ListState;
+import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
+import org.apache.flink.core.fs.RecoverableWriter;
 import org.apache.flink.core.io.SimpleVersionedSerialization;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.util.Preconditions;
@@ -59,7 +61,7 @@ public class Buckets<IN, BucketID> {
 
 	private final BucketAssigner<IN, BucketID> bucketAssigner;
 
-	private final BucketWriter<IN, BucketID> bucketWriter;
+	private final PartFileWriter.PartFileFactory<IN, BucketID> partFileWriterFactory;
 
 	private final RollingPolicy<IN, BucketID> rollingPolicy;
 
@@ -73,13 +75,7 @@ public class Buckets<IN, BucketID> {
 
 	private long maxPartCounter;
 
-	private final OutputFileConfig outputFileConfig;
-
-	@Nullable
-	private BucketLifeCycleListener<IN, BucketID> bucketLifeCycleListener;
-
-	@Nullable
-	private FileLifeCycleListener<BucketID> fileLifeCycleListener;
+	private final RecoverableWriter fsWriter;
 
 	// --------------------------- State Related Fields -----------------------------
 
@@ -91,43 +87,41 @@ public class Buckets<IN, BucketID> {
 	 * @param basePath The base path for our buckets.
 	 * @param bucketAssigner The {@link BucketAssigner} provided by the user.
 	 * @param bucketFactory The {@link BucketFactory} to be used to create buckets.
-	 * @param bucketWriter The {@link BucketWriter} to be used when writing data.
+	 * @param partFileWriterFactory The {@link PartFileWriter.PartFileFactory} to be used when writing data.
 	 * @param rollingPolicy The {@link RollingPolicy} as specified by the user.
 	 */
-	public Buckets(
+	Buckets(
 			final Path basePath,
 			final BucketAssigner<IN, BucketID> bucketAssigner,
 			final BucketFactory<IN, BucketID> bucketFactory,
-			final BucketWriter<IN, BucketID> bucketWriter,
+			final PartFileWriter.PartFileFactory<IN, BucketID> partFileWriterFactory,
 			final RollingPolicy<IN, BucketID> rollingPolicy,
-			final int subtaskIndex,
-			final OutputFileConfig outputFileConfig) {
+			final int subtaskIndex) throws IOException {
 
 		this.basePath = Preconditions.checkNotNull(basePath);
 		this.bucketAssigner = Preconditions.checkNotNull(bucketAssigner);
 		this.bucketFactory = Preconditions.checkNotNull(bucketFactory);
-		this.bucketWriter = Preconditions.checkNotNull(bucketWriter);
+		this.partFileWriterFactory = Preconditions.checkNotNull(partFileWriterFactory);
 		this.rollingPolicy = Preconditions.checkNotNull(rollingPolicy);
 		this.subtaskIndex = subtaskIndex;
-
-		this.outputFileConfig = Preconditions.checkNotNull(outputFileConfig);
 
 		this.activeBuckets = new HashMap<>();
 		this.bucketerContext = new Buckets.BucketerContext();
 
+		try {
+			this.fsWriter = FileSystem.get(basePath.toUri()).createRecoverableWriter();
+		} catch (IOException e) {
+			LOG.error("Unable to create filesystem for path: {}", basePath);
+			throw e;
+		}
+
 		this.bucketStateSerializer = new BucketStateSerializer<>(
-			bucketWriter.getProperties().getInProgressFileRecoverableSerializer(),
-			bucketWriter.getProperties().getPendingFileRecoverableSerializer(),
-			bucketAssigner.getSerializer());
+				fsWriter.getResumeRecoverableSerializer(),
+				fsWriter.getCommitRecoverableSerializer(),
+				bucketAssigner.getSerializer()
+		);
+
 		this.maxPartCounter = 0L;
-	}
-
-	public void setBucketLifeCycleListener(BucketLifeCycleListener<IN, BucketID> bucketLifeCycleListener) {
-		this.bucketLifeCycleListener = Preconditions.checkNotNull(bucketLifeCycleListener);
-	}
-
-	public void setFileLifeCycleListener(FileLifeCycleListener<BucketID> fileLifeCycleListener) {
-		this.fileLifeCycleListener = Preconditions.checkNotNull(fileLifeCycleListener);
 	}
 
 	/**
@@ -146,7 +140,7 @@ public class Buckets<IN, BucketID> {
 	 * @throws Exception if anything goes wrong during retrieving the state or restoring/committing of any
 	 * in-progress/pending part files
 	 */
-	public void initializeState(final ListState<byte[]> bucketStates, final ListState<Long> partCounterState) throws Exception {
+	void initializeState(final ListState<byte[]> bucketStates, final ListState<Long> partCounterState) throws Exception {
 
 		initializePartCounter(partCounterState);
 
@@ -181,13 +175,12 @@ public class Buckets<IN, BucketID> {
 
 		final Bucket<IN, BucketID> restoredBucket = bucketFactory
 				.restoreBucket(
+						fsWriter,
 						subtaskIndex,
 						maxPartCounter,
-						bucketWriter,
+						partFileWriterFactory,
 						rollingPolicy,
-						recoveredState,
-						fileLifeCycleListener,
-						outputFileConfig
+						recoveredState
 				);
 
 		updateActiveBucketId(bucketId, restoredBucket);
@@ -195,7 +188,6 @@ public class Buckets<IN, BucketID> {
 
 	private void updateActiveBucketId(final BucketID bucketId, final Bucket<IN, BucketID> restoredBucket) throws IOException {
 		if (!restoredBucket.isActive()) {
-			notifyBucketInactive(restoredBucket);
 			return;
 		}
 
@@ -207,7 +199,7 @@ public class Buckets<IN, BucketID> {
 		}
 	}
 
-	public void commitUpToCheckpoint(final long checkpointId) throws IOException {
+	void commitUpToCheckpoint(final long checkpointId) throws IOException {
 		final Iterator<Map.Entry<BucketID, Bucket<IN, BucketID>>> activeBucketIt =
 				activeBuckets.entrySet().iterator();
 
@@ -221,18 +213,17 @@ public class Buckets<IN, BucketID> {
 				// We've dealt with all the pending files and the writer for this bucket is not currently open.
 				// Therefore this bucket is currently inactive and we can remove it from our state.
 				activeBucketIt.remove();
-				notifyBucketInactive(bucket);
 			}
 		}
 	}
 
-	public void snapshotState(
+	void snapshotState(
 			final long checkpointId,
 			final ListState<byte[]> bucketStatesContainer,
 			final ListState<Long> partCounterStateContainer) throws Exception {
 
 		Preconditions.checkState(
-			bucketWriter != null && bucketStateSerializer != null,
+				fsWriter != null && bucketStateSerializer != null,
 				"sink has not been initialized");
 
 		LOG.info("Subtask {} checkpointing for checkpoint with id={} (max part counter={}).",
@@ -263,26 +254,13 @@ public class Buckets<IN, BucketID> {
 		}
 	}
 
-	@VisibleForTesting
-	public Bucket<IN, BucketID> onElement(
-			final IN value,
-			final SinkFunction.Context context) throws Exception {
-		return onElement(
-				value,
-				context.currentProcessingTime(),
-				context.timestamp(),
-				context.currentWatermark());
-	}
+	Bucket<IN, BucketID> onElement(final IN value, final SinkFunction.Context context) throws Exception {
+		final long currentProcessingTime = context.currentProcessingTime();
 
-	public Bucket<IN, BucketID> onElement(
-			final IN value,
-			final long currentProcessingTime,
-			@Nullable final Long elementTimestamp,
-			final long currentWatermark) throws Exception {
 		// setting the values in the bucketer context
 		bucketerContext.update(
-				elementTimestamp,
-				currentWatermark,
+				context.timestamp(),
+				context.currentWatermark(),
 				currentProcessingTime);
 
 		final BucketID bucketId = bucketAssigner.getBucketId(value, bucketerContext);
@@ -302,27 +280,25 @@ public class Buckets<IN, BucketID> {
 		if (bucket == null) {
 			final Path bucketPath = assembleBucketPath(bucketId);
 			bucket = bucketFactory.getNewBucket(
+					fsWriter,
 					subtaskIndex,
 					bucketId,
 					bucketPath,
 					maxPartCounter,
-					bucketWriter,
-					rollingPolicy,
-					fileLifeCycleListener,
-					outputFileConfig);
+					partFileWriterFactory,
+					rollingPolicy);
 			activeBuckets.put(bucketId, bucket);
-			notifyBucketCreate(bucket);
 		}
 		return bucket;
 	}
 
-	public void onProcessingTime(long timestamp) throws Exception {
+	void onProcessingTime(long timestamp) throws Exception {
 		for (Bucket<IN, BucketID> bucket : activeBuckets.values()) {
 			bucket.onProcessingTime(timestamp);
 		}
 	}
 
-	public void close() {
+	void close() {
 		if (activeBuckets != null) {
 			activeBuckets.values().forEach(Bucket::disposePartFile);
 		}
@@ -334,18 +310,6 @@ public class Buckets<IN, BucketID> {
 			return basePath;
 		}
 		return new Path(basePath, child);
-	}
-
-	private void notifyBucketCreate(Bucket<IN, BucketID> bucket) {
-		if (bucketLifeCycleListener != null) {
-			bucketLifeCycleListener.bucketCreated(bucket);
-		}
-	}
-
-	private void notifyBucketInactive(Bucket<IN, BucketID> bucket) {
-		if (bucketLifeCycleListener != null) {
-			bucketLifeCycleListener.bucketInactive(bucket);
-		}
 	}
 
 	/**

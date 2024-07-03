@@ -19,11 +19,17 @@
 package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.runtime.checkpoint.channel.ResultSubpartitionInfo;
+import org.apache.flink.api.common.JobID;
+import org.apache.flink.runtime.causal.EpochStartListener;
+import org.apache.flink.runtime.causal.EpochTracker;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
+import org.apache.flink.runtime.state.CheckpointListener;
+
+import javax.annotation.concurrent.GuardedBy;
 
 import java.io.IOException;
+import java.util.ArrayDeque;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -32,45 +38,59 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  */
 public abstract class ResultSubpartition {
 
-	/** The info of the subpartition to identify it globally within a task. */
-	protected final ResultSubpartitionInfo subpartitionInfo;
+	/** The index of the subpartition at the parent partition. */
+	protected final int index;
 
 	/** The parent partition this subpartition belongs to. */
 	protected final ResultPartition parent;
 
+	/** All buffers of this subpartition. Access to the buffers is synchronized on this object. */
+	protected final ArrayDeque<BufferConsumer> buffers = new ArrayDeque<>();
+
+	/** The number of non-event buffers currently in this subpartition. */
+	@GuardedBy("buffers")
+	private int buffersInBacklog;
+
 	// - Statistics ----------------------------------------------------------
 
+	/** The total number of buffers (both data and event buffers). */
+	private long totalNumberOfBuffers;
+
+	/** The total number of bytes (both data and event buffers). */
+	private long totalNumberOfBytes;
+
 	public ResultSubpartition(int index, ResultPartition parent) {
+		this.index = index;
 		this.parent = parent;
-		this.subpartitionInfo = new ResultSubpartitionInfo(parent.getPartitionIndex(), index);
 	}
 
-	public ResultSubpartitionInfo getSubpartitionInfo() {
-		return subpartitionInfo;
+	protected void updateStatistics(BufferConsumer buffer) {
+		totalNumberOfBuffers++;
 	}
 
-	/**
-	 * Gets the total numbers of buffers (data buffers plus events).
-	 */
-	protected abstract long getTotalNumberOfBuffers();
+	protected void updateStatistics(Buffer buffer) {
+		totalNumberOfBytes += buffer.getSize();
+	}
 
-	protected abstract long getTotalNumberOfBytes();
+	protected long getTotalNumberOfBuffers() {
+		return totalNumberOfBuffers;
+	}
 
-	public int getSubPartitionIndex() {
-		return subpartitionInfo.getSubPartitionIdx();
+	protected long getTotalNumberOfBytes() {
+		return totalNumberOfBytes;
 	}
 
 	/**
 	 * Notifies the parent partition about a consumed {@link ResultSubpartitionView}.
 	 */
 	protected void onConsumedSubpartition() {
-		parent.onConsumedSubpartition(getSubPartitionIndex());
+		parent.onConsumedSubpartition(index);
 	}
 
-	@VisibleForTesting
-	public final boolean add(BufferConsumer bufferConsumer) throws IOException {
-		return add(bufferConsumer, 0);
+	protected Throwable getFailureCause() {
+		return parent.getFailureCause();
 	}
+
 
 	/**
 	 * Adds the given buffer.
@@ -79,19 +99,15 @@ public abstract class ResultSubpartition {
 	 * implementation.
 	 *
 	 * <p><strong>IMPORTANT:</strong> Before adding new {@link BufferConsumer} previously added must be in finished
-	 * state. Because of the performance reasons, this is only enforced during the data reading. Priority events can be
-	 * added while the previous buffer consumer is still open, in which case the open buffer consumer is overtaken.
+	 * state. Because of the performance reasons, this is only enforced during the data reading.
 	 *
 	 * @param bufferConsumer
 	 * 		the buffer to add (transferring ownership to this writer)
-	 * @param partialRecordLength
-	 * 		the length of bytes to skip in order to start with a complete record, from position index 0
-	 *		of the underlying {@cite MemorySegment}.
 	 * @return true if operation succeeded and bufferConsumer was enqueued for consumption.
 	 * @throws IOException
 	 * 		thrown in case of errors while adding the buffer
 	 */
-	public abstract boolean add(BufferConsumer bufferConsumer, int partialRecordLength) throws IOException;
+	public abstract boolean add(BufferConsumer bufferConsumer) throws IOException;
 
 	public abstract void flush();
 
@@ -101,7 +117,10 @@ public abstract class ResultSubpartition {
 
 	public abstract ResultSubpartitionView createReadView(BufferAvailabilityListener availabilityListener) throws IOException;
 
+	abstract int releaseMemory() throws IOException;
+
 	public abstract boolean isReleased();
+
 
 	/**
 	 * Gets the number of non-event buffers in this subpartition.
@@ -110,7 +129,9 @@ public abstract class ResultSubpartition {
 	 * scenarios since it does not make any concurrency guarantees.
 	 */
 	@VisibleForTesting
-	abstract int getBuffersInBacklog();
+	public int getBuffersInBacklog() {
+		return buffersInBacklog;
+	}
 
 	/**
 	 * Makes a best effort to get the current size of the queue.
@@ -119,59 +140,103 @@ public abstract class ResultSubpartition {
 	 */
 	public abstract int unsynchronizedGetNumberOfQueuedBuffers();
 
-	// ------------------------------------------------------------------------
+	/**
+	 * Decreases the number of non-event buffers by one after fetching a non-event
+	 * buffer from this subpartition (for access by the subpartition views).
+	 *
+	 * @return backlog after the operation
+	 */
+	public int decreaseBuffersInBacklog(Buffer buffer) {
+		synchronized (buffers) {
+			return decreaseBuffersInBacklogUnsafe(buffer != null && buffer.isBuffer());
+		}
+	}
+
+	protected int resetBuffersInBacklog() {
+		assert Thread.holdsLock(buffers);
+		buffersInBacklog = 0;
+		return buffersInBacklog;
+	}
+
+	protected int decreaseBuffersInBacklogUnsafe(boolean isBuffer) {
+		assert Thread.holdsLock(buffers);
+		if (isBuffer) {
+			buffersInBacklog--;
+		}
+		return buffersInBacklog;
+	}
+
+	/**
+	 * Increases the number of non-event buffers by one after adding a non-event
+	 * buffer into this subpartition.
+	 */
+	protected void increaseBuffersInBacklog(BufferConsumer buffer) {
+		assert Thread.holdsLock(buffers);
+
+		if (buffer != null && buffer.isBuffer()) {
+			buffersInBacklog++;
+		}
+	}
+
+    public JobID getJobID() {
+		return this.parent.getJobId();
+    }
+
+	public ResultPartition getParent() {
+		return parent;
+	}
+
+    public short getVertexID(){
+		return -1;
+	}
+
+	public int getIndex(){
+		return index;
+	}
+
+    // ------------------------------------------------------------------------
 
 	/**
 	 * A combination of a {@link Buffer} and the backlog length indicating
 	 * how many non-event buffers are available in the subpartition.
 	 */
 	public static final class BufferAndBacklog {
-		private final Buffer buffer;
-		private final int buffersInBacklog;
-		private final Buffer.DataType nextDataType;
-		private final int sequenceNumber;
 
-		public BufferAndBacklog(Buffer buffer, int buffersInBacklog, Buffer.DataType nextDataType, int sequenceNumber) {
+		private final Buffer buffer;
+		private final boolean isMoreAvailable;
+		private final int buffersInBacklog;
+		private final boolean nextBufferIsEvent;
+		private final long epochID;
+
+		public BufferAndBacklog(Buffer buffer, boolean isMoreAvailable, int buffersInBacklog, boolean nextBufferIsEvent) {
+			this(buffer,isMoreAvailable,buffersInBacklog,nextBufferIsEvent,-1L);
+		}
+		public BufferAndBacklog(Buffer buffer, boolean isMoreAvailable, int buffersInBacklog, boolean nextBufferIsEvent, long epochID) {
 			this.buffer = checkNotNull(buffer);
 			this.buffersInBacklog = buffersInBacklog;
-			this.nextDataType = checkNotNull(nextDataType);
-			this.sequenceNumber = sequenceNumber;
+			this.isMoreAvailable = isMoreAvailable;
+			this.nextBufferIsEvent = nextBufferIsEvent;
+			this.epochID = epochID;
 		}
 
 		public Buffer buffer() {
 			return buffer;
 		}
 
-		public boolean isDataAvailable() {
-			return nextDataType != Buffer.DataType.NONE;
+		public boolean isMoreAvailable() {
+			return isMoreAvailable;
 		}
 
 		public int buffersInBacklog() {
 			return buffersInBacklog;
 		}
 
-		public boolean isEventAvailable() {
-			return nextDataType.isEvent();
+		public boolean nextBufferIsEvent() {
+			return nextBufferIsEvent;
 		}
 
-		public Buffer.DataType getNextDataType() {
-			return nextDataType;
-		}
-
-		public int getSequenceNumber() {
-			return sequenceNumber;
-		}
-
-		public static BufferAndBacklog fromBufferAndLookahead(
-				Buffer current,
-				Buffer.DataType nextDataType,
-				int backlog,
-				int sequenceNumber) {
-			return new BufferAndBacklog(
-				current,
-				backlog,
-				nextDataType,
-				sequenceNumber);
+		public long getEpochID(){
+			return epochID;
 		}
 	}
 

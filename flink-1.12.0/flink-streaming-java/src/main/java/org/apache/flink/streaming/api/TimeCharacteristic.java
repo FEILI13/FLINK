@@ -19,26 +19,12 @@
 package org.apache.flink.streaming.api;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.api.common.ExecutionConfig;
-import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 
 /**
- * The time characteristic defines how the system determines time for time-dependent order and
- * operations that depend on time (such as time windows).
- *
- * @deprecated In Flink 1.12 the default stream time characteristic has been changed to {@link
- *        TimeCharacteristic#EventTime}, thus you don't need to call this method for enabling
- * 		event-time support anymore. Explicitly using processing-time windows and timers works in
- * 		event-time mode. If you need to disable watermarks, please use {@link
- *        ExecutionConfig#setAutoWatermarkInterval(long)}. If you are using {@link
- *        TimeCharacteristic#IngestionTime}, please manually set an appropriate {@link
- *        WatermarkStrategy}. If you are using generic "time window" operations (for example {@link
- *        org.apache.flink.streaming.api.datastream.KeyedStream#timeWindow(org.apache.flink.streaming.api.windowing.time.Time)}
- * 		that change behaviour based on the time characteristic, please use equivalent operations
- * 		that explicitly specify processing time or event time.
+ * The time characteristic defines how the system determines time for time-dependent
+ * order and operations that depend on time (such as time windows).
  */
 @PublicEvolving
-@Deprecated
 public enum TimeCharacteristic {
 
 	/**
@@ -61,7 +47,7 @@ public enum TimeCharacteristic {
 	 * does not affect windowing, but only the speed at which sources receive elements.
 	 *
 	 * <p>Ingestion time is often a good compromise between processing time and event time.
-	 * It does not need any special manual form of watermark generation, and events are typically
+	 * It does not need and special manual form of watermark generation, and events are typically
 	 * not too much out-or-order when they arrive at operators; in fact, out-of-orderness can
 	 * only be introduced by streaming shuffles or split/join/union operations. The fact that
 	 * elements are not very much out-of-order means that the latency increase is moderate,

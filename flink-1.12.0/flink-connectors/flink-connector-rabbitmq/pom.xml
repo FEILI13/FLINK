@@ -26,18 +26,18 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-connectors</artifactId>
-		<version>1.12.0</version>
+		<version>1.7-CLONOS-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 
 	<artifactId>flink-connector-rabbitmq_${scala.binary.version}</artifactId>
-	<name>Flink : Connectors : RabbitMQ</name>
+	<name>flink-connector-rabbitmq</name>
 
 	<packaging>jar</packaging>
 
 	<!-- Allow users to pass custom connector versions -->
 	<properties>
-		<rabbitmq.version>5.9.0</rabbitmq.version>
+		<rabbitmq.version>4.2.0</rabbitmq.version>
 	</properties>
 
 	<dependencies>

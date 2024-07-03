@@ -107,6 +107,11 @@ public final class StringValueSerializer extends TypeSerializerSingleton<StringV
 	}
 
 	@Override
+	public boolean canEqual(Object obj) {
+		return obj instanceof StringValueSerializer;
+	}
+
+	@Override
 	public TypeSerializerSnapshot<StringValue> snapshotConfiguration() {
 		return new StringValueSerializerSnapshot();
 	}
@@ -116,11 +121,10 @@ public final class StringValueSerializer extends TypeSerializerSingleton<StringV
 	/**
 	 * Serializer configuration snapshot for compatibility and format evolution.
 	 */
-	@SuppressWarnings("WeakerAccess")
 	public static final class StringValueSerializerSnapshot extends SimpleTypeSerializerSnapshot<StringValue> {
 
 		public StringValueSerializerSnapshot() {
-			super(() -> INSTANCE);
+			super(StringValueSerializer.class);
 		}
 	}
 }

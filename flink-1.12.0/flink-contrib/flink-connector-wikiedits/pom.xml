@@ -25,12 +25,12 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-contrib</artifactId>
-		<version>1.12.0</version>
+		<version>1.7-CLONOS-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 
 	<artifactId>flink-connector-wikiedits_${scala.binary.version}</artifactId>
-	<name>Flink : Contrib : Connectors : Wikiedits</name>
+	<name>flink-connector-wikiedits</name>
 
 	<packaging>jar</packaging>
 

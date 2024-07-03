@@ -109,6 +109,11 @@ public final class SqlTimestampSerializer extends TypeSerializerSingleton<Timest
 	}
 
 	@Override
+	public boolean canEqual(Object obj) {
+		return obj instanceof SqlTimestampSerializer;
+	}
+
+	@Override
 	public TypeSerializerSnapshot<Timestamp> snapshotConfiguration() {
 		return new SqlTimestampSerializerSnapshot();
 	}
@@ -118,11 +123,10 @@ public final class SqlTimestampSerializer extends TypeSerializerSingleton<Timest
 	/**
 	 * Serializer configuration snapshot for compatibility and format evolution.
 	 */
-	@SuppressWarnings("WeakerAccess")
 	public static final class SqlTimestampSerializerSnapshot extends SimpleTypeSerializerSnapshot<Timestamp> {
 
 		public SqlTimestampSerializerSnapshot() {
-			super(() -> INSTANCE);
+			super(SqlTimestampSerializer.class);
 		}
 	}
 }

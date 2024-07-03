@@ -20,7 +20,6 @@ package org.apache.flink.util;
 
 import org.junit.Test;
 
-import java.time.DayOfWeek;
 import java.util.Random;
 
 import static org.junit.Assert.assertArrayEquals;
@@ -40,26 +39,10 @@ public class StringUtilsTest extends TestLogger {
 	}
 
 	@Test
-	public void testArrayAwareToString() {
-		assertEquals(
-			"null",
-			StringUtils.arrayAwareToString(null));
-
-		assertEquals(
-			"MONDAY",
-			StringUtils.arrayAwareToString(DayOfWeek.MONDAY));
-
-		assertEquals(
-			"[1, 2, 3]",
-			StringUtils.arrayAwareToString(new int[]{1, 2, 3}));
-
-		assertEquals(
-			"[[4, 5, 6], null, []]",
-			StringUtils.arrayAwareToString(new byte[][]{{4, 5, 6}, null, {}}));
-
-		assertEquals(
-			"[[4, 5, 6], null, MONDAY]",
-			StringUtils.arrayAwareToString(new Object[]{new Integer[]{4, 5, 6}, null, DayOfWeek.MONDAY}));
+	public void testArrayToString() {
+		double[] array = {1.0};
+		String controlString = StringUtils.arrayToString(array);
+		assertEquals("[1.0]", controlString);
 	}
 
 	@Test

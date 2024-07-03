@@ -19,10 +19,9 @@
 package org.apache.flink.runtime.taskmanager;
 
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
-import org.apache.flink.runtime.taskexecutor.TaskExecutor;
 
 /**
- * Interface for the communication of the {@link Task} with the {@link TaskExecutor}.
+ * Interface for the communication of the {@link Task} with the {@link TaskManager}.
  */
 public interface TaskManagerActions {
 

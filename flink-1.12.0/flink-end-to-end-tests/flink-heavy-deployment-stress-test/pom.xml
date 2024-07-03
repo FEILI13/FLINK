@@ -25,12 +25,12 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-end-to-end-tests</artifactId>
-		<version>1.12.0</version>
+		<version>1.7-CLONOS-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 
 	<artifactId>flink-heavy-deployment-stress-test</artifactId>
-	<name>Flink : E2E Tests : Heavy deployment</name>
+	<name>flink-heavy-deployment-stress-test</name>
 	<packaging>jar</packaging>
 
 	<dependencies>
