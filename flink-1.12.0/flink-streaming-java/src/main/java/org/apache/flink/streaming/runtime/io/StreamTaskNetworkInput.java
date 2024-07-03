@@ -38,17 +38,22 @@ import org.apache.flink.runtime.plugable.NonReusingDeserializationDelegate;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamstatus.StatusWatermarkValve;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 
 import javax.annotation.Nonnull;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Deque;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -72,18 +77,21 @@ public final class StreamTaskNetworkInput<T> implements StreamTaskInput<T> {
 
 	private final DeserializationDelegate<StreamElement> deserializationDelegate;
 
-	private final RecordDeserializer<DeserializationDelegate<StreamElement>>[] recordDeserializers;
+	private RecordDeserializer<DeserializationDelegate<StreamElement>>[] recordDeserializers;
 
 	/** Valve that controls how watermarks and stream statuses are forwarded. */
 	private final StatusWatermarkValve statusWatermarkValve;
 
 	private final int inputIndex;
 
-	private final Map<InputChannelInfo, Integer> channelIndexes;
+	private Map<InputChannelInfo, Integer> channelIndexes;
 
 	private int lastChannel = UNSPECIFIED;
 
 	private RecordDeserializer<DeserializationDelegate<StreamElement>> currentRecordDeserializer = null;
+
+	private AtomicBoolean isBlocking = new AtomicBoolean(false);
+	private Deque<StreamRecord<T>> queue = new LinkedList<>();
 
 	@SuppressWarnings("unchecked")
 	public StreamTaskNetworkInput(
@@ -149,6 +157,9 @@ public final class StreamTaskNetworkInput<T> implements StreamTaskInput<T> {
 				}
 
 				if (result.isFullRecord()) {
+					if(isBlocking.get()){
+						return InputStatus.NOTHING_AVAILABLE;
+					}
 					processElement(deserializationDelegate.getInstance(), output);
 					return InputStatus.MORE_AVAILABLE;
 				}
@@ -176,6 +187,14 @@ public final class StreamTaskNetworkInput<T> implements StreamTaskInput<T> {
 
 	private void processElement(StreamElement recordOrMark, DataOutput<T> output) throws Exception {
 		if (recordOrMark.isRecord()){
+//			if(isBlocking.get()){
+//				queue.add(recordOrMark.asRecord());
+//			}else {
+//				while(!queue.isEmpty()){
+//					output.emitRecord(queue.poll());
+//				}
+//				output.emitRecord(recordOrMark.asRecord());
+//			}
 			output.emitRecord(recordOrMark.asRecord());
 		} else if (recordOrMark.isWatermark()) {
 			statusWatermarkValve.inputWatermark(recordOrMark.asWatermark(), lastChannel, output);
@@ -265,4 +284,28 @@ public final class StreamTaskNetworkInput<T> implements StreamTaskInput<T> {
 			recordDeserializers[channelIndex] = null;
 		}
 	}
+
+	@Override
+	public void block() {
+		isBlocking.set(true);
+	}
+
+	@Override
+	public void unBlock() {
+		isBlocking.set(false);
+	}
+
+    public void updateForRescale(IOManager ioManager) {
+		// TODO: only copy the newly added channels
+		this.channelIndexes = getChannelIndexes(checkpointedInputGate);
+
+		int previousNumChannels = this.recordDeserializers.length;
+		int newNumChannels = this.channelIndexes.values().size();
+		this.recordDeserializers = Arrays.copyOf(recordDeserializers, newNumChannels);
+		for (int i = previousNumChannels; i < newNumChannels; i++) {
+			recordDeserializers[i] = new SpillingAdaptiveSpanningRecordDeserializer<>(
+				ioManager.getSpillingDirectoriesPaths());
+		}
+		this.statusWatermarkValve.updateStatusWatermarkValve(newNumChannels);
+    }
 }

@@ -1,6 +1,15 @@
 .bundle/
 .jekyll-metadata
+<<<<<<< HEAD
 .rubydeps/
 content/
 ruby2/.bundle/
 ruby2/.rubydeps/
+=======
+.jekyll-cache/
+.rubydeps/
+content/
+content_*/
+ruby2/.bundle/
+ruby2/.rubydeps/
+>>>>>>> 42e2f9f6d6d280525727b00f05dfb935340a61a0

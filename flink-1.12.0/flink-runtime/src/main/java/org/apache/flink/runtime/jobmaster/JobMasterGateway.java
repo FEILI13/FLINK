@@ -18,6 +18,9 @@
 
 package org.apache.flink.runtime.jobmaster;
 
+import org.apache.flink.api.common.JobID;
+import org.apache.flink.api.common.JobStatus;
+import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.checkpoint.CheckpointCoordinatorGateway;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
@@ -35,6 +38,11 @@ import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobmaster.message.ClassloadingProps;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.webmonitor.JobDetails;
+import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
+import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
+import org.apache.flink.runtime.reConfig.utils.InstanceState;
+import org.apache.flink.runtime.reConfig.message.ReConfigStage;
 import org.apache.flink.runtime.registration.RegistrationResponse;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.OperatorBackPressureStatsResponse;
@@ -313,4 +321,42 @@ public interface JobMasterGateway extends
 	 * @param cause the reason that the allocation failed
 	 */
 	void notifyAllocationFailure(AllocationID allocationID, Exception cause);
+
+	/**
+	 * Update the aggregate and return the new value.
+	 *
+	 * @param aggregateName The name of the aggregate to update
+	 * @param aggregand The value to add to the aggregate
+	 * @param serializedAggregationFunction The function to apply to the current aggregate and aggregand to
+	 * obtain the new aggregate value, this should be of type {@link AggregateFunction}
+	 * @return The updated aggregate
+	 */
+	CompletableFuture<Object> updateGlobalAggregate(String aggregateName, Object aggregand, byte[] serializedAggregationFunction);
+
+	/**
+	 * Deliver a coordination request to a specified coordinator and return the response.
+	 *
+	 * @param operatorId identifying the coordinator to receive the request
+	 * @param serializedRequest serialized request to deliver
+	 * @return A future containing the response.
+	 *         The response will fail with a {@link org.apache.flink.util.FlinkException}
+	 *         if the task is not running, or no operator/coordinator exists for the given ID,
+	 *         or the coordinator cannot handle client events.
+	 */
+	CompletableFuture<CoordinationResponse> deliverCoordinationRequestToCoordinator(
+		OperatorID operatorId,
+		SerializedValue<CoordinationRequest> serializedRequest,
+		@RpcTimeout Time timeout);
+
+    default void acknowledgeReConfig(JobID jobID, ExecutionAttemptID executionAttemptID, String taskName, ReConfigStage stage){
+		throw new UnsupportedOperationException();
+	}
+
+	default void acknowledgeReConfig(JobID jobID, ExecutionAttemptID executionAttemptID, String taskName, InstanceState state){
+		throw new UnsupportedOperationException();
+	}
+
+	default void acknowledgeReConfig(JobID jobID, ExecutionAttemptID executionAttemptID, String taskName, ReConfigSignal signal){
+		throw new UnsupportedOperationException();
+	}
 }

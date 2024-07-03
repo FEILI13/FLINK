@@ -52,6 +52,11 @@ import org.apache.flink.streaming.runtime.tasks.StreamTask;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.flink.core.io.InputStatus;
+import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
+import org.apache.flink.runtime.io.AvailabilityProvider;
+import org.apache.flink.runtime.io.disk.iomanager.IOManager;
+import org.apache.flink.streaming.api.operators.InputSelectable;
 
 import java.io.IOException;
 
@@ -313,5 +318,17 @@ public class StreamInputProcessor<IN> {
 		recordDeserializers[absoluteChannelIndex].clear();
 		barrierHandler.unblockChannelIfBlocked(absoluteChannelIndex);
 
+	CompletableFuture<Void> prepareSnapshot(ChannelStateWriter channelStateWriter, long checkpointId) throws IOException;
+
+	default void block(){
+		throw new UnsupportedOperationException();
+	}
+
+	default void unBlock(){
+		throw new UnsupportedOperationException();
+	}
+
+    default void updateForRescale(IOManager ioManager){
+		throw new UnsupportedOperationException();
 	}
 }

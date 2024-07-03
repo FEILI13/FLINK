@@ -35,6 +35,8 @@ import org.apache.flink.runtime.deployment.InputChannelDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.PartialInputChannelDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionLocation;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
+import org.apache.flink.runtime.deployment.TaskDeploymentDescriptorFactory;
+import org.apache.flink.runtime.event.RuntimeEvent;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.instance.SlotSharingGroupId;
 import org.apache.flink.runtime.io.network.ConnectionID;
@@ -50,6 +52,17 @@ import org.apache.flink.runtime.jobmaster.SlotRequestId;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.StackTraceSampleResponse;
+import org.apache.flink.runtime.messages.TaskBackPressureResponse;
+import org.apache.flink.runtime.operators.coordination.OperatorEvent;
+import org.apache.flink.runtime.operators.coordination.TaskNotRunningException;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
+import org.apache.flink.runtime.reConfig.utils.RedisUtil;
+import org.apache.flink.runtime.shuffle.NettyShuffleMaster;
+import org.apache.flink.runtime.shuffle.PartitionDescriptor;
+import org.apache.flink.runtime.shuffle.ProducerDescriptor;
+import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
+import org.apache.flink.runtime.shuffle.ShuffleMaster;
+import org.apache.flink.runtime.taskexecutor.TaskExecutorOperatorEventGateway;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
@@ -65,6 +78,21 @@ import javax.annotation.Nullable;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static org.apache.flink.runtime.execution.ExecutionState.CANCELED;
@@ -1603,5 +1631,62 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	@Override
 	public ArchivedExecution archive() {
 		return new ArchivedExecution(this);
+	}
+
+	private void assertRunningInJobMasterMainThread() {
+		vertex.getExecutionGraph().assertRunningInJobMasterMainThread();
+	}
+
+    public void triggerReConfig(ReConfigSignal signal) {
+		final LogicalSlot slot = assignedResource;
+
+		if (slot != null) {
+			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+
+			taskManagerGateway.triggerReConfig(attemptId, getVertex().getJobId(), signal);
+		} else {
+			LOG.debug("The execution has no slot assigned. This indicates that the execution is no longer running.");
+		}
+    }
+
+	public Map<IntermediateResultPartitionID, ResultPartitionDeploymentDescriptor> getProducedPartitions() {
+		return producedPartitions;
+	}
+
+	public void deployForRescale() {
+		try{
+			final LogicalSlot slot = assignedResource;
+			final TaskDeploymentDescriptor deployment;//部署task所需的信息
+			final ComponentMainThreadExecutor jobMasterMainThreadExecutor = vertex.getExecutionGraph()
+				.getJobMasterMainThreadExecutor();
+
+			deployment = TaskDeploymentDescriptorFactory.fromExecutionVertex(vertex, attemptNumber).createDeploymentDescriptor(
+				slot.getAllocationId(),
+				slot.getPhysicalSlotNumber(),
+				taskRestore,
+				producedPartitions.values()
+			);
+
+			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+			CompletableFuture.supplyAsync(() -> taskManagerGateway.modifyForRescale(deployment, rpcTimeout), executor)
+				.thenCompose(Function.identity())
+				.whenCompleteAsync(
+					(ack, failure) -> {
+						if (failure != null) {
+							failure.printStackTrace();
+						} else {
+//							LOG.info("deploy for rescale completed " + this.vertex.getTaskName());
+//							RescaleCoordinator rescaleCoordinator = this.vertex.getExecutionGraph().getRescaleCoordinator();
+//							if (rescaleCoordinator != null) {
+//								rescaleCoordinator.notifyRescaleDeploymentCompleted(this.vertex);
+//							}
+						}
+					},
+					jobMasterMainThreadExecutor
+				);
+		}catch (IOException e){
+			System.out.println(this.vertex.getTaskName()+" ERROR!!!");
+			e.printStackTrace();
+		}
 	}
 }

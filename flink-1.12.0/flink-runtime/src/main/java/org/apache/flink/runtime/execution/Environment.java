@@ -39,6 +39,9 @@ import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
+import org.apache.flink.runtime.reConfig.utils.InstanceState;
+import org.apache.flink.runtime.reConfig.message.ReConfigStage;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.state.internal.InternalKvState;
 import org.apache.flink.runtime.taskmanager.Task;
@@ -226,4 +229,15 @@ public interface Environment {
 
 	CausalLogManager getCausalLogManager();
 
+    default void acknowledgeReConfig(JobID jobID, ExecutionAttemptID executionId, String taskNameWithSubtasks, ReConfigStage stage){
+		throw new UnsupportedOperationException();
+	}
+
+	default void acknowledgeReConfig(JobID jobID, ExecutionAttemptID executionId, String taskNameWithSubtasks, InstanceState state){
+		throw new UnsupportedOperationException();
+	}
+
+	default void acknowledgeReConfig(JobID jobID, ExecutionAttemptID executionId, String taskNameWithSubtasks, ReConfigSignal signal){
+		throw new UnsupportedOperationException();
+	}
 }

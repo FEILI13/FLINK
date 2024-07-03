@@ -134,4 +134,8 @@ public class ResultPartitionDeploymentDescriptor implements Serializable {
 		return new ResultPartitionDeploymentDescriptor(
 				resultId, partitionId, partitionType, numberOfSubpartitions, maxParallelism, lazyScheduling);
 	}
+
+    public void changeNumberOfSubpartitions(int delta) {
+		partitionDescriptor.changeNumberOfSubpartitions(delta);
+    }
 }

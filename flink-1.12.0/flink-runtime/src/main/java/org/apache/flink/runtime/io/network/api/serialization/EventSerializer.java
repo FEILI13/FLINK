@@ -272,7 +272,7 @@ public class EventSerializer {
 
 		MemorySegment data = MemorySegmentFactory.wrap(serializedEvent.array());
 
-		final Buffer buffer = new NetworkBuffer(data, FreeingBufferRecycler.INSTANCE, false);
+		final Buffer buffer = new NetworkBuffer(data, FreeingBufferRecycler.INSTANCE, getDataType(event, hasPriority));
 		buffer.setSize(serializedEvent.remaining());
 
 		return buffer;
@@ -284,6 +284,14 @@ public class EventSerializer {
 		MemorySegment data = MemorySegmentFactory.wrap(serializedEvent.array());
 
 		return new BufferConsumer(data, FreeingBufferRecycler.INSTANCE, false, epochID);
+	}
+
+	public static BufferConsumer toBufferConsumerReConfig(AbstractEvent event, boolean hasPriority) throws IOException {
+		final ByteBuffer serializedEvent = EventSerializer.toSerializedEvent(event);
+
+		MemorySegment data = MemorySegmentFactory.wrap(serializedEvent.array());
+
+		return new BufferConsumer(data, FreeingBufferRecycler.INSTANCE, Buffer.DataType.RECONFIG_BARRIER);
 	}
 
 	public static AbstractEvent fromBuffer(Buffer buffer, ClassLoader classLoader) throws IOException {

@@ -133,4 +133,13 @@ public class InputGateWithMetrics extends IndexedInputGate {
 		numBytesIn.inc(bufferOrEvent.getSize());
 		return bufferOrEvent;
 	}
+
+	public IndexedInputGate getInputGate(){
+		return inputGate;
+	}
+
+	@Override
+	public void requestPartitionsForRescale(int previousNumChannels) {
+		inputGate.requestPartitionsForRescale(previousNumChannels);
+	}
 }

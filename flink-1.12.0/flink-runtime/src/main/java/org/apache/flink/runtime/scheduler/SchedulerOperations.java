@@ -36,4 +36,8 @@ public interface SchedulerOperations {
 	 * @param executionVertexDeploymentOptions The deployment options of tasks to be deployed
 	 */
 	void allocateSlotsAndDeploy(List<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions);
+
+    default void allocateSlotsAndDeployForRescale(List<ExecutionVertexDeploymentOption> vertexDeploymentOptions){
+		throw new UnsupportedOperationException();
+	}
 }

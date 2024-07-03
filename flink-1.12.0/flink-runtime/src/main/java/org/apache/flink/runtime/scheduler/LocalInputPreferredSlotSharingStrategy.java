@@ -294,4 +294,14 @@ class LocalInputPreferredSlotSharingStrategy implements SlotSharingStrategy {
 			}
 		}
 	}
+
+	@Override
+	public void updateForRescale(SlotSharingStrategy slotSharingStrategy) {
+		Map<ExecutionVertexID, ExecutionSlotSharingGroup> newMap = ((LocalInputPreferredSlotSharingStrategy)slotSharingStrategy).executionSlotSharingGroupMap;
+		for(ExecutionVertexID executionVertexID : newMap.keySet()){
+			if(!this.executionSlotSharingGroupMap.containsKey(executionVertexID)){
+				this.executionSlotSharingGroupMap.put(executionVertexID, newMap.get(executionVertexID));
+			}
+		}
+	}
 }

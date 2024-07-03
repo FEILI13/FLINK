@@ -623,4 +623,25 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 		return this;
 	}
 
+	@Override
+	public boolean isCompressed() {
+		return isCompressed;
+	}
+
+	@Override
+	public void setCompressed(boolean isCompressed) {
+		this.isCompressed = isCompressed;
+	}
+
+	@Override
+	public DataType getDataType() {
+		return dataType;
+	}
+
+	@Override
+	public void setDataType(DataType dataType) {
+		//ensureAccessible();
+
+		this.dataType = dataType;
+	}
 }

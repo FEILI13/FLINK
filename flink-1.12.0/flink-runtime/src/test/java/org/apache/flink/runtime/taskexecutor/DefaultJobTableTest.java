@@ -122,7 +122,8 @@ public class DefaultJobTableTest extends TestLogger {
 				NoOpCheckpointResponder.INSTANCE,
 				new TestGlobalAggregateManager(),
 				new NoOpResultPartitionConsumableNotifier(),
-				new NoOpPartitionProducerStateChecker());
+				new NoOpPartitionProducerStateChecker(),
+			null);
 	}
 
 	@Test(expected = IllegalStateException.class)

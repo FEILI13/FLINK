@@ -40,6 +40,7 @@ import org.apache.flink.runtime.metrics.MetricRegistryConfiguration;
 import org.apache.flink.runtime.metrics.MetricRegistryImpl;
 import org.apache.flink.runtime.metrics.groups.TaskManagerMetricGroup;
 import org.apache.flink.runtime.metrics.util.MetricUtils;
+import org.apache.flink.runtime.reConfig.utils.NetworkMetricStarter;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils;
@@ -353,6 +354,10 @@ public class TaskManagerRunner implements FatalErrorHandler, AutoCloseableAsync 
 		checkNotNull(highAvailabilityServices);
 
 		LOG.info("Starting TaskManager with ResourceID: {}", resourceID);
+		LOG.info("Starting TaskManager with ResourceID: {}", resourceID.getStringWithMetadata());
+//		LOG.warn("start network detect");
+//		NetworkMetricStarter server = new NetworkMetricStarter("/home/ftcl/reConfig/flink-1.12.0/bin/TaskManagerNet.py");
+//		new Thread(server).start();
 
 		InetAddress remoteAddress = InetAddress.getByName(rpcService.getAddress());
 

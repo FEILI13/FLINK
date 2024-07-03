@@ -97,6 +97,20 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 	// Consume
 	// ------------------------------------------------------------------------
 
+	public void checkpointStarted(CheckpointBarrier barrier) {
+		channelStatePersister.startPersisting(barrier.getId(), Collections.emptyList());
+	}
+
+	@Override
+	public void block(long barrierId) {
+		System.out.println("localinputgate block");
+		channelStatePersister.startPersisting(barrierId, Collections.emptyList());
+	}
+
+	public void checkpointStopped(long checkpointId) {
+		channelStatePersister.stopPersisting(checkpointId);
+	}
+
 	@Override
 	void requestSubpartition(int subpartitionIndex) throws IOException, InterruptedException {
 

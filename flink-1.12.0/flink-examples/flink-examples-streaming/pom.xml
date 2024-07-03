@@ -90,6 +90,39 @@ under the License.
             <version>${project.version}</version>
         </dependency>
 
+		<!-- Dependencies for MatrixVectorMul. We exclude native libraries
+		because it is not available in all the operating systems and architectures. Moreover,
+		we also want to enable users to compile and run MatrixVectorMul in different runtime environments.-->
+		<dependency>
+			<groupId>org.jcuda</groupId>
+			<artifactId>jcuda</artifactId>
+			<version>${jcuda.version}</version>
+			<exclusions>
+				<exclusion>
+					<groupId>org.jcuda</groupId>
+					<artifactId>jcuda-natives</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+
+		<dependency>
+			<groupId>org.jcuda</groupId>
+			<artifactId>jcublas</artifactId>
+			<version>${jcuda.version}</version>
+			<exclusions>
+				<exclusion>
+					<groupId>org.jcuda</groupId>
+					<artifactId>jcublas-natives</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+
+		<dependency>
+			<groupId>com.codahale.metrics</groupId>
+			<artifactId>metrics-core</artifactId>
+			<version>3.0.2</version>
+		</dependency>
+
     </dependencies>
 
 	<build>
@@ -364,6 +397,42 @@ under the License.
 							</includes>
 						</configuration>
 					</execution>
+
+					<!-- reConfig -->
+					<execution>
+						<id>ReConfigWordCount</id>
+						<phase>package</phase>
+						<goals>
+							<goal>jar</goal>
+						</goals>
+						<configuration>
+							<classifier>ReConfigWordCount</classifier>
+
+							<archive>
+								<manifestEntries>
+									<program-class>org.apache.flink.streaming.examples.wordcount.ReConfigWordCount</program-class>
+								</manifestEntries>
+							</archive>
+						</configuration>
+					</execution>
+
+					<execution>
+						<id>ReConfig</id>
+						<phase>package</phase>
+						<goals>
+							<goal>jar</goal>
+						</goals>
+						<configuration>
+							<classifier>ReConfig</classifier>
+
+							<archive>
+								<manifestEntries>
+									<program-class>org.apache.flink.streaming.examples.reconfiguration.MigrateStateTest</program-class>
+								</manifestEntries>
+							</archive>
+						</configuration>
+					</execution>
+
 				</executions>
 			</plugin>
 

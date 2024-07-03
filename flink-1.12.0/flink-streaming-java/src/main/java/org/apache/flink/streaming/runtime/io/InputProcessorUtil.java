@@ -61,6 +61,50 @@ public class InputProcessorUtil {
 		} else {
 			throw new IllegalArgumentException("Unrecognized Checkpointing Mode: " + checkpointMode);
 		}
+//		switch (config.getCheckpointMode()) {
+//			case EXACTLY_ONCE:
+//				int numberOfChannels = (int) Arrays
+//						.stream(inputs)
+//						.flatMap(gate -> gate.getChannelInfos().stream())
+//						.count();
+//				CheckpointBarrierBehaviourController controller =
+//					config.isUnalignedCheckpointsEnabled() ?
+//						new AlternatingController(
+//							new AlignedController(inputs),
+//							new UnalignedController(checkpointCoordinator, inputs)) :
+//						new AlignedController(inputs);
+//				return new SingleCheckpointBarrierHandler(
+//						taskName,
+//						toNotifyOnCheckpoint,
+//						numberOfChannels,
+//						controller);
+//			case AT_LEAST_ONCE:
+//				if (config.isUnalignedCheckpointsEnabled()) {
+//					throw new IllegalStateException("Cannot use unaligned checkpoints with AT_LEAST_ONCE " +
+//						"checkpointing mode");
+//				}
+//				int numInputChannels = Arrays.stream(inputs).mapToInt(CheckpointableInput::getNumberOfInputChannels).sum();
+//				//return new CheckpointBarrierTracker(numInputChannels, toNotifyOnCheckpoint);
+//				return new CheckpointBarrierTracker(numInputChannels, toNotifyOnCheckpoint, inputs);
+//			default:
+//				throw new UnsupportedOperationException("Unrecognized Checkpointing Mode: " + config.getCheckpointMode());
+//		}
+		int numberOfChannels = (int) Arrays
+			.stream(inputs)
+			.flatMap(gate -> gate.getChannelInfos().stream())
+			.count();
+		CheckpointBarrierBehaviourController controller =
+			config.isUnalignedCheckpointsEnabled() ?
+				new AlternatingController(
+					new AlignedController(inputs),
+					new UnalignedController(checkpointCoordinator, inputs)) :
+				new AlignedController(inputs);
+		return new SingleCheckpointBarrierHandler(
+			taskName,
+			toNotifyOnCheckpoint,
+			numberOfChannels,
+			controller);
+	}
 
 		if (checkpointedTask != null) {
 			barrierHandler.registerCheckpointEventHandler(checkpointedTask);

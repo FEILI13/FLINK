@@ -23,6 +23,7 @@ import org.apache.flink.runtime.checkpoint.CheckpointException;
 import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.partition.consumer.CheckpointableInput;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -58,6 +59,13 @@ public class AlignedController implements CheckpointBarrierBehaviourController {
 	}
 
 	@Override
+	public void barrierReceived(InputChannelInfo channelInfo, ReConfigSignal barrier) {
+		checkState(!blockedChannels.put(channelInfo, true), "Stream corrupt: Repeated barrier for same checkpoint on input " + channelInfo);
+		CheckpointableInput input = inputs[channelInfo.getGateIdx()];
+		input.blockConsumption(channelInfo);
+	}
+
+	@Override
 	public boolean preProcessFirstBarrier(
 			InputChannelInfo channelInfo,
 			CheckpointBarrier barrier) {
@@ -65,9 +73,20 @@ public class AlignedController implements CheckpointBarrierBehaviourController {
 	}
 
 	@Override
+	public boolean preProcessFirstBarrier(InputChannelInfo channelInfo, ReConfigSignal barrier) {
+		return false;
+	}
+
+	@Override
 	public boolean postProcessLastBarrier(
 			InputChannelInfo channelInfo,
 			CheckpointBarrier barrier) throws IOException {
+		resumeConsumption();
+		return true;
+	}
+
+	@Override
+	public boolean postProcessLastBarrier(InputChannelInfo channelInfo, ReConfigSignal barrier) throws IOException {
 		resumeConsumption();
 		return true;
 	}
@@ -86,6 +105,11 @@ public class AlignedController implements CheckpointBarrierBehaviourController {
 		resumeConsumption(channelInfo);
 	}
 
+	@Override
+	public void obsoleteBarrierReceived(InputChannelInfo channelInfo, ReConfigSignal barrier) throws IOException {
+		resumeConsumption(channelInfo);
+	}
+
 	private void resumeConsumption() throws IOException {
 		for (Map.Entry<InputChannelInfo, Boolean> blockedChannel : blockedChannels.entrySet()) {
 			if (blockedChannel.getValue()) {
@@ -95,8 +119,21 @@ public class AlignedController implements CheckpointBarrierBehaviourController {
 		}
 	}
 
-	private void resumeConsumption(InputChannelInfo channelInfo) throws IOException {
+	public void resumeConsumption(InputChannelInfo channelInfo) throws IOException {
 		CheckpointableInput input = inputs[channelInfo.getGateIdx()];
 		input.resumeConsumption(channelInfo);
+	}
+
+	@Override
+	public CheckpointableInput[] getInputs() {
+		return inputs;
+	}
+
+	@Override
+	public void blockConsumption(long barrierId) {
+		System.out.println("AlignedController block!");
+		for (final CheckpointableInput input : inputs) {
+			input.block(barrierId);
+		}
 	}
 }

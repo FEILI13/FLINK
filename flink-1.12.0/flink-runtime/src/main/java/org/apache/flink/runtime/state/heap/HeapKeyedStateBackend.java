@@ -36,6 +36,8 @@ import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
+import org.apache.flink.runtime.reConfig.state.ReconfigurableHeapValueState;
+import org.apache.flink.runtime.reConfig.state.ReconfigurableValueStateDescriptor;
 import org.apache.flink.runtime.state.AbstractKeyedStateBackend;
 import org.apache.flink.runtime.state.AbstractSnapshotStrategy;
 import org.apache.flink.runtime.state.AsyncSnapshotCallable;
@@ -105,6 +107,7 @@ public class HeapKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 
 	private static final Logger LOG = LoggerFactory.getLogger(HeapKeyedStateBackend.class);
 
+	/** 创建状态的工厂 */
 	private static final Map<Class<? extends StateDescriptor>, StateFactory> STATE_FACTORIES =
 		Stream.of(
 			Tuple2.of(ValueStateDescriptor.class, (StateFactory) HeapValueState::create),
@@ -113,6 +116,7 @@ public class HeapKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 			Tuple2.of(AggregatingStateDescriptor.class, (StateFactory) HeapAggregatingState::create),
 			Tuple2.of(ReducingStateDescriptor.class, (StateFactory) HeapReducingState::create),
 			Tuple2.of(FoldingStateDescriptor.class, (StateFactory) HeapFoldingState::create)
+			Tuple2.of(ReconfigurableValueStateDescriptor.class, (StateFactory) ReconfigurableHeapValueState::create)
 		).collect(Collectors.toMap(t -> t.f0, t -> t.f1));
 
 	/**

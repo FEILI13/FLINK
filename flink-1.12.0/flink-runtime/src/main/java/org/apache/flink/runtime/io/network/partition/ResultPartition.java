@@ -105,6 +105,8 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	 */
 	private final ResultSubpartition[] subpartitions;
 
+	protected int numSubpartitions;
+
 	private final ResultPartitionManager partitionManager;
 
 	private final ResultPartitionConsumableNotifier partitionConsumableNotifier;
@@ -137,6 +139,9 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	private final float availabilityFillFactor;
 
 	private FlushRunnable inFlightLogFlusherRunnable;
+
+	static final int UNSET_MARKED_NUM_SUB_PAR = -1;
+	int markedNewNumSubpartitions = UNSET_MARKED_NUM_SUB_PAR;
 
 	public ResultPartition(
 		String owningTaskName,

@@ -18,7 +18,13 @@
 
 package org.apache.flink.runtime.io.network.partition.consumer;
 
+<<<<<<< HEAD
 import org.apache.flink.api.common.JobID;
+=======
+import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
+import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
+import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
+>>>>>>> 42e2f9f6d6d280525727b00f05dfb935340a61a0
 import org.apache.flink.runtime.event.TaskEvent;
 
 import java.io.IOException;
@@ -102,5 +108,62 @@ public interface InputGate {
 
 	SingleInputGate[] getInputGates();
 
+<<<<<<< HEAD
     JobID getJobID();
+=======
+	public void modifyForRescale(InputGateDeploymentDescriptor inputGateDeploymentDescriptor){
+		throw new UnsupportedOperationException("modifyForRescale unsupported for " + this.getClass());
+	}
+
+	public void setChannelStateWriterForNewChannels(ChannelStateWriter channelStateWriter, int previousNumChannels) {
+		for (int index = previousNumChannels, numChannels = getNumberOfInputChannels(); index < numChannels; index++) {
+			final InputChannel channel = getChannel(index);
+			if (channel instanceof ChannelStateHolder) {
+				((ChannelStateHolder) channel).setChannelStateWriter(channelStateWriter);
+			}
+		}
+	}
+
+	public void requestPartitionsForRescale(int previousNumChannels) {
+		throw new UnsupportedOperationException("modifyForRescale unsupported for " + this.getClass());
+	}
+
+	/**
+	 * Simple pojo for INPUT, DATA and moreAvailable.
+	 */
+	protected static class InputWithData<INPUT, DATA> {
+		protected final INPUT input;
+		protected final DATA data;
+		protected final boolean moreAvailable;
+		protected final boolean morePriorityEvents;
+
+		InputWithData(INPUT input, DATA data, boolean moreAvailable, boolean morePriorityEvents) {
+			this.input = checkNotNull(input);
+			this.data = checkNotNull(data);
+			this.moreAvailable = moreAvailable;
+			this.morePriorityEvents = morePriorityEvents;
+		}
+
+		@Override
+		public String toString() {
+			return "InputWithData{" +
+				"input=" + input +
+				", data=" + data +
+				", moreAvailable=" + moreAvailable +
+				", morePriorityEvents=" + morePriorityEvents +
+				'}';
+		}
+	}
+
+	/**
+	 * Setup gate, potentially heavy-weight, blocking operation comparing to just creation.
+	 */
+	public abstract void setup() throws IOException;
+
+	public abstract void requestPartitions() throws IOException;
+
+	public abstract CompletableFuture<Void> getStateConsumedFuture();
+
+	public abstract void finishReadRecoveredState() throws IOException;
+>>>>>>> 42e2f9f6d6d280525727b00f05dfb935340a61a0
 }

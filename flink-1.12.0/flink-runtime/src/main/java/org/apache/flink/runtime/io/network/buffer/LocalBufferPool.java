@@ -29,6 +29,9 @@ import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.Optional;
+import java.util.Arrays;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 
@@ -84,6 +87,19 @@ class LocalBufferPool implements BufferPool {
 	 * somehow referenced through this pool (e.g. wrapped in Buffer instances or as available segments).
 	 */
 	private int numberOfRequestedMemorySegments;
+
+
+	private final int maxBuffersPerChannel;
+
+	@GuardedBy("availableMemorySegments")
+	private int[] subpartitionBuffersCount;
+
+	private BufferRecycler[] subpartitionBufferRecyclers;
+
+	@GuardedBy("availableMemorySegments")
+	private int unavailableSubpartitionsCount = 0;
+
+	@GuardedBy("availableMemorySegments")
 
 	private boolean isDestroyed;
 
@@ -413,6 +429,52 @@ class LocalBufferPool implements BufferPool {
 			}
 
 			returnMemorySegment(segment);
+		}
+	}
+
+	private boolean hasExcessBuffers() {
+		return numberOfRequestedMemorySegments > currentPoolSize;
+	}
+
+	private boolean isRequestedSizeReached() {
+		return numberOfRequestedMemorySegments >= currentPoolSize;
+	}
+
+	@VisibleForTesting
+	@Override
+	public BufferRecycler[] getSubpartitionBufferRecyclers() {
+		return subpartitionBufferRecyclers;
+	}
+
+	@Override
+	public void updateForRescale(int newNumSubpartitions) {
+		int previousNumSubpartitions = subpartitionBuffersCount.length;
+		checkArgument(previousNumSubpartitions != newNumSubpartitions);
+		if(previousNumSubpartitions < newNumSubpartitions){
+			subpartitionBuffersCount = Arrays.copyOf(subpartitionBuffersCount, newNumSubpartitions);
+			subpartitionBufferRecyclers = Arrays.copyOf(subpartitionBufferRecyclers, newNumSubpartitions);
+			for(int i=previousNumSubpartitions;i<newNumSubpartitions;i++){
+				subpartitionBufferRecyclers[i] = new SubpartitionBufferRecycler(i, this);
+			}
+		}else{
+			subpartitionBuffersCount = Arrays.copyOf(subpartitionBuffersCount, newNumSubpartitions);
+			subpartitionBufferRecyclers = Arrays.copyOf(subpartitionBufferRecyclers, newNumSubpartitions);
+		}
+	}
+
+	private static class SubpartitionBufferRecycler implements BufferRecycler {
+
+		private int channel;
+		private LocalBufferPool bufferPool;
+
+		SubpartitionBufferRecycler(int channel, LocalBufferPool bufferPool) {
+			this.channel = channel;
+			this.bufferPool = bufferPool;
+		}
+
+		@Override
+		public void recycle(MemorySegment memorySegment) {
+			bufferPool.recycle(memorySegment, channel);
 		}
 	}
 }

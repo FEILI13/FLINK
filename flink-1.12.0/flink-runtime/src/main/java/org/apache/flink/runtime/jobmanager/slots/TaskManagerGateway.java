@@ -26,6 +26,7 @@ import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.clusterframework.ApplicationStatus;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
+import org.apache.flink.runtime.event.RuntimeEvent;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
 import org.apache.flink.runtime.instance.InstanceID;
@@ -34,6 +35,9 @@ import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.StackTrace;
 import org.apache.flink.runtime.messages.StackTraceSampleResponse;
+import org.apache.flink.runtime.messages.TaskBackPressureResponse;
+import org.apache.flink.runtime.operators.coordination.OperatorEvent;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
 import org.apache.flink.runtime.rpc.RpcTimeout;
 
 import java.util.concurrent.CompletableFuture;
@@ -243,4 +247,17 @@ public interface TaskManagerGateway {
 		@RpcTimeout final Time timeout);
 
 	CompletableFuture<Acknowledge> ignoreCheckpoint(ExecutionAttemptID attemptId, long checkpointId, Time rpcTimeout);
+	@Override
+	CompletableFuture<Acknowledge> sendOperatorEventToTask(
+		ExecutionAttemptID task,
+		OperatorID operator,
+		SerializedValue<OperatorEvent> evt);
+
+    default void triggerReConfig(ExecutionAttemptID attemptId, JobID jobId, ReConfigSignal signal){
+		throw new UnsupportedOperationException();
+	}
+
+	default CompletableFuture<Acknowledge> modifyForRescale(TaskDeploymentDescriptor tdd, Time timeout){
+		throw new UnsupportedOperationException();
+	}
 }

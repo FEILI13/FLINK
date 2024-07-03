@@ -24,6 +24,11 @@ import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.Preconditions;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
  * Partitioner selects the target channel based on the key group index.
  *
@@ -39,16 +44,32 @@ public class KeyGroupStreamPartitioner<T, K> extends StreamPartitioner<T> implem
 
 	private int maxParallelism;
 
+	private Map<Integer, Integer> routeTable;
+
+	private volatile int migratingKeyGroup = -1;
+
+	private volatile int migratingBatch = -1;
+
+	private volatile int splitNum = -1;
+
+	private volatile int targetIndex = -1;
+
 	public KeyGroupStreamPartitioner(KeySelector<T, K> keySelector, int maxParallelism) {
 		Preconditions.checkArgument(maxParallelism > 0, "Number of key-groups must be > 0!");
 		this.keySelector = Preconditions.checkNotNull(keySelector);
 		this.maxParallelism = maxParallelism;
+		this.routeTable = new HashMap<>();
 	}
 
 	public int getMaxParallelism() {
 		return maxParallelism;
 	}
 
+	/**
+	 * 先检查是否是当前正在迁移的键组，根据批次路由，再检查是否是已经被修改的路由（保存在哈希表中），都不是的话再按默认路由策略
+	 * @param record the record to determine the output channels for.
+	 * @return 目标实例
+	 */
 	@Override
 	public int[] selectChannels(
 		SerializationDelegate<StreamRecord<T>> record,
@@ -57,6 +78,12 @@ public class KeyGroupStreamPartitioner<T, K> extends StreamPartitioner<T> implem
 		K key;
 		try {
 			key = keySelector.getKey(record.getInstance().getValue());
+			int keyGroupIndex = KeyGroupRangeAssignment.assignToKeyGroup(key, maxParallelism);
+			if(migratingKeyGroup==keyGroupIndex && (key.hashCode()&(splitNum-1))<=migratingBatch){// 是否是当前迁移的
+				return targetIndex;
+			} else if(routeTable.containsKey(keyGroupIndex)){
+				return routeTable.get(keyGroupIndex);
+			}
 		} catch (Exception e) {
 			throw new RuntimeException("Could not extract key from " + record.getInstance().getValue(), e);
 		}
@@ -82,4 +109,26 @@ public class KeyGroupStreamPartitioner<T, K> extends StreamPartitioner<T> implem
 	}
 
 
+	@Override
+	public int hashCode() {
+		return Objects.hash(super.hashCode(), keySelector, maxParallelism);
+	}
+
+	@Override
+	public void updateControl(int keyGroupIndex, int targetIndex, int batch, int splitNum) {
+		this.migratingKeyGroup = keyGroupIndex;
+		this.targetIndex = targetIndex;
+		this.migratingBatch = batch;
+		this.splitNum = splitNum;
+		System.out.println("sync update route");
+	}
+
+	@Override
+	public void cleanRouting() {
+		routeTable.put(migratingKeyGroup, targetIndex);
+		this.targetIndex = -1;
+		this.migratingKeyGroup = -1;
+		this.splitNum = -1;
+		this.migratingBatch = -1;
+	}
 }

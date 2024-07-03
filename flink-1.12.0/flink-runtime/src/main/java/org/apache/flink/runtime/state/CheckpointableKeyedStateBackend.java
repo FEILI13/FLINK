@@ -21,6 +21,7 @@ package org.apache.flink.runtime.state;
 import org.apache.flink.api.common.state.CheckpointListener;
 
 import java.io.Closeable;
+import java.util.Map;
 
 /**
  * Interface that combines both, the {@link KeyedStateBackend} interface, which encapsulates methods
@@ -41,4 +42,28 @@ public interface CheckpointableKeyedStateBackend<K> extends
 	 * Returns the key groups which this state backend is responsible for.
 	 */
 	KeyGroupRange getKeyGroupRange();
+
+	default void migrate(int keyGroupIndex, int batch, int splitNum){
+		throw new UnsupportedOperationException();
+	}
+
+	default void fetchState(int keyGroupIndex, int batch, int splitNum){
+		throw new UnsupportedOperationException();
+	}
+
+	default Map<Integer, Integer> getFrequencyWindowInfo(){
+		throw new UnsupportedOperationException();
+	}
+
+	default Map<Integer, Long> getSizeWindowInfo(boolean isALL){
+		throw new UnsupportedOperationException();
+	}
+
+	default void cleanStateWindow(){
+		throw new UnsupportedOperationException();
+	}
+
+	default void cleanState(){
+		throw new UnsupportedOperationException();
+	}
 }

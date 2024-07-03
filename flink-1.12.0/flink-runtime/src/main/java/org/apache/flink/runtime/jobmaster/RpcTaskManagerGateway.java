@@ -26,6 +26,7 @@ import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.clusterframework.ApplicationStatus;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
+import org.apache.flink.runtime.event.RuntimeEvent;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
 import org.apache.flink.runtime.instance.InstanceID;
@@ -36,6 +37,9 @@ import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.StackTrace;
 import org.apache.flink.runtime.messages.StackTraceSampleResponse;
 import org.apache.flink.runtime.taskexecutor.FileType;
+import org.apache.flink.runtime.messages.TaskBackPressureResponse;
+import org.apache.flink.runtime.operators.coordination.OperatorEvent;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.util.Preconditions;
 
@@ -177,5 +181,20 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 	public CompletableFuture<Acknowledge> ignoreCheckpoint(ExecutionAttemptID attemptId, long checkpointId,
 														   Time rpcTimeout) {
 		return taskExecutorGateway.ignoreCheckpoint(attemptId, checkpointId, rpcTimeout);
+	}
+
+	@Override
+	public void triggerReConfig(ExecutionAttemptID attemptId, JobID jobId, ReConfigSignal signal) {
+		taskExecutorGateway.triggerReConfig(
+			attemptId,
+			jobId,
+			signal);
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> modifyForRescale(
+		TaskDeploymentDescriptor tdd,
+		Time timeout) {
+		return taskExecutorGateway.modifyForRescale(tdd, timeout);
 	}
 }

@@ -291,4 +291,129 @@ public class RecordWriter<T extends IOReadableWritable> implements EpochStartLis
 		channelSelector.notifyEpochStart(epochID);
 	}
 
+	/**
+	 * This is used to send regular records.
+	 */
+	public abstract void emit(T record) throws IOException;
+
+	/**
+	 * This is used to send LatencyMarks to a random target channel.
+	 */
+	public void randomEmit(T record) throws IOException {
+		checkErroneous();
+
+		int targetSubpartition = rng.nextInt(numberOfChannels);
+		emit(record, targetSubpartition);
+	}
+
+	/**
+	 * This is used to broadcast streaming Watermarks in-band with records.
+	 */
+	public abstract void broadcastEmit(T record) throws IOException;
+
+	/**
+	 * Closes the writer. This stops the flushing thread (if there is one).
+	 */
+	public void close() {
+		// make sure we terminate the thread in any case
+		if (outputFlusher != null) {
+			outputFlusher.terminate();
+			try {
+				outputFlusher.join();
+			} catch (InterruptedException e) {
+				// ignore on close
+				// restore interrupt flag to fast exit further blocking calls
+				Thread.currentThread().interrupt();
+			}
+		}
+	}
+
+	/**
+	 * Notifies the writer that the output flusher thread encountered an exception.
+	 *
+	 * @param t The exception to report.
+	 */
+	private void notifyFlusherException(Throwable t) {
+		if (flusherException == null) {
+			LOG.error("An exception happened while flushing the outputs", t);
+			flusherException = t;
+			volatileFlusherException = t;
+		}
+	}
+
+	protected void checkErroneous() throws IOException {
+		// For performance reasons, we are not checking volatile field every single time.
+		if (flusherException != null ||
+				(volatileFlusherExceptionCheckSkipCount >= VOLATILE_FLUSHER_EXCEPTION_MAX_CHECK_SKIP_COUNT && volatileFlusherException != null)) {
+			throw new IOException("An exception happened while flushing the outputs", volatileFlusherException);
+		}
+		if (++volatileFlusherExceptionCheckSkipCount >= VOLATILE_FLUSHER_EXCEPTION_MAX_CHECK_SKIP_COUNT) {
+			volatileFlusherExceptionCheckSkipCount = 0;
+		}
+	}
+
+	public void updateControl(int keyGroupIndex, int targetIndex, int batch, int splitNum) {
+		System.out.println("should not reach here");
+	}
+
+	public void cleanRouting() {
+		System.out.println("should not reach here");
+	}
+
+	// ------------------------------------------------------------------------
+
+	/**
+	 * A dedicated thread that periodically flushes the output buffers, to set upper latency bounds.
+	 *
+	 * <p>The thread is daemonic, because it is only a utility thread.
+	 */
+	private class OutputFlusher extends Thread {
+
+		private final long timeout;
+
+		private volatile boolean running = true;
+
+		OutputFlusher(String name, long timeout) {
+			super(name);
+			setDaemon(true);
+			this.timeout = timeout;
+		}
+
+		public void terminate() {
+			running = false;
+			interrupt();
+		}
+
+		@Override
+		public void run() {
+			try {
+				while (running) {
+					try {
+						Thread.sleep(timeout);
+					} catch (InterruptedException e) {
+						// propagate this if we are still running, because it should not happen
+						// in that case
+						if (running) {
+							throw new Exception(e);
+						}
+					}
+
+					// any errors here should let the thread come to a halt and be
+					// recognized by the writer
+					flushAll();
+				}
+			} catch (Throwable t) {
+				notifyFlusherException(t);
+			}
+		}
+	}
+
+	@VisibleForTesting
+	ResultPartitionWriter getTargetPartition() {
+		return targetPartition;
+	}
+
+	int getMessageCount(){
+		throw new UnsupportedOperationException();
+	}
 }

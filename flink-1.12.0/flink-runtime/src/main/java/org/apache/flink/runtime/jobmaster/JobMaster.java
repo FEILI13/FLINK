@@ -87,6 +87,9 @@ import org.apache.flink.runtime.metrics.groups.JobManagerJobMetricGroup;
 import org.apache.flink.runtime.query.KvStateLocation;
 import org.apache.flink.runtime.query.KvStateLocationRegistry;
 import org.apache.flink.runtime.query.UnknownKvStateLocation;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
+import org.apache.flink.runtime.reConfig.utils.InstanceState;
+import org.apache.flink.runtime.reConfig.message.ReConfigStage;
 import org.apache.flink.runtime.registration.RegisteredRpcConnection;
 import org.apache.flink.runtime.registration.RegistrationResponse;
 import org.apache.flink.runtime.registration.RetryingRegistration;
@@ -1745,6 +1748,33 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 			return CompletableFuture.completedFuture(null);
 		}
 	}
+
+	@Override
+	public void acknowledgeReConfig(
+		JobID jobID,
+		ExecutionAttemptID executionAttemptID,
+		String taskName, ReConfigStage stage) {
+		schedulerNG.acknowledgeReConfig(jobID, executionAttemptID, stage);
+	}
+
+	@Override
+	public void acknowledgeReConfig(
+		JobID jobID,
+		ExecutionAttemptID executionAttemptID,
+		String taskName,
+		InstanceState state) {
+		schedulerNG.acknowledgeReConfig(jobID, executionAttemptID, state);
+	}
+
+	@Override
+	public void acknowledgeReConfig(
+		JobID jobID,
+		ExecutionAttemptID executionAttemptID,
+		String taskName,
+		ReConfigSignal signal) {
+		schedulerNG.acknowledgeReConfig(jobID, executionAttemptID, signal);
+	}
+}
 
 	@VisibleForTesting
 	RestartStrategy getRestartStrategy() {

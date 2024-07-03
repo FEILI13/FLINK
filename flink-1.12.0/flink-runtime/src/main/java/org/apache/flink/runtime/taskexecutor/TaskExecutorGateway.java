@@ -28,6 +28,7 @@ import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.SlotID;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
+import org.apache.flink.runtime.event.RuntimeEvent;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
@@ -35,6 +36,9 @@ import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobmaster.JobMasterId;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.StackTraceSampleResponse;
+import org.apache.flink.runtime.messages.TaskBackPressureResponse;
+import org.apache.flink.runtime.operators.coordination.OperatorEvent;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rpc.RpcGateway;
 import org.apache.flink.runtime.rpc.RpcTimeout;
@@ -238,4 +242,41 @@ public interface TaskExecutorGateway extends RpcGateway {
 	 * @return Future String with Fully qualified (RPC) address of Metric Query Service on the TaskManager.
 	 */
 	CompletableFuture<SerializableOptional<String>> requestMetricQueryServiceAddress(@RpcTimeout Time timeout);
+
+
+	/**
+	 * Checks whether the task executor can be released. It cannot be released if there're unconsumed result partitions.
+	 *
+	 * @return Future flag indicating whether the task executor can be released.
+	 */
+	CompletableFuture<Boolean> canBeReleased();
+
+	/**
+	 * Requests for the historical log file names on the TaskManager.
+	 *
+	 * @return A Tuple2 Array with all log file names with its length.
+	 */
+	CompletableFuture<Collection<LogInfo>> requestLogList(@RpcTimeout Time timeout);
+
+	@Override
+	CompletableFuture<Acknowledge> sendOperatorEventToTask(
+			ExecutionAttemptID task,
+			OperatorID operator,
+			SerializedValue<OperatorEvent> evt);
+
+	/**
+	 * Requests the thread dump from this TaskManager.
+	 *
+	 * @param timeout timeout for the asynchronous operation
+	 * @return the {@link ThreadDumpInfo} for this TaskManager.
+	 */
+	CompletableFuture<ThreadDumpInfo> requestThreadDump(@RpcTimeout Time timeout);
+
+    default CompletableFuture<Acknowledge> triggerReConfig(ExecutionAttemptID attemptId, JobID jobId, ReConfigSignal signal){
+		throw new UnsupportedOperationException();
+	}
+
+    default CompletableFuture<Acknowledge> modifyForRescale(TaskDeploymentDescriptor tdd, Time timeout){
+		throw new UnsupportedOperationException();
+	}
 }

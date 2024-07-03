@@ -40,6 +40,10 @@ import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
+import org.apache.flink.runtime.reConfig.RpcReConfigResponder;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
+import org.apache.flink.runtime.reConfig.utils.InstanceState;
+import org.apache.flink.runtime.reConfig.message.ReConfigStage;
 import org.apache.flink.runtime.state.TaskStateManager;
 
 import java.util.List;
@@ -92,6 +96,7 @@ public class RuntimeEnvironment implements Environment {
 	private final List<JobVertex> topologicallySortedJobVertexes;
 
 	private final CausalLogManager causalLogManager;
+	private final RpcReConfigResponder reConfigResponder;
 
 	// ------------------------------------------------------------------------
 
@@ -148,6 +153,65 @@ public class RuntimeEnvironment implements Environment {
 		this.metrics = metrics;
 		this.topologicallySortedJobVertexes = topologicallySortedJobVertexes;
 	}
+
+		public RuntimeEnvironment(
+			JobID jobId,
+			JobVertexID jobVertexId,
+			ExecutionAttemptID executionId,
+			ExecutionConfig executionConfig,
+			TaskInfo taskInfo,
+			Configuration jobConfiguration,
+			Configuration taskConfiguration,
+			UserCodeClassLoader userCodeClassLoader,
+			MemoryManager memManager,
+			IOManager ioManager,
+			BroadcastVariableManager bcVarManager,
+			TaskStateManager taskStateManager,
+			GlobalAggregateManager aggregateManager,
+			AccumulatorRegistry accumulatorRegistry,
+			TaskKvStateRegistry kvStateRegistry,
+			InputSplitProvider splitProvider,
+			Map<String, Future<Path>> distCacheEntries,
+			ResultPartitionWriter[] writers,
+			IndexedInputGate[] inputGates,
+			TaskEventDispatcher taskEventDispatcher,
+			CheckpointResponder checkpointResponder,
+			RpcReConfigResponder reConfigResponder,
+			TaskOperatorEventGateway operatorEventGateway,
+			TaskManagerRuntimeInfo taskManagerInfo,
+			TaskMetricGroup metrics,
+			Task containingTask,
+			ExternalResourceInfoProvider externalResourceInfoProvider) {
+
+				this.jobId = checkNotNull(jobId);
+				this.jobVertexId = checkNotNull(jobVertexId);
+				this.executionId = checkNotNull(executionId);
+				this.taskInfo = checkNotNull(taskInfo);
+				this.executionConfig = checkNotNull(executionConfig);
+				this.jobConfiguration = checkNotNull(jobConfiguration);
+				this.taskConfiguration = checkNotNull(taskConfiguration);
+				this.userCodeClassLoader = checkNotNull(userCodeClassLoader);
+				this.memManager = checkNotNull(memManager);
+				this.ioManager = checkNotNull(ioManager);
+				this.bcVarManager = checkNotNull(bcVarManager);
+				this.taskStateManager = checkNotNull(taskStateManager);
+				this.accumulatorRegistry = checkNotNull(accumulatorRegistry);
+				this.kvStateRegistry = checkNotNull(kvStateRegistry);
+				this.splitProvider = checkNotNull(splitProvider);
+				this.distCacheEntries = checkNotNull(distCacheEntries);
+				this.writers = checkNotNull(writers);
+				this.inputGates = checkNotNull(inputGates);
+				this.taskEventDispatcher = checkNotNull(taskEventDispatcher);
+				this.causalLogManager = checkNotNull(causalLogManager);
+				this.checkpointResponder = checkNotNull(checkpointResponder);
+				this.reConfigResponder = checkNotNull(reConfigResponder);
+				reConfigResponder.setTaskName(taskInfo.getTaskName());
+				this.operatorEventGateway = checkNotNull(operatorEventGateway);
+				this.taskManagerInfo = checkNotNull(taskManagerInfo);
+				this.containingTask = containingTask;
+				this.metrics = metrics;
+				this.topologicallySortedJobVertexes = topologicallySortedJobVertexes;
+			}
 
 	// ------------------------------------------------------------------------
 
@@ -304,5 +368,31 @@ public class RuntimeEnvironment implements Environment {
 	@Override
 	public void failExternally(Throwable cause) {
 		this.containingTask.failExternally(cause);
+	}
+
+	@Override
+	public void acknowledgeReConfig(
+		JobID jobID,
+		ExecutionAttemptID executionId,
+		String taskNameWithSubtasks, ReConfigStage stage) {
+		this.reConfigResponder.acknowledgeReConfig(jobID, executionId, taskNameWithSubtasks, stage);
+	}
+
+	@Override
+	public void acknowledgeReConfig(
+		JobID jobID,
+		ExecutionAttemptID executionId,
+		String taskNameWithSubtasks,
+		InstanceState state) {
+		this.reConfigResponder.acknowledgeReConfig(jobID, executionId, taskNameWithSubtasks, state);
+	}
+
+	@Override
+	public void acknowledgeReConfig(
+		JobID jobID,
+		ExecutionAttemptID executionId,
+		String taskNameWithSubtasks,
+		ReConfigSignal signal) {
+		this.reConfigResponder.acknowledgeReConfig(jobID, executionId, taskNameWithSubtasks, signal);
 	}
 }

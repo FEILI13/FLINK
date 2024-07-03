@@ -1,0 +1,48 @@
+@startuml
+
+class ReconfigurableHeapValueState {
+    ..Attributes..
+    ..Methods..
+}
+ReconfigurableHeapValueState --|> AbstractHeapState : extends
+ReconfigurableHeapValueState ..> InternalValueState : implements
+
+class AbstractHeapState {
+    - stateTable : StateTable
+}
+AbstractHeapState -- StateTable : contains
+
+class ReconfigurableStateManager {
+    - keySerializer : TypeSerializer
+    - namespaceSerializer : TypeSerializer
+    - stateSerializer : TypeSerializer
+    - migrateManager : MigrateManager
+    - keyGroupStateMaps : Map<Integer, StateMap>
+}
+ReconfigurableStateManager -- StateMap : contains
+
+class ReconfigurableStateMap {
+    ..Attributes..
+    ..Methods..
+}
+ReconfigurableStateMap --|> StateMap : extends
+ReconfigurableStateMap ..> Iterator : implements
+
+class ReconfigurableStateTable {
+    - reconfigurableStateManager : ReconfigurableStateManager
+}
+ReconfigurableStateTable --|> StateTable : extends
+ReconfigurableStateTable -- ReconfigurableStateManager : contains
+
+class StateTable {
+    ..Attributes..
+    ..Methods..
+}
+
+class ReconfigurableValueStateDescriptor {
+    ..Attributes..
+    ..Methods..
+}
+ReconfigurableValueStateDescriptor --|> ValueStateDescriptor : extends
+
+@enduml

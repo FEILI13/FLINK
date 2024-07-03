@@ -253,6 +253,10 @@ public abstract class InputChannel {
 	}
 
     // ------------------------------------------------------------------------
+	public void block(long barrierId) {
+	}
+
+	// ------------------------------------------------------------------------
 
 	/**
 	 * A combination of a {@link Buffer} and a flag indicating availability of further buffers,

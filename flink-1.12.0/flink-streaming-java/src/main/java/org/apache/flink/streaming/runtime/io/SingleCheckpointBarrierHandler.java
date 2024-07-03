@@ -28,6 +28,7 @@ import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.partition.consumer.CheckpointableInput;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
 import org.apache.flink.streaming.runtime.tasks.SubtaskCheckpointCoordinator;
 
 import org.slf4j.Logger;
@@ -66,9 +67,13 @@ public class SingleCheckpointBarrierHandler extends CheckpointBarrierHandler {
 	 */
 	private long currentCheckpointId = -1L;
 
+	private long currentReConfigVersion = -1L;// 抄checkpoint的
+
 	private int numOpenChannels;
 
 	private CompletableFuture<Void> allBarriersReceivedFuture = FutureUtils.completedVoidFuture();
+
+	private boolean haveTriggerBlock = false;
 
 	@VisibleForTesting
 	static SingleCheckpointBarrierHandler createUnalignedCheckpointBarrierHandler(
@@ -249,5 +254,64 @@ public class SingleCheckpointBarrierHandler extends CheckpointBarrierHandler {
 			currentCheckpointId,
 			numBarriersReceived,
 			numOpenChannels);
+	}
+
+	@Override
+	public void block(InputChannelInfo channelInfo) {
+		CheckpointableInput input = controller.getInputs()[channelInfo.getGateIdx()];
+		input.blockConsumption(channelInfo);
+	}
+
+	@Override
+	public void block(long barrierId) {
+		if(!haveTriggerBlock) {
+			haveTriggerBlock = true;
+			controller.blockConsumption(barrierId);
+		}
+	}
+
+	@Override
+	public void resumeConsumption(InputChannelInfo channelInfo) throws IOException {
+		controller.resumeConsumption(channelInfo);
+	}
+
+	@Override
+	public void processReConfigBarrier(
+		ReConfigSignal receivedBarrier,
+		InputChannelInfo channelInfo) throws IOException {
+		long version = receivedBarrier.getVersion();
+		LOG.debug("{}: Received barrier from channel {} @ {}.", taskName, channelInfo, version);
+
+		if (currentReConfigVersion > version || (currentReConfigVersion == version && !isCheckpointPending())) {
+			controller.obsoleteBarrierReceived(channelInfo, receivedBarrier);
+			return;
+		}
+
+		if (currentReConfigVersion < version) {
+			if (isCheckpointPending()) {
+				cancelSubsumedCheckpoint(version);
+			}
+
+			currentReConfigVersion = version;
+			numBarriersReceived = 0;
+			allBarriersReceivedFuture = new CompletableFuture<>();
+		}
+
+		controller.barrierReceived(channelInfo, receivedBarrier);
+
+		if (currentReConfigVersion == version) {
+			System.out.println("channel"+getNumOpenChannels()+ " received count:"+numBarriersReceived);
+			if (++numBarriersReceived == numOpenChannels) {
+//				if (getNumOpenChannels() > 1) {
+//					markAlignmentEnd();
+//				}
+				System.out.println("对齐完成");
+				numBarriersReceived = 0;
+				if (controller.postProcessLastBarrier(channelInfo, receivedBarrier)) {
+					System.out.println("对齐完成，恢复完成");
+				}
+				allBarriersReceivedFuture.complete(null);
+			}
+		}
 	}
 }

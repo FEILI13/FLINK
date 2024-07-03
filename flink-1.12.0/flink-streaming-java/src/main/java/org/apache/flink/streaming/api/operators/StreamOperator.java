@@ -29,6 +29,7 @@ import org.apache.flink.streaming.runtime.tasks.StreamTask;
 import org.apache.flink.util.Disposable;
 
 import java.io.Serializable;
+import java.util.Map;
 
 /**
  * Basic interface for stream operators. Implementers would implement one of
@@ -147,4 +148,28 @@ public interface StreamOperator<OUT> extends CheckpointListener, KeyContext, Dis
 	MetricGroup getMetricGroup();
 
 	OperatorID getOperatorID();
+
+	default void migrate(int keyGroupIndex, int batch, int splitNum){
+		throw new UnsupportedOperationException();
+	}
+
+	default void fetchState(int keyGroupIndex, int batch, int splitNum){
+		throw new UnsupportedOperationException();
+	}
+
+	default Map<Integer, Integer> getFrequencyWindowInfo(){
+		throw new UnsupportedOperationException();
+	}
+
+	default Map<Integer, Long> getSizeWindowInfo(boolean isALL){
+		throw new UnsupportedOperationException();
+	}
+
+	default void cleanStateWindow(){
+		throw new UnsupportedOperationException();
+	}
+
+	default void cleanState(){
+		throw new UnsupportedOperationException();
+	}
 }

@@ -29,6 +29,7 @@ import org.apache.flink.runtime.io.network.buffer.BufferCompressor;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
 import org.apache.flink.util.function.SupplierWithException;
 
 import javax.annotation.Nullable;
@@ -53,15 +54,17 @@ import static org.apache.flink.util.Preconditions.checkState;
 public abstract class BufferWritingResultPartition extends ResultPartition {
 
 	/** The subpartitions of this partition. At least one. */
-	protected final ResultSubpartition[] subpartitions;
+	protected ResultSubpartition[] subpartitions;
 
 	/** For non-broadcast mode, each subpartition maintains a separate BufferBuilder which might be null. */
-	private final BufferBuilder[] unicastBufferBuilders;
+	protected BufferBuilder[] unicastBufferBuilders;
 
 	/** For broadcast mode, a single BufferBuilder is shared by all subpartitions. */
 	private BufferBuilder broadcastBufferBuilder;
 
 	private Meter idleTimeMsPerSecond = new MeterView(new SimpleCounter());
+
+	private boolean isTriggerReconfig = false;
 
 	public BufferWritingResultPartition(
 		String owningTaskName,
@@ -177,10 +180,27 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 		finishBroadcastBufferBuilder();
 		finishUnicastBufferBuilders();
 
-		try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event, isPriorityEvent)) {
-			for (ResultSubpartition subpartition : subpartitions) {
-				// Retain the buffer so that it can be recycled by each channel of targetPartition
-				subpartition.add(eventBufferConsumer.copy(), 0);
+		if(event instanceof ReConfigSignal && ((ReConfigSignal)event).getType()== ReConfigSignal.ReConfigSignalType.MIGRATE && getOwningTaskName().contains("upStream")) {
+			try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumerReConfig(event, isPriorityEvent)) {
+				for (int i=0;i<8;++i) {
+					// Retain the buffer so that it can be recycled by each channel of targetPartition
+					subpartitions[i].add(eventBufferConsumer.copy(), 0);
+				}
+			}
+
+			try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event, isPriorityEvent)) {
+				for (int i=8;i<subpartitions.length;++i) {
+					// Retain the buffer so that it can be recycled by each channel of targetPartition
+					subpartitions[i].add(eventBufferConsumer.copy(), 0);
+				}
+			}
+			isTriggerReconfig = true;
+		}else{
+			try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event, isPriorityEvent)) {
+				for (ResultSubpartition subpartition : subpartitions) {
+					// Retain the buffer so that it can be recycled by each channel of targetPartition
+					subpartition.add(eventBufferConsumer.copy(), 0);
+				}
 			}
 		}
 	}

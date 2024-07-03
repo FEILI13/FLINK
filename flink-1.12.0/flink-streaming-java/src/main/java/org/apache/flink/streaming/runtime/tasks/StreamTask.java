@@ -47,6 +47,11 @@ import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.event.DeterminantResponseEventListener;
 import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.event.InFlightLogRequestEventListener;
+import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
+import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
+import org.apache.flink.runtime.checkpoint.channel.SequentialChannelStateReader;
+import org.apache.flink.runtime.concurrent.FutureUtils;
+import org.apache.flink.runtime.event.RuntimeEvent;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
@@ -60,6 +65,14 @@ import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.plugable.DeserializationDelegate;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.runtime.state.*;
+import org.apache.flink.runtime.reConfig.utils.InstanceState;
+import org.apache.flink.runtime.reConfig.message.MigrateSignal;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
+import org.apache.flink.runtime.reConfig.message.ReConfigStage;
+import org.apache.flink.runtime.state.CheckpointStorageWorkerView;
+import org.apache.flink.runtime.state.StateBackend;
+import org.apache.flink.runtime.state.StateBackendLoader;
+import org.apache.flink.runtime.state.ttl.TtlTimeProvider;
 import org.apache.flink.runtime.taskmanager.DispatcherThreadFactory;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.graph.StreamConfig;
@@ -83,6 +96,22 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.OptionalLong;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadFactory;
+
+import static org.apache.flink.runtime.concurrent.FutureUtils.assertNoException;
 
 /**
  * Base class for all streaming tasks. A task is the unit of local processing that is deployed
@@ -241,6 +270,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	private final SourceCheckpointDeterminant reuseSourceCheckpointDeterminant;
 	private final IgnoreCheckpointDeterminant ignoreCheckpointReuseDeterminant;
 
+	private long version = 0;// ReconfigSingal的version,防止重复处理
+
 	// ------------------------------------------------------------------------
 
 	/**
@@ -360,6 +391,78 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			getEnvironment(),
 			stateBackend,
 			timerService);
+
+	public StreamTaskStateInitializer createStreamTaskStateInitializer() {
+		return new StreamTaskStateInitializerImpl(
+			getEnvironment(),
+			stateBackend,
+
+			TtlTimeProvider.DEFAULT,
+			timerServiceProvider != null ? timerServiceProvider : InternalTimeServiceManagerImpl::create
+		);
+	}
+
+	protected Counter setupNumRecordsInCounter(StreamOperator streamOperator) {
+		try {
+			return ((OperatorMetricGroup) streamOperator.getMetricGroup()).getIOMetricGroup().getNumRecordsInCounter();
+		} catch (Exception e) {
+			LOG.warn("An exception occurred during the metrics setup.", e);
+			return new SimpleCounter();
+		}
+	}
+
+	protected void beforeInvoke() throws Exception {
+		disposedOperators = false;
+		LOG.debug("Initializing {}.", getName());
+
+		operatorChain = new OperatorChain<>(this, recordWriter);
+		mainOperator = operatorChain.getMainOperator();
+
+		// task specific initialization
+		init();
+
+		// save the work of reloading state, etc, if the task is already canceled
+		if (canceled) {
+			throw new CancelTaskException();
+		}
+
+		// -------- Invoke --------
+		LOG.debug("Invoking {}", getName());
+
+		// we need to make sure that any triggers scheduled in open() cannot be
+		// executed before all operators are opened
+		actionExecutor.runThrowing(() -> {
+
+			SequentialChannelStateReader reader = getEnvironment().getTaskStateManager().getSequentialChannelStateReader();
+			// TODO: for UC rescaling, reenable notifyAndBlockOnCompletion for non-iterative jobs
+			reader.readOutputData(getEnvironment().getAllWriters(), false);
+
+			operatorChain.initializeStateAndOpenOperators(createStreamTaskStateInitializer());
+
+			channelIOExecutor.execute(() -> {
+				try {
+					reader.readInputData(getEnvironment().getAllInputGates());
+				} catch (Exception e) {
+					asyncExceptionHandler.handleAsyncException("Unable to read channel state", e);
+				}
+			});
+
+			for (InputGate inputGate : getEnvironment().getAllInputGates()) {
+				inputGate
+					.getStateConsumedFuture()
+					.thenRun(() -> mainMailboxExecutor.execute(inputGate::requestPartitions, "Input gate request partitions"));
+			}
+
+		});
+
+		isRunning = true;
+		if(getEnvironment().getTaskInfo().getTaskName().contains("ReConfig") || getEnvironment().getTaskInfo().getTaskName().contains("upStream")){
+			ReConfigSignal signal = new ReConfigSignal(ReConfigSignal.ReConfigSignalType.INIT, -1L);
+			signal.putProperties("taskName", getEnvironment().getTaskInfo().getTaskName());
+			signal.putProperties("taskIndex", getEnvironment().getTaskInfo().getIndexOfThisSubtask());
+			signal.putProperties("maxParallelism", getEnvironment().getTaskInfo().getMaxNumberOfParallelSubtasks());
+			notifyJobMaster(signal);// 初始化，向Controller注册
+		}
 	}
 
 	@Override
@@ -1534,5 +1637,221 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		public ProcessingTimeCallbackID getID() {
 			return id;
 		}
+	}
+
+	protected long getAsyncCheckpointStartDelayNanos() {
+		return latestAsyncCheckpointStartDelayNanos;
+	}
+
+	@Override
+	public void triggerReConfig(ReConfigSignal signal) {
+		/** 广播发送到下游算子，发送完之后handleRescaleSignalInternal函数处理 */
+		mainMailboxExecutor.execute(
+			() -> {
+				System.out.println(getName()+" "+signal);
+				if (signal.getVersion() > version) {
+					System.out.println(getIndexInSubtaskGroup()+" sync1");
+					version = signal.getVersion();
+					sendReConfigSignalDownStream(signal);
+					handleReConfigSignalInternal(signal);
+					System.out.println(getIndexInSubtaskGroup()+" sync2");
+				}
+			},
+			"triggerReConfig");
+	}
+
+	private void sendReConfigSignalDownStream(ReConfigSignal reConfigSignal){
+		try {
+			recordWriter.broadcastEvent(reConfigSignal);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	private void handleReConfigSignalInternal(ReConfigSignal signal){
+		//System.out.println("receive ReConfigSignal:"+getTaskNameWithSubtaskAndId());
+		if(signal.getType() == ReConfigSignal.ReConfigSignalType.PERIOD_DETECT) {
+			if (getName().contains("ReConfig")) {
+				//int[] array = getDetectPriorities();
+				Map<Integer, Integer> frequencyWindowInfo = getFrequencyWindowInfo();
+				//System.out.println("getFrequencyWindowInfo");
+				Map<Integer, Long> sizeWindowInfo = getSizeWindowInfo(false);
+				ReConfigSignal stateInfo = new ReConfigSignal(ReConfigSignal.ReConfigSignalType.PERIOD_RESULT, signal.getVersion());
+				stateInfo.putProperties("taskIndex", getEnvironment().getTaskInfo().getIndexOfThisSubtask());
+				stateInfo.putProperties("frequencyWindowInfo", frequencyWindowInfo);
+//				System.out.println("stream task frequencyWindowInfo");
+//				for(Map.Entry<Integer, Integer> entry:frequencyWindowInfo.entrySet()){
+//					System.out.println("keyGroup:"+entry.getKey()+" fre:"+entry.getValue());
+//				}
+				stateInfo.putProperties("sizeWindowInfo", sizeWindowInfo);
+				stateInfo.putProperties("executionId", getEnvironment().getExecutionId());
+				notifyJobMaster(stateInfo);// 通知Controller收到的记录数量
+			}
+		}else if (signal.getType()== ReConfigSignal.ReConfigSignalType.MIGRATE) {
+			if(getName().contains("upStream")){
+				updateRouting(
+					(Integer) signal.getProperties("sourceTask"),
+					(Integer) signal.getProperties("keyGroupIndex"),
+					(Integer) signal.getProperties("targetTask"),
+					(Integer) signal.getProperties("batch"),
+					(Integer) signal.getProperties("splitNum")
+				);
+			}else if(getName().contains("ReConfig") && ((Integer) signal.getProperties("sourceTask")) == getEnvironment().getTaskInfo().getIndexOfThisSubtask()){
+//				migrate(
+//					(Integer) signal.getProperties("keyGroupIndex"),
+//					(Integer) signal.getProperties("batch"),
+//					(Integer) signal.getProperties("splitNum")
+//				);
+				System.out.println("假装迁移了");
+				ReConfigSignal result = new ReConfigSignal(ReConfigSignal.ReConfigSignalType.MIGRATE_COMPLETE, signal.getVersion());
+				result.putProperties("executionId", getEnvironment().getExecutionId());
+				notifyJobMaster(result);
+			} else if (getName().contains("ReConfig") && ((Integer) signal.getProperties("targetTask")) == getEnvironment().getTaskInfo().getIndexOfThisSubtask()) {
+				//this.inputProcessor.block();
+//				fetchState(
+//					(Integer) signal.getProperties("keyGroupIndex"),
+//					(Integer) signal.getProperties("batch"),
+//					(Integer) signal.getProperties("splitNum")
+//				);
+				System.out.println("假装收到了");
+				//this.inputProcessor.unBlock();
+				ReConfigSignal result = new ReConfigSignal(ReConfigSignal.ReConfigSignalType.MIGRATE_COMPLETE, signal.getVersion());
+				result.putProperties("executionId", getEnvironment().getExecutionId());
+				notifyJobMaster(result);
+				//notifyJobMaster(ReConfigStage.MIGRATED);
+			}
+		}else if(signal.getType() == ReConfigSignal.ReConfigSignalType.CLEAN){
+			if(getName().contains("upStream")){
+				cleanRouting();
+				ReConfigSignal reConfigSignal = new ReConfigSignal(ReConfigSignal.ReConfigSignalType.CLEAN_COMPLETE, signal.getVersion());
+				reConfigSignal.putProperties("executionId", getEnvironment().getExecutionId());
+				notifyJobMaster(reConfigSignal);
+			}else if(getName().contains("ReConfig")){
+				cleanState();
+				cleanStateWindow();
+				ReConfigSignal reConfigSignal = new ReConfigSignal(ReConfigSignal.ReConfigSignalType.CLEAN_COMPLETE, signal.getVersion());
+				reConfigSignal.putProperties("executionId", getEnvironment().getExecutionId());
+				notifyJobMaster(reConfigSignal);
+			}
+		}else if(getName().contains("ReConfig") && signal.getType() == ReConfigSignal.ReConfigSignalType.INCREASE_STATE){
+			Map<Integer, Long> sizeWindowInfo = getSizeWindowInfo(true);
+			ReConfigSignal stateInfo = new ReConfigSignal(ReConfigSignal.ReConfigSignalType.INCREASE_RESULT, signal.getVersion());
+			stateInfo.putProperties("taskIndex", getEnvironment().getTaskInfo().getIndexOfThisSubtask());
+			stateInfo.putProperties("sizeWindowInfo", sizeWindowInfo);
+			stateInfo.putProperties("executionId", getEnvironment().getExecutionId());
+			notifyJobMaster(stateInfo);// 通知Controller收到的记录数量
+		}
+	}
+
+	private void updateRouting(int sourceIndex, int keyGroupIndex, int targetIndex, int batch, int splitNum){
+		List<StreamEdge> outEdgesInOrder = configuration.getOutEdgesInOrder(this.getEnvironment().getUserCodeClassLoader().asClassLoader());
+		//System.out.println("outEdgesInOrder.size() is :"+outEdgesInOrder.size());
+		for(int i = 0; i < outEdgesInOrder.size(); i++) {
+			this.recordWriter.updateControl(keyGroupIndex, targetIndex, batch, splitNum);
+		}
+	}
+
+	private void cleanRouting(){
+		List<StreamEdge> outEdgesInOrder = configuration.getOutEdgesInOrder(this.getEnvironment().getUserCodeClassLoader().asClassLoader());
+		//System.out.println("outEdgesInOrder.size() is :"+outEdgesInOrder.size());
+		for(int i = 0; i < outEdgesInOrder.size(); i++) {
+			this.recordWriter.cleanRouting();
+		}
+	}
+
+	public void handleReConfigSignal(
+		ReConfigSignal signal,
+		InputChannelInfo channelInfo) {
+		System.out.println(getName()+" "+signal);
+		if (signal.getVersion() > version) {
+			version = signal.getVersion();
+			System.out.println(getIndexInSubtaskGroup()+" sync1");
+			sendReConfigSignalDownStream(signal);
+			handleReConfigSignalInternal(signal);
+			System.out.println(getIndexInSubtaskGroup()+" sync2");
+		}
+	}
+
+	private void notifyJobMaster(ReConfigStage stage){
+		Environment env = getEnvironment();
+		env.acknowledgeReConfig(
+			env.getJobID(),
+			env.getExecutionId(),
+			env.getTaskInfo().getTaskNameWithSubtasks(),
+			stage
+		);
+	}
+
+	private void notifyJobMaster(InstanceState state){
+		Environment env = getEnvironment();
+		env.acknowledgeReConfig(
+			env.getJobID(),
+			env.getExecutionId(),
+			env.getTaskInfo().getTaskNameWithSubtasks(),
+			state
+		);
+	}
+
+	private void notifyJobMaster(ReConfigSignal signal){
+		Environment env = getEnvironment();
+		env.acknowledgeReConfig(
+			env.getJobID(),
+			env.getExecutionId(),
+			env.getTaskInfo().getTaskNameWithSubtasks(),
+			signal
+		);
+	}
+
+	/**
+	 * 获取这段时间窗口内的访问次数
+	 * @return	Map，key为键组，value为访问次数
+	 */
+	private Map<Integer, Integer> getFrequencyWindowInfo(){
+		return this.mainOperator.getFrequencyWindowInfo();
+	}
+
+	/**
+	 * 获取这段时间窗口内的访问次数
+	 * @param isALL	是否获取全部状态数据
+	 * @return	Map，key为键组，value为访问次数
+	 */
+	private Map<Integer, Long> getSizeWindowInfo(boolean isALL){
+		return this.mainOperator.getSizeWindowInfo(isALL);
+	}
+
+	/**
+	 * 清空窗口数据，重新统计
+	 */
+	private void cleanStateWindow(){
+		this.mainOperator.cleanStateWindow();
+	}
+
+	private void migrate(int keyGroupIndex, int batch, int splitNum){
+		this.mainOperator.migrate(keyGroupIndex, batch, splitNum);
+	}
+
+	private void fetchState(int keyGroupIndex, int batch, int splitNum){
+		this.mainOperator.fetchState(keyGroupIndex, batch, splitNum);
+	}
+
+	private void cleanState(){
+		this.mainOperator.cleanState();
+	}
+
+	@Override
+	public void modifyUpperStreamChannelsForRescale(
+		int previousNumChannels,
+		ThrowingRunnable<? extends Exception> command,
+		String description) {
+		final Environment env = getEnvironment();
+		final ChannelStateWriter channelStateWriter = subtaskCheckpointCoordinator.getChannelStateWriter();
+		for (final InputGate gate : env.getAllInputGates()) {
+			gate.setChannelStateWriterForNewChannels(channelStateWriter, previousNumChannels);//为新channel设置与其他channel相同的channelStateWriter
+		}
+
+		Preconditions.checkNotNull(inputProcessor);
+		inputProcessor.updateForRescale(getEnvironment().getIOManager());//增加输入的反序列化处理器
+
+		this.mainMailboxExecutor.execute(command, description);
 	}
 }
