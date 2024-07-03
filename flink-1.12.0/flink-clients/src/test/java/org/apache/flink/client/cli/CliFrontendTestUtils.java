@@ -25,8 +25,6 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
 import java.net.MalformedURLException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 
 import static org.junit.Assert.assertEquals;
 
@@ -35,7 +33,7 @@ import static org.junit.Assert.assertEquals;
  */
 public class CliFrontendTestUtils {
 
-	public static final String TEST_JAR_MAIN_CLASS = "org.apache.flink.client.testjar.TestJob";
+	public static final String TEST_JAR_MAIN_CLASS = "org.apache.flink.client.testjar.WordCount";
 
 	public static final String TEST_JAR_CLASSLOADERTEST_CLASS = "org.apache.flink.client.testjar.JobWithExternalDependency";
 
@@ -46,9 +44,7 @@ public class CliFrontendTestUtils {
 	private static final PrintStream previousSysout = System.out;
 
 	public static String getTestJarPath() throws FileNotFoundException, MalformedURLException {
-		String projectBaseDir = System.getProperty("project.basedir");
-		Path testJarPath = Paths.get(projectBaseDir, "target", "maven-test-jar.jar");
-		File f = testJarPath.toFile();
+		File f = new File("target/maven-test-jar.jar");
 		if (!f.exists()) {
 			throw new FileNotFoundException("Test jar not present. Invoke tests using maven "
 					+ "or build the jar using 'mvn process-test-classes' in flink-clients");

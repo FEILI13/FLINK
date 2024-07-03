@@ -38,6 +38,14 @@ public interface MetricRegistry {
 	char getDelimiter();
 
 	/**
+	 * Returns the configured delimiter for the reporter with the given index.
+	 *
+	 * @param index index of the reporter whose delimiter should be used
+	 * @return configured reporter delimiter, or global delimiter if index is invalid
+	 */
+	char getDelimiter(int index);
+
+	/**
 	 * Returns the number of registered reporters.
 	 */
 	int getNumberReporters();
@@ -68,12 +76,10 @@ public interface MetricRegistry {
 	ScopeFormats getScopeFormats();
 
 	/**
-	 * Returns the gateway of the {@link MetricQueryService} or null, if none is started.
+	 * Returns the path of the {@link MetricQueryService} or null, if none is started.
 	 *
-	 * @return Gateway of the MetricQueryService or null, if none is started
+	 * @return Path of the MetricQueryService or null, if none is started
 	 */
 	@Nullable
-	default String getMetricQueryServiceGatewayRpcAddress() {
-		return null;
-	}
+	String getMetricQueryServicePath();
 }

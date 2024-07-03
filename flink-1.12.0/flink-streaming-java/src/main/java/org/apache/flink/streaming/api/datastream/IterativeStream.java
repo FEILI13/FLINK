@@ -21,12 +21,10 @@ import org.apache.flink.annotation.Public;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.api.java.functions.KeySelector;
-import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.streaming.api.transformations.CoFeedbackTransformation;
 import org.apache.flink.streaming.api.transformations.FeedbackTransformation;
-import org.apache.flink.util.OutputTag;
+import org.apache.flink.streaming.api.transformations.StreamTransformation;
 
 import java.util.Collection;
 
@@ -56,7 +54,7 @@ public class IterativeStream<T> extends SingleOutputStreamOperator<T> {
 	 *
 	 * <p>A common usage pattern for streaming iterations is to use output
 	 * splitting to send a part of the closing data stream to the head. Refer to
-	 * {@link ProcessFunction.Context#output(OutputTag, Object)}
+	 * {@link DataStream#split(org.apache.flink.streaming.api.collector.selector.OutputSelector)}
 	 * for more information.
 	 *
 	 * @param feedbackStream
@@ -69,7 +67,7 @@ public class IterativeStream<T> extends SingleOutputStreamOperator<T> {
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	public DataStream<T> closeWith(DataStream<T> feedbackStream) {
 
-		Collection<Transformation<?>> predecessors = feedbackStream.getTransformation().getTransitivePredecessors();
+		Collection<StreamTransformation<?>> predecessors = feedbackStream.getTransformation().getTransitivePredecessors();
 
 		if (!predecessors.contains(this.transformation)) {
 			throw new UnsupportedOperationException(
@@ -171,7 +169,7 @@ public class IterativeStream<T> extends SingleOutputStreamOperator<T> {
 		 */
 		public DataStream<F> closeWith(DataStream<F> feedbackStream) {
 
-			Collection<Transformation<?>> predecessors = feedbackStream.getTransformation().getTransitivePredecessors();
+			Collection<StreamTransformation<?>> predecessors = feedbackStream.getTransformation().getTransitivePredecessors();
 
 			if (!predecessors.contains(this.coFeedbackTransformation)) {
 				throw new UnsupportedOperationException(
@@ -204,7 +202,7 @@ public class IterativeStream<T> extends SingleOutputStreamOperator<T> {
 		}
 
 		@Override
-		public <KEY> ConnectedStreams<I, F> keyBy(KeySelector<I, KEY> keySelector1, KeySelector<F, KEY> keySelector2) {
+		public ConnectedStreams<I, F> keyBy(KeySelector<I, ?> keySelector1, KeySelector<F, ?> keySelector2) {
 			throw groupingException;
 		}
 

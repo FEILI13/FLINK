@@ -1,7 +1,7 @@
 ---
 title: "Back Pressure Monitoring"
 layout: redirect
-redirect: /ops/monitoring/back_pressure.html
+redirect: /monitoring/back_pressure.html
 permalink: /internals/back_pressure_monitoring.html
 ---
 <!--

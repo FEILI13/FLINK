@@ -77,13 +77,6 @@ public abstract class CompositeTypeSerializerConfigSnapshot<T> extends TypeSeria
 		return nestedSerializersAndConfigs.get(0);
 	}
 
-	public TypeSerializerSnapshot<?>[] getNestedSerializerSnapshots() {
-		return nestedSerializersAndConfigs
-			.stream()
-			.map(nestedSerializerAndConfig -> nestedSerializerAndConfig.f1)
-			.toArray(TypeSerializerSnapshot[]::new);
-	}
-
 	@Override
 	public boolean equals(Object obj) {
 		if (obj == this) {

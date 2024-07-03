@@ -19,14 +19,11 @@
 package org.apache.flink.runtime.jobmaster.slotpool;
 
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.runtime.clusterframework.types.AllocationID;
-import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
-import org.apache.flink.runtime.concurrent.FutureUtils;
+import org.apache.flink.runtime.clusterframework.types.SlotProfile;
 import org.apache.flink.runtime.instance.SlotSharingGroupId;
 import org.apache.flink.runtime.jobmanager.scheduler.Locality;
 import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.jobmaster.SlotContext;
-import org.apache.flink.runtime.jobmaster.SlotInfo;
 import org.apache.flink.runtime.jobmaster.SlotOwner;
 import org.apache.flink.runtime.jobmaster.SlotRequestId;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
@@ -38,22 +35,19 @@ import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import java.util.AbstractCollection;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.function.Function;
-import java.util.function.Predicate;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * Manager which is responsible for slot sharing. Slot sharing allows to run different
@@ -87,6 +81,9 @@ public class SlotSharingManager {
 
 	private static final Logger LOG = LoggerFactory.getLogger(SlotSharingManager.class);
 
+	/** Lock for the internal data structures. */
+	private final Object lock = new Object();
+
 	private final SlotSharingGroupId slotSharingGroupId;
 
 	/** Actions to release allocated slots after a complete multi task slot hierarchy has been released. */
@@ -101,7 +98,7 @@ public class SlotSharingManager {
 	private final Map<SlotRequestId, MultiTaskSlot> unresolvedRootSlots;
 
 	/** Root nodes which have been completed (the underlying allocated slot has been assigned). */
-	private final Map<TaskManagerLocation, Map<AllocationID, MultiTaskSlot>> resolvedRootSlots;
+	private final Map<TaskManagerLocation, Set<MultiTaskSlot>> resolvedRootSlots;
 
 	SlotSharingManager(
 			SlotSharingGroupId slotSharingGroupId,
@@ -139,122 +136,63 @@ public class SlotSharingManager {
 	 *                               to cancel the pending slot request or release the allocated slot
 	 * @return New root slot
 	 */
-	@Nonnull
 	MultiTaskSlot createRootSlot(
 			SlotRequestId slotRequestId,
 			CompletableFuture<? extends SlotContext> slotContextFuture,
 			SlotRequestId allocatedSlotRequestId) {
-		LOG.debug("Create multi task slot [{}] in slot [{}].", slotRequestId, allocatedSlotRequestId);
-
-		final CompletableFuture<SlotContext> slotContextFutureAfterRootSlotResolution = new CompletableFuture<>();
-		final MultiTaskSlot rootMultiTaskSlot = createAndRegisterRootSlot(
-			slotRequestId,
-			allocatedSlotRequestId,
-			slotContextFutureAfterRootSlotResolution);
-
-		FutureUtils.forward(
-			slotContextFuture.thenApply(
-				(SlotContext slotContext) -> {
-					// add the root node to the set of resolved root nodes once the SlotContext future has
-					// been completed and we know the slot's TaskManagerLocation
-					tryMarkSlotAsResolved(slotRequestId, slotContext);
-					return slotContext;
-				}),
-			slotContextFutureAfterRootSlotResolution);
-
-		return rootMultiTaskSlot;
-	}
-
-	private SlotSharingManager.MultiTaskSlot createAndRegisterRootSlot(
-			SlotRequestId slotRequestId,
-			SlotRequestId allocatedSlotRequestId,
-			CompletableFuture<? extends SlotContext> slotContextFuture) {
 		final MultiTaskSlot rootMultiTaskSlot = new MultiTaskSlot(
 			slotRequestId,
 			slotContextFuture,
 			allocatedSlotRequestId);
 
+		LOG.debug("Create multi task slot [{}] in slot [{}].", slotRequestId, allocatedSlotRequestId);
+
 		allTaskSlots.put(slotRequestId, rootMultiTaskSlot);
+
 		unresolvedRootSlots.put(slotRequestId, rootMultiTaskSlot);
+
+		// add the root node to the set of resolved root nodes once the SlotContext future has
+		// been completed and we know the slot's TaskManagerLocation
+		slotContextFuture.whenComplete(
+			(SlotContext slotContext, Throwable throwable) -> {
+				if (slotContext != null) {
+					final MultiTaskSlot resolvedRootNode = unresolvedRootSlots.remove(slotRequestId);
+
+					if (resolvedRootNode != null) {
+						LOG.trace("Fulfill multi task slot [{}] with slot [{}].", slotRequestId, slotContext.getAllocationId());
+
+						final Set<MultiTaskSlot> innerCollection = resolvedRootSlots.computeIfAbsent(
+							slotContext.getTaskManagerLocation(),
+							taskManagerLocation -> new HashSet<>(4));
+
+						innerCollection.add(resolvedRootNode);
+					}
+				} else {
+					rootMultiTaskSlot.release(throwable);
+				}
+			});
+
 		return rootMultiTaskSlot;
 	}
 
-	private void tryMarkSlotAsResolved(SlotRequestId slotRequestId, SlotInfo slotInfo) {
-		final MultiTaskSlot resolvedRootNode = unresolvedRootSlots.remove(slotRequestId);
-
-		if (resolvedRootNode != null) {
-			final AllocationID allocationId = slotInfo.getAllocationId();
-			LOG.trace("Fulfill multi task slot [{}] with slot [{}].", slotRequestId, allocationId);
-
-			final Map<AllocationID, MultiTaskSlot> innerMap = resolvedRootSlots.computeIfAbsent(
-				slotInfo.getTaskManagerLocation(),
-				taskManagerLocation -> new HashMap<>());
-
-			MultiTaskSlot previousValue = innerMap.put(allocationId, resolvedRootNode);
-			Preconditions.checkState(previousValue == null);
-		}
-	}
-
-	@Nonnull
-	public Collection<SlotSelectionStrategy.SlotInfoAndResources> listResolvedRootSlotInfo(@Nullable AbstractID groupId) {
-		return resolvedRootSlots
-			.values()
-			.stream()
-				.flatMap((Map<AllocationID, MultiTaskSlot> map) -> createValidMultiTaskSlotInfos(map, groupId))
-				.map((MultiTaskSlotInfo multiTaskSlotInfo) -> {
-					SlotInfo slotInfo = multiTaskSlotInfo.getSlotInfo();
-					return new SlotSelectionStrategy.SlotInfoAndResources(
-						slotInfo,
-						slotInfo.getResourceProfile().subtract(multiTaskSlotInfo.getReservedResources()),
-						multiTaskSlotInfo.getTaskExecutorUtilization());
-				}).collect(Collectors.toList());
-	}
-
-	private Stream<MultiTaskSlotInfo> createValidMultiTaskSlotInfos(Map<AllocationID, MultiTaskSlot> taskExecutorSlots, AbstractID groupId) {
-		final double taskExecutorUtilization = calculateTaskExecutorUtilization(taskExecutorSlots, groupId);
-
-		return taskExecutorSlots.values().stream()
-			.filter(validMultiTaskSlotAndDoesNotContain(groupId))
-			.map(multiTaskSlot ->
-				new MultiTaskSlotInfo(
-					multiTaskSlot.getSlotContextFuture().join(),
-					multiTaskSlot.getReservedResources(),
-					taskExecutorUtilization));
-	}
-
-	private double calculateTaskExecutorUtilization(Map<AllocationID, MultiTaskSlot> map, AbstractID groupId) {
-		int numberValidSlots = 0;
-		int numberFreeSlots = 0;
-
-		for (MultiTaskSlot multiTaskSlot : map.values()) {
-			if (isNotReleasing(multiTaskSlot)) {
-				numberValidSlots++;
-
-				if (doesNotContain(groupId, multiTaskSlot)) {
-					numberFreeSlots++;
-				}
-			}
-		}
-
-		return (double) (numberValidSlots - numberFreeSlots) / numberValidSlots;
-	}
-
-	private boolean isNotReleasing(MultiTaskSlot multiTaskSlot) {
-		return !multiTaskSlot.isReleasing();
-	}
-
-	private boolean doesNotContain(@Nullable AbstractID groupId, MultiTaskSlot multiTaskSlot) {
-		return !multiTaskSlot.contains(groupId);
-	}
-
-	private Predicate<MultiTaskSlot> validMultiTaskSlotAndDoesNotContain(@Nullable AbstractID groupId) {
-		return (MultiTaskSlot multiTaskSlot) -> doesNotContain(groupId, multiTaskSlot) && isNotReleasing(multiTaskSlot);
-	}
-
+	/**
+	 * Gets a resolved root slot which does not yet contain the given groupId. First the given set of
+	 * preferred locations is checked.
+	 *
+	 * @param groupId which the returned slot must not contain
+	 * @param matcher slot profile matcher to match slot with the profile requirements
+	 * @return the resolved root slot and its locality wrt to the specified location preferences
+	 * 		or null if there was no root slot which did not contain the given groupId
+	 */
 	@Nullable
-	public MultiTaskSlot getResolvedRootSlot(@Nonnull SlotInfo slotInfo) {
-		Map<AllocationID, MultiTaskSlot> forLocationEntry = resolvedRootSlots.get(slotInfo.getTaskManagerLocation());
-		return forLocationEntry != null ? forLocationEntry.get(slotInfo.getAllocationId()) : null;
+	MultiTaskSlotLocality getResolvedRootSlot(AbstractID groupId, SchedulingStrategy matcher, SlotProfile slotProfile) {
+		Collection<Set<MultiTaskSlot>> resolvedRootSlotsValues = this.resolvedRootSlots.values();
+		return matcher.findMatchWithLocality(
+			slotProfile,
+			() -> resolvedRootSlotsValues.stream().flatMap(Collection::stream),
+			(MultiTaskSlot multiTaskSlot) -> multiTaskSlot.getSlotContextFuture().join(),
+			(MultiTaskSlot multiTaskSlot) -> !multiTaskSlot.contains(groupId),
+			MultiTaskSlotLocality::of);
 	}
 
 	/**
@@ -266,10 +204,13 @@ public class SlotSharingManager {
 	 */
 	@Nullable
 	MultiTaskSlot getUnresolvedRootSlot(AbstractID groupId) {
-		return unresolvedRootSlots.values().stream()
-			.filter(validMultiTaskSlotAndDoesNotContain(groupId))
-			.findFirst()
-			.orElse(null);
+		for (MultiTaskSlot multiTaskSlot : unresolvedRootSlots.values()) {
+			if (!multiTaskSlot.contains(groupId)) {
+				return multiTaskSlot;
+			}
+		}
+
+		return null;
 	}
 
 	@Override
@@ -354,17 +295,12 @@ public class SlotSharingManager {
 		 * @param cause for the release
 		 */
 		public abstract void release(Throwable cause);
-
-		/**
-		 * Gets the total reserved resources of the slot and its descendants.
-		 */
-		public abstract ResourceProfile getReservedResources();
 	}
 
 	/**
 	 * {@link TaskSlot} implementation which can have multiple other task slots assigned as children.
 	 */
-	public final class MultiTaskSlot extends TaskSlot implements PhysicalSlot.Payload {
+	public final class MultiTaskSlot extends TaskSlot implements AllocatedSlot.Payload {
 
 		private final Map<AbstractID, TaskSlot> children;
 
@@ -381,9 +317,6 @@ public class SlotSharingManager {
 
 		// true if we are currently releasing our children
 		private boolean releasingChildren;
-
-		// the total resources reserved by all the descendants.
-		private ResourceProfile reservedResources;
 
 		private MultiTaskSlot(
 				SlotRequestId slotRequestId,
@@ -416,30 +349,20 @@ public class SlotSharingManager {
 				CompletableFuture<? extends SlotContext> slotContextFuture,
 				@Nullable SlotRequestId allocatedSlotRequestId) {
 			super(slotRequestId, groupId);
-			Preconditions.checkNotNull(slotContextFuture);
 
 			this.parent = parent;
+			this.slotContextFuture = Preconditions.checkNotNull(slotContextFuture);
 			this.allocatedSlotRequestId = allocatedSlotRequestId;
 
 			this.children = new HashMap<>(16);
 			this.releasingChildren = false;
 
-			this.reservedResources = ResourceProfile.ZERO;
-
-			this.slotContextFuture = slotContextFuture.handle((SlotContext slotContext, Throwable throwable) -> {
-				if (throwable != null) {
-					// If the underlying resource request failed, we currently fail all the requests
-					release(throwable);
-					throw new CompletionException(throwable);
-				}
-
-				if (parent == null) {
-					// sanity check
-					releaseSlotIfOversubscribing(slotContext);
-				}
-
-				return slotContext;
-			});
+			slotContextFuture.whenComplete(
+				(SlotContext ignored, Throwable throwable) -> {
+					if (throwable != null) {
+						release(throwable);
+					}
+				});
 		}
 
 		CompletableFuture<? extends SlotContext> getSlotContextFuture() {
@@ -483,7 +406,6 @@ public class SlotSharingManager {
 		 */
 		SingleTaskSlot allocateSingleTaskSlot(
 				SlotRequestId slotRequestId,
-				ResourceProfile resourceProfile,
 				AbstractID groupId,
 				Locality locality) {
 			Preconditions.checkState(!super.contains(groupId));
@@ -492,7 +414,6 @@ public class SlotSharingManager {
 
 			final SingleTaskSlot leaf = new SingleTaskSlot(
 				slotRequestId,
-				resourceProfile,
 				groupId,
 				this,
 				locality);
@@ -501,8 +422,6 @@ public class SlotSharingManager {
 
 			// register the newly allocated slot also at the SlotSharingManager
 			allTaskSlots.put(slotRequestId, leaf);
-
-			reserveResource(resourceProfile);
 
 			return leaf;
 		}
@@ -554,12 +473,10 @@ public class SlotSharingManager {
 					final SlotContext slotContext = slotContextFuture.getNow(null);
 
 					if (slotContext != null) {
-						final Map<AllocationID, MultiTaskSlot> multiTaskSlots =
-							resolvedRootSlots.get(slotContext.getTaskManagerLocation());
+						final Set<MultiTaskSlot> multiTaskSlots = resolvedRootSlots.get(slotContext.getTaskManagerLocation());
 
 						if (multiTaskSlots != null) {
-							MultiTaskSlot removedSlot = multiTaskSlots.remove(slotContext.getAllocationId());
-							Preconditions.checkState(removedSlot == this);
+							multiTaskSlots.remove(this);
 
 							if (multiTaskSlots.isEmpty()) {
 								resolvedRootSlots.remove(slotContext.getTaskManagerLocation());
@@ -569,42 +486,8 @@ public class SlotSharingManager {
 				}
 
 				// release the underlying allocated slot
-				allocatedSlotActions.releaseSlot(allocatedSlotRequestId, cause);
+				allocatedSlotActions.releaseSlot(allocatedSlotRequestId, null, cause);
 			}
-		}
-
-		@Override
-		public boolean willOccupySlotIndefinitely() {
-			throw new UnsupportedOperationException("Shared slot are not allowed for slot occupation check.");
-		}
-
-		@Override
-		public ResourceProfile getReservedResources() {
-			return reservedResources;
-		}
-
-		/**
-		 * Checks if the task slot may have enough resource to fulfill the specific
-		 * request. If the underlying slot is not allocated, the check is skipped.
-		 *
-		 * @param resourceProfile The specific request to check.
-		 * @return Whether the slot is possible to fulfill the request in the future.
-		 */
-		boolean mayHaveEnoughResourcesToFulfill(ResourceProfile resourceProfile) {
-			if (!slotContextFuture.isDone()) {
-				return true;
-			}
-
-			MultiTaskSlot root = this;
-
-			while (root.parent != null) {
-				root = root.parent;
-			}
-
-			SlotContext slotContext = root.getSlotContextFuture().join();
-
-			return slotContext.getResourceProfile().isMatching(
-					resourceProfile.merge(root.getReservedResources()));
 		}
 
 		/**
@@ -617,14 +500,7 @@ public class SlotSharingManager {
 				TaskSlot child = children.remove(childGroupId);
 
 				if (child != null) {
-					Preconditions.checkState(
-						child == allTaskSlots.get(child.getSlotRequestId()),
-						"The child task slot is no longer registered. This might indicate that its " +
-							"SlotRequestId has been reused for another slot which is not allowed.");
 					allTaskSlots.remove(child.getSlotRequestId());
-
-					// Update the resources of this slot and the parents
-					releaseResource(child.getReservedResources());
 				}
 
 				if (children.isEmpty()) {
@@ -633,40 +509,9 @@ public class SlotSharingManager {
 			}
 		}
 
-		private void reserveResource(ResourceProfile resourceProfile) {
-			reservedResources = reservedResources.merge(resourceProfile);
-
-			if (parent != null) {
-				parent.reserveResource(resourceProfile);
-			}
-		}
-
-		private void releaseResource(ResourceProfile resourceProfile) {
-			reservedResources = reservedResources.subtract(resourceProfile);
-
-			if (parent != null) {
-				parent.releaseResource(resourceProfile);
-			}
-		}
-
-		private void releaseSlotIfOversubscribing(SlotContext slotContext) {
-			final ResourceProfile slotResources = slotContext.getResourceProfile();
-
-			if (!slotResources.isMatching(getReservedResources())) {
-				release(
-					new IllegalStateException(
-						"The allocated slot does not have enough resource for all its children. " +
-							"This indicates a bug of required resources calculation or slot allocation."));
-			}
-		}
-
-		boolean isReleasing() {
-			return releasingChildren;
-		}
-
 		@Override
 		public String toString() {
-			String physicalSlotDescription;
+			String physicalSlotDescription = "";
 			try {
 				physicalSlotDescription = String.valueOf(slotContextFuture.getNow(null));
 			}
@@ -694,18 +539,13 @@ public class SlotSharingManager {
 		// future containing a LogicalSlot which is completed once the underlying SlotContext future is completed
 		private final CompletableFuture<SingleLogicalSlot> singleLogicalSlotFuture;
 
-		// the resource profile of this slot.
-		private final ResourceProfile resourceProfile;
-
 		private SingleTaskSlot(
 				SlotRequestId slotRequestId,
-				ResourceProfile resourceProfile,
 				AbstractID groupId,
 				MultiTaskSlot parent,
 				Locality locality) {
 			super(slotRequestId, groupId);
 
-			this.resourceProfile = Preconditions.checkNotNull(resourceProfile);
 			this.parent = Preconditions.checkNotNull(parent);
 
 			Preconditions.checkNotNull(locality);
@@ -738,11 +578,6 @@ public class SlotSharingManager {
 			}
 
 			parent.releaseChild(getGroupId());
-		}
-
-		@Override
-		public ResourceProfile getReservedResources() {
-			return resourceProfile;
 		}
 
 		@Override
@@ -800,7 +635,7 @@ public class SlotSharingManager {
 		public int size() {
 			int numberResolvedMultiTaskSlots = 0;
 
-			for (Map<AllocationID, MultiTaskSlot> multiTaskSlots : resolvedRootSlots.values()) {
+			for (Set<MultiTaskSlot> multiTaskSlots : resolvedRootSlots.values()) {
 				numberResolvedMultiTaskSlots += multiTaskSlots.size();
 			}
 
@@ -812,14 +647,14 @@ public class SlotSharingManager {
 	 * Iterator over all resolved {@link MultiTaskSlot} root slots.
 	 */
 	private static final class ResolvedRootSlotIterator implements Iterator<MultiTaskSlot> {
-		private final Iterator<Map<AllocationID, MultiTaskSlot>> baseIterator;
+		private final Iterator<Set<MultiTaskSlot>> baseIterator;
 		private Iterator<MultiTaskSlot> currentIterator;
 
-		private ResolvedRootSlotIterator(Iterator<Map<AllocationID, MultiTaskSlot>> baseIterator) {
+		private ResolvedRootSlotIterator(Iterator<Set<MultiTaskSlot>> baseIterator) {
 			this.baseIterator = Preconditions.checkNotNull(baseIterator);
 
 			if (baseIterator.hasNext()) {
-				currentIterator = baseIterator.next().values().iterator();
+				currentIterator = baseIterator.next().iterator();
 			} else {
 				currentIterator = Collections.emptyIterator();
 			}
@@ -841,32 +676,8 @@ public class SlotSharingManager {
 
 		private void progressToNextElement() {
 			while (baseIterator.hasNext() && !currentIterator.hasNext()) {
-				currentIterator = baseIterator.next().values().iterator();
+				currentIterator = baseIterator.next().iterator();
 			}
-		}
-	}
-
-	private static class MultiTaskSlotInfo {
-		private final SlotInfo slotInfo;
-		private final ResourceProfile reservedResources;
-		private final double taskExecutorUtilization;
-
-		private MultiTaskSlotInfo(SlotInfo slotInfo, ResourceProfile reservedResources, double taskExecutorUtilization) {
-			this.slotInfo = slotInfo;
-			this.reservedResources = reservedResources;
-			this.taskExecutorUtilization = taskExecutorUtilization;
-		}
-
-		private ResourceProfile getReservedResources() {
-			return reservedResources;
-		}
-
-		private double getTaskExecutorUtilization() {
-			return taskExecutorUtilization;
-		}
-
-		private SlotInfo getSlotInfo() {
-			return slotInfo;
 		}
 	}
 }

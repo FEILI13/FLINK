@@ -19,7 +19,6 @@
 package org.apache.flink.runtime.webmonitor.retriever.impl;
 
 import org.apache.flink.api.common.time.Time;
-import org.apache.flink.runtime.concurrent.FixedRetryStrategy;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.leaderretrieval.SettableLeaderRetrievalService;
 import org.apache.flink.runtime.rpc.FencedRpcGateway;
@@ -34,7 +33,6 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -75,7 +73,7 @@ public class RpcGatewayRetrieverTest extends TestLogger {
 		final String expectedValue2 = "barfoo";
 		final UUID leaderSessionId = UUID.randomUUID();
 
-		RpcGatewayRetriever<UUID, DummyGateway> gatewayRetriever = new RpcGatewayRetriever<>(rpcService, DummyGateway.class, Function.identity(), new FixedRetryStrategy(0, Duration.ZERO));
+		RpcGatewayRetriever<UUID, DummyGateway> gatewayRetriever = new RpcGatewayRetriever<>(rpcService, DummyGateway.class, Function.identity(), 0, Time.milliseconds(0L));
 		SettableLeaderRetrievalService settableLeaderRetrievalService = new SettableLeaderRetrievalService();
 		DummyRpcEndpoint dummyRpcEndpoint = new DummyRpcEndpoint(rpcService, "dummyRpcEndpoint1", expectedValue);
 		DummyRpcEndpoint dummyRpcEndpoint2 = new DummyRpcEndpoint(rpcService, "dummyRpcEndpoint2", expectedValue2);
@@ -108,7 +106,10 @@ public class RpcGatewayRetrieverTest extends TestLogger {
 			assertEquals(dummyRpcEndpoint2.getAddress(), dummyGateway2.getAddress());
 			assertEquals(expectedValue2, dummyGateway2.foobar(TIMEOUT).get(TIMEOUT.toMilliseconds(), TimeUnit.MILLISECONDS));
 		} finally {
-			RpcUtils.terminateRpcEndpoints(TIMEOUT, dummyRpcEndpoint, dummyRpcEndpoint2);
+			dummyRpcEndpoint.shutDown();
+			dummyRpcEndpoint2.shutDown();
+			dummyRpcEndpoint.getTerminationFuture().get(TIMEOUT.toMilliseconds(), TimeUnit.MILLISECONDS);
+			dummyRpcEndpoint2.getTerminationFuture().get(TIMEOUT.toMilliseconds(), TimeUnit.MILLISECONDS);
 		}
 	}
 
@@ -136,6 +137,11 @@ public class RpcGatewayRetrieverTest extends TestLogger {
 		@Override
 		public UUID getFencingToken() {
 			return HighAvailabilityServices.DEFAULT_LEADER_ID;
+		}
+
+		@Override
+		public CompletableFuture<Void> postStop() {
+			return CompletableFuture.completedFuture(null);
 		}
 	}
 }

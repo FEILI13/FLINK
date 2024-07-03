@@ -21,7 +21,6 @@ package org.apache.flink.runtime.memory;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.MemorySegment;
-import org.apache.flink.core.memory.MemorySegmentWritable;
 
 import java.io.IOException;
 import java.io.UTFDataFormatException;
@@ -34,7 +33,7 @@ import java.io.UTFDataFormatException;
  *
  * <p>The paging assumes that all memory segments are of the same size.
  */
-public abstract class AbstractPagedOutputView implements DataOutputView, MemorySegmentWritable {
+public abstract class AbstractPagedOutputView implements DataOutputView {
 
 	private MemorySegment currentSegment;			// the current memory segment to write to
 
@@ -134,16 +133,9 @@ public abstract class AbstractPagedOutputView implements DataOutputView, MemoryS
 	 * @throws IOException Thrown, if the current segment could not be processed or a new segment could not
 	 *                     be obtained.
 	 */
-	public void advance() throws IOException {
+	protected void advance() throws IOException {
 		this.currentSegment = nextSegment(this.currentSegment, this.positionInSegment);
 		this.positionInSegment = this.headerLength;
-	}
-
-	/**
-	 * @return header length.
-	 */
-	public int getHeaderLength() {
-		return headerLength;
 	}
 
 	/**
@@ -414,38 +406,6 @@ public abstract class AbstractPagedOutputView implements DataOutputView, MemoryS
 			}
 
 			advance();
-		}
-	}
-
-	@Override
-	public void write(MemorySegment segment, int off, int len) throws IOException {
-		int remaining = this.segmentSize - this.positionInSegment;
-		if (remaining >= len) {
-			segment.copyTo(off, currentSegment, positionInSegment, len);
-			this.positionInSegment += len;
-		} else {
-
-			if (remaining == 0) {
-				advance();
-				remaining = this.segmentSize - this.positionInSegment;
-			}
-
-			while (true) {
-				int toPut = Math.min(remaining, len);
-				segment.copyTo(off, currentSegment, positionInSegment, toPut);
-				off += toPut;
-				len -= toPut;
-
-				if (len > 0) {
-					this.positionInSegment = this.segmentSize;
-					advance();
-					remaining = this.segmentSize - this.positionInSegment;
-				}
-				else {
-					this.positionInSegment += toPut;
-					break;
-				}
-			}
 		}
 	}
 }

@@ -19,11 +19,14 @@
 package org.apache.flink.contrib.streaming.state.iterator;
 
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.contrib.streaming.state.RocksDBKeySerializationUtils;
 import org.apache.flink.contrib.streaming.state.RocksIteratorWrapper;
+import org.apache.flink.core.memory.DataInputDeserializer;
 import org.apache.flink.util.FlinkRuntimeException;
 
 import javax.annotation.Nonnull;
 
+import java.io.IOException;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.Objects;
@@ -34,11 +37,23 @@ import java.util.Objects;
  *
  * @param <K> the type of the iterated objects, which are keys in RocksDB.
  */
-public class RocksStateKeysIterator<K> extends AbstractRocksStateKeysIterator<K> implements Iterator<K> {
+public class RocksStateKeysIterator<K> implements Iterator<K>, AutoCloseable {
+
+	@Nonnull
+	private final RocksIteratorWrapper iterator;
+
+	@Nonnull
+	private final String state;
+
+	@Nonnull
+	private final TypeSerializer<K> keySerializer;
 
 	@Nonnull
 	private final byte[] namespaceBytes;
 
+	private final boolean ambiguousKeyPossible;
+	private final int keyGroupPrefixBytes;
+	private final DataInputDeserializer byteArrayDataInputView;
 	private K nextKey;
 	private K previousKey;
 
@@ -49,10 +64,15 @@ public class RocksStateKeysIterator<K> extends AbstractRocksStateKeysIterator<K>
 		int keyGroupPrefixBytes,
 		boolean ambiguousKeyPossible,
 		@Nonnull byte[] namespaceBytes) {
-		super(iterator, state, keySerializer, keyGroupPrefixBytes, ambiguousKeyPossible);
+		this.iterator = iterator;
+		this.state = state;
+		this.keySerializer = keySerializer;
+		this.keyGroupPrefixBytes = keyGroupPrefixBytes;
 		this.namespaceBytes = namespaceBytes;
 		this.nextKey = null;
 		this.previousKey = null;
+		this.ambiguousKeyPossible = ambiguousKeyPossible;
+		this.byteArrayDataInputView = new DataInputDeserializer();
 	}
 
 	@Override
@@ -87,6 +107,14 @@ public class RocksStateKeysIterator<K> extends AbstractRocksStateKeysIterator<K>
 		return tmpKey;
 	}
 
+	private K deserializeKey(byte[] keyBytes, DataInputDeserializer readView) throws IOException {
+		readView.setBuffer(keyBytes, keyGroupPrefixBytes, keyBytes.length - keyGroupPrefixBytes);
+		return RocksDBKeySerializationUtils.readKey(
+			keySerializer,
+			byteArrayDataInputView,
+			ambiguousKeyPossible);
+	}
+
 	private boolean isMatchingNameSpace(@Nonnull byte[] key, int beginPos) {
 		final int namespaceBytesLength = namespaceBytes.length;
 		final int basicLength = namespaceBytesLength + beginPos;
@@ -99,5 +127,10 @@ public class RocksStateKeysIterator<K> extends AbstractRocksStateKeysIterator<K>
 			return true;
 		}
 		return false;
+	}
+
+	@Override
+	public void close() {
+		iterator.close();
 	}
 }

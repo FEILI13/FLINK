@@ -54,16 +54,4 @@ public enum SentinelSequenceNumber {
 	public SequenceNumber get() {
 		return sentinel;
 	}
-
-	/**
-	 * Returns {@code true} if the given {@link SequenceNumber} is a sentinel.
-	 */
-	public static boolean isSentinelSequenceNumber(SequenceNumber candidateSequenceNumber) {
-		for (SentinelSequenceNumber sentinel : values()) {
-			if (candidateSequenceNumber.equals(sentinel.get())) {
-				return true;
-			}
-		}
-		return false;
-	}
 }

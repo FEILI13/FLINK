@@ -19,6 +19,7 @@
 package org.apache.flink.test.checkpointing.utils;
 
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.checkpoint.ListCheckpointed;
 import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
 import org.apache.flink.test.util.SuccessException;
@@ -70,17 +71,17 @@ public class ValidatingSink<T> extends RichSinkFunction<T>
 	public ValidatingSink(
 		@Nonnull CountUpdater<T> countUpdater,
 		@Nonnull ResultChecker resultChecker) {
-		this(countUpdater, resultChecker, false);
+		this(countUpdater, resultChecker, TimeCharacteristic.EventTime);
 	}
 
 	public ValidatingSink(
 		@Nonnull CountUpdater<T> countUpdater,
 		@Nonnull ResultChecker resultChecker,
-		boolean usingProcessingTime) {
+		@Nonnull TimeCharacteristic timeCharacteristic) {
 
 		this.resultChecker = resultChecker;
 		this.countUpdater = countUpdater;
-		this.usingProcessingTime = usingProcessingTime;
+		this.usingProcessingTime = TimeCharacteristic.ProcessingTime == timeCharacteristic;
 		this.windowCounts = new HashMap<>();
 	}
 

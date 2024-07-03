@@ -25,7 +25,6 @@ import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.state.State;
 import org.apache.flink.api.common.state.StateTtlConfig;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.api.common.typeutils.base.LongSerializer;
 import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
@@ -47,6 +46,7 @@ import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
+import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * Update state with TTL for each verifier.
@@ -64,11 +64,14 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * - emits verification context in case of failure
  */
 class TtlVerifyUpdateFunction extends RichFlatMapFunction<TtlStateUpdate, String> implements CheckpointedFunction {
+
 	private static final long serialVersionUID = 1L;
+
 	private static final Logger LOG = LoggerFactory.getLogger(TtlVerifyUpdateFunction.class);
 
 	@Nonnull
 	private final StateTtlConfig ttlConfig;
+	private final MonotonicTTLTimeProvider ttlTimeProvider;
 	private final UpdateStat stat;
 
 	private transient Map<String, State> states;
@@ -76,8 +79,10 @@ class TtlVerifyUpdateFunction extends RichFlatMapFunction<TtlStateUpdate, String
 
 	TtlVerifyUpdateFunction(
 			@Nonnull StateTtlConfig ttlConfig,
+			MonotonicTTLTimeProvider ttlTimeProvider,
 			long reportStatAfterUpdatesNum) {
 		this.ttlConfig = ttlConfig;
+		this.ttlTimeProvider = checkNotNull(ttlTimeProvider);
 		this.stat = new UpdateStat(reportStatAfterUpdatesNum);
 	}
 
@@ -86,8 +91,7 @@ class TtlVerifyUpdateFunction extends RichFlatMapFunction<TtlStateUpdate, String
 		for (TtlStateVerifier<?, ?> verifier : TtlStateVerifier.VERIFIERS) {
 			TtlVerificationContext<?, ?> verificationContext = generateUpdateAndVerificationContext(updates, verifier);
 			if (!verifier.verify(verificationContext)) {
-				// Please do **NOT** change the prefix, it's used in test_stream_state_ttl.sh for test verifying
-				out.collect("TTL verification failed: " + verificationContext.toString());
+				out.collect(verificationContext.toString());
 			}
 		}
 	}
@@ -114,13 +118,19 @@ class TtlVerifyUpdateFunction extends RichFlatMapFunction<TtlStateUpdate, String
 			TtlStateVerifier<?, ?> verifier,
 			Object update) throws Exception {
 
-		return MonotonicTTLTimeProvider.doWithFrozenTime(frozenTimestamp -> {
-			State state = states.get(verifier.getId());
-			Object valueBeforeUpdate = verifier.get(state);
-			verifier.update(state, update);
-			Object updatedValue = verifier.get(state);
-			return new TtlUpdateContext<>(valueBeforeUpdate, update, updatedValue, frozenTimestamp);
-		});
+		final long timestampBeforeUpdate = ttlTimeProvider.currentTimestamp();
+		State state = states.get(verifier.getId());
+		Object valueBeforeUpdate = verifier.get(state);
+		verifier.update(state, update);
+		Object updatedValue = verifier.get(state);
+		final long timestampAfterUpdate = ttlTimeProvider.unfreezeTime();
+
+		checkState(
+				timestampAfterUpdate == timestampBeforeUpdate,
+				"Timestamps before and after the update do not match."
+		);
+
+		return new TtlUpdateContext<>(valueBeforeUpdate, update, updatedValue, timestampAfterUpdate);
 	}
 
 	@Override
@@ -135,10 +145,7 @@ class TtlVerifyUpdateFunction extends RichFlatMapFunction<TtlStateUpdate, String
 		prevUpdatesByVerifierId = TtlStateVerifier.VERIFIERS.stream()
 			.collect(Collectors.toMap(TtlStateVerifier::getId, v -> {
 				checkNotNull(v);
-				final TypeSerializer<ValueWithTs<?>> typeSerializer = new ValueWithTs.Serializer(
-					v.getUpdateSerializer(),
-					LongSerializer.INSTANCE);
-
+				TypeSerializer<ValueWithTs<?>> typeSerializer = new ValueWithTs.Serializer(v.getUpdateSerializer());
 				ListStateDescriptor<ValueWithTs<?>> stateDesc = new ListStateDescriptor<>(
 					"TtlPrevValueState_" + v.getId(), typeSerializer);
 				KeyedStateStore store = context.getKeyedStateStore();
@@ -147,8 +154,6 @@ class TtlVerifyUpdateFunction extends RichFlatMapFunction<TtlStateUpdate, String
 	}
 
 	private static class UpdateStat implements Serializable {
-		private static final long serialVersionUID = -4557720969995878873L;
-
 		final long reportStatAfterUpdatesNum;
 		long updates = 0;
 		long prevUpdatesNum = 0;

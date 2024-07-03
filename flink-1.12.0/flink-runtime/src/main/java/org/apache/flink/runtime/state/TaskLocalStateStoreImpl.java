@@ -150,7 +150,7 @@ public class TaskLocalStateStoreImpl implements OwnedTaskLocalStateStore {
 		}
 
 		if (LOG.isTraceEnabled()) {
-			LOG.trace(
+			LOG.debug(
 				"Stored local state for checkpoint {} in subtask ({} - {} - {}) : {}.",
 				checkpointId, jobID, jobVertexID, subtaskIndex, localState);
 		} else if (LOG.isDebugEnabled()) {
@@ -222,15 +222,6 @@ public class TaskLocalStateStoreImpl implements OwnedTaskLocalStateStore {
 			(snapshotCheckpointId) -> snapshotCheckpointId < confirmedCheckpointId,
 			true);
 
-	}
-
-	@Override
-	public void abortCheckpoint(long abortedCheckpointId) {
-
-		LOG.debug("Received abort information for checkpoint {} in subtask ({} - {} - {}). Starting to prune history.",
-			abortedCheckpointId, jobID, jobVertexID, subtaskIndex);
-
-		pruneCheckpoints(snapshotCheckpointId -> snapshotCheckpointId == abortedCheckpointId, false);
 	}
 
 	@Override
@@ -366,7 +357,7 @@ public class TaskLocalStateStoreImpl implements OwnedTaskLocalStateStore {
 		return "TaskLocalStateStore{" +
 			"jobID=" + jobID +
 			", jobVertexID=" + jobVertexID +
-			", allocationID=" + allocationID.toHexString() +
+			", allocationID=" + allocationID +
 			", subtaskIndex=" + subtaskIndex +
 			", localRecoveryConfig=" + localRecoveryConfig +
 			", storedCheckpointIDs=" + storedTaskStateByCheckpointID.keySet() +

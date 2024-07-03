@@ -114,11 +114,6 @@ public final class ImmutableMapState<K, V> extends ImmutableState implements Map
 	}
 
 	@Override
-	public boolean isEmpty() {
-		return state.isEmpty();
-	}
-
-	@Override
 	public void clear() {
 		throw MODIFICATION_ATTEMPT_ERROR;
 	}

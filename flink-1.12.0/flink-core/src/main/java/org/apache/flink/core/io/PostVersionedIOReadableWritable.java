@@ -22,7 +22,6 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.core.memory.DataOutputView;
-import org.apache.flink.util.IOUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -63,7 +62,7 @@ public abstract class PostVersionedIOReadableWritable extends VersionedIOReadabl
 	 */
 	public final void read(InputStream inputStream) throws IOException {
 		byte[] tmp = new byte[VERSIONED_IDENTIFIER.length];
-		int totalRead = IOUtils.tryReadFully(inputStream, tmp);
+		inputStream.read(tmp);
 
 		if (Arrays.equals(tmp, VERSIONED_IDENTIFIER)) {
 			DataInputView inputView = new DataInputViewStreamWrapper(inputStream);
@@ -71,14 +70,10 @@ public abstract class PostVersionedIOReadableWritable extends VersionedIOReadabl
 			super.read(inputView);
 			read(inputView, true);
 		} else {
-			InputStream streamToRead = inputStream;
-			if (totalRead > 0) {
-				PushbackInputStream resetStream = new PushbackInputStream(inputStream, totalRead);
-				resetStream.unread(tmp, 0, totalRead);
-				streamToRead = resetStream;
-			}
+			PushbackInputStream resetStream = new PushbackInputStream(inputStream, VERSIONED_IDENTIFIER.length);
+			resetStream.unread(tmp);
 
-			read(new DataInputViewStreamWrapper(streamToRead), false);
+			read(new DataInputViewStreamWrapper(resetStream), false);
 		}
 	}
 

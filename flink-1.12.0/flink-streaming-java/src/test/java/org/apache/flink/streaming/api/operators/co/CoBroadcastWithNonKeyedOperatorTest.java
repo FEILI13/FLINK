@@ -275,17 +275,13 @@ public class CoBroadcastWithNonKeyedOperatorTest {
 		expected.add("test2=3");
 		expected.add("test3=3");
 
-		final OperatorSubtaskState initState1 = repartitionInitState(mergedSnapshot, 10, 2, 3, 0);
-		final OperatorSubtaskState initState2 = repartitionInitState(mergedSnapshot, 10, 2, 3, 1);
-		final OperatorSubtaskState initState3 = repartitionInitState(mergedSnapshot, 10, 2, 3, 2);
-
 		try (
 				TwoInputStreamOperatorTestHarness<String, Integer, String> testHarness1 = getInitializedTestHarness(
 						new TestFunctionWithOutput(keysToRegister),
 						10,
 						3,
 						0,
-						initState1,
+						mergedSnapshot,
 						STATE_DESCRIPTOR);
 
 				TwoInputStreamOperatorTestHarness<String, Integer, String> testHarness2 = getInitializedTestHarness(
@@ -293,7 +289,7 @@ public class CoBroadcastWithNonKeyedOperatorTest {
 						10,
 						3,
 						1,
-						initState2,
+						mergedSnapshot,
 						STATE_DESCRIPTOR);
 
 				TwoInputStreamOperatorTestHarness<String, Integer, String> testHarness3 = getInitializedTestHarness(
@@ -301,7 +297,7 @@ public class CoBroadcastWithNonKeyedOperatorTest {
 						10,
 						3,
 						2,
-						initState3,
+						mergedSnapshot,
 						STATE_DESCRIPTOR)
 		) {
 			testHarness1.processElement1(new StreamRecord<>("trigger"));
@@ -381,16 +377,13 @@ public class CoBroadcastWithNonKeyedOperatorTest {
 		expected.add("test2=3");
 		expected.add("test3=3");
 
-		final OperatorSubtaskState initState1 = repartitionInitState(mergedSnapshot, 10, 3, 2, 0);
-		final OperatorSubtaskState initState2 = repartitionInitState(mergedSnapshot, 10, 3, 2, 1);
-
 		try (
 				TwoInputStreamOperatorTestHarness<String, Integer, String> testHarness1 = getInitializedTestHarness(
 						new TestFunctionWithOutput(keysToRegister),
 						10,
 						2,
 						0,
-						initState1,
+						mergedSnapshot,
 						STATE_DESCRIPTOR);
 
 				TwoInputStreamOperatorTestHarness<String, Integer, String> testHarness2 = getInitializedTestHarness(
@@ -398,7 +391,7 @@ public class CoBroadcastWithNonKeyedOperatorTest {
 						10,
 						2,
 						1,
-						initState2,
+						mergedSnapshot,
 						STATE_DESCRIPTOR)
 		) {
 			testHarness1.processElement1(new StreamRecord<>("trigger"));
@@ -549,15 +542,15 @@ public class CoBroadcastWithNonKeyedOperatorTest {
 				descriptors);
 	}
 
-	private static OperatorSubtaskState repartitionInitState(
-			final OperatorSubtaskState initState,
-			final int numKeyGroups,
-			final int oldParallelism,
-			final int newParallelism,
-			final int subtaskIndex
-	) {
-		return AbstractStreamOperatorTestHarness.repartitionOperatorState(initState, numKeyGroups, oldParallelism, newParallelism, subtaskIndex);
-	}
+//	private static <IN1, IN2, OUT> TwoInputStreamOperatorTestHarness<IN1, IN2, OUT> getInitializedTestHarness(
+//			final BroadcastProcessFunction<IN1, IN2, OUT> function,
+//			final int maxParallelism,
+//			final int numTasks,
+//			final int taskIdx,
+//			final OperatorSubtaskState initState) throws Exception {
+//
+//		return getInitializedTestHarness(function, maxParallelism, numTasks, taskIdx, initState, STATE_DESCRIPTOR);
+//	}
 
 	private static <IN1, IN2, OUT> TwoInputStreamOperatorTestHarness<IN1, IN2, OUT> getInitializedTestHarness(
 			final BroadcastProcessFunction<IN1, IN2, OUT> function,

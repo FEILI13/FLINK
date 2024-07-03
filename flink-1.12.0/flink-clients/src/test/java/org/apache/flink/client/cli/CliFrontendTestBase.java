@@ -28,10 +28,12 @@ import org.apache.flink.util.TestLogger;
 public abstract class CliFrontendTestBase extends TestLogger {
 
 	protected Configuration getConfiguration() {
-		return GlobalConfiguration.loadConfiguration(CliFrontendTestUtils.getConfigDir());
+		final Configuration configuration = GlobalConfiguration
+			.loadConfiguration(CliFrontendTestUtils.getConfigDir());
+		return configuration;
 	}
 
-	static AbstractCustomCommandLine getCli() {
-		return new DefaultCLI();
+	static AbstractCustomCommandLine<?> getCli(Configuration configuration) {
+		return new DefaultCLI(configuration);
 	}
 }

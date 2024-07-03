@@ -19,8 +19,8 @@
 package org.apache.flink.runtime.checkpoint;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.CompletedCheckpointStorageLocation;
 import org.apache.flink.runtime.state.SharedStateRegistry;
@@ -66,7 +66,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * or the metadata file. For a state backend that stores metadata in database tables, the pointer
  * could be the table name and row key. The pointer is encoded as a String.
  */
-public class CompletedCheckpoint implements Serializable, Checkpoint {
+public class CompletedCheckpoint implements Serializable {
 
 	private static final Logger LOG = LoggerFactory.getLogger(CompletedCheckpoint.class);
 
@@ -150,7 +150,6 @@ public class CompletedCheckpoint implements Serializable, Checkpoint {
 		return job;
 	}
 
-	@Override
 	public long getCheckpointID() {
 		return checkpointID;
 	}
@@ -212,12 +211,12 @@ public class CompletedCheckpoint implements Serializable, Checkpoint {
 	// ------------------------------------------------------------------------
 
 	public void discardOnFailedStoring() throws Exception {
-		discard();
+		doDiscard();
 	}
 
 	public boolean discardOnSubsume() throws Exception {
-		if (shouldBeDiscardedOnSubsume()) {
-			discard();
+		if (props.discardOnSubsumed()) {
+			doDiscard();
 			return true;
 		}
 
@@ -226,9 +225,12 @@ public class CompletedCheckpoint implements Serializable, Checkpoint {
 
 	public boolean discardOnShutdown(JobStatus jobStatus) throws Exception {
 
-		if (shouldBeDiscardedOnShutdown(jobStatus)) {
+		if (jobStatus == JobStatus.FINISHED && props.discardOnJobFinished() ||
+				jobStatus == JobStatus.CANCELED && props.discardOnJobCancelled() ||
+				jobStatus == JobStatus.FAILED && props.discardOnJobFailed() ||
+				jobStatus == JobStatus.SUSPENDED && props.discardOnJobSuspended()) {
 
-			discard();
+			doDiscard();
 			return true;
 		} else {
 			LOG.info("Checkpoint with ID {} at '{}' not discarded.", checkpointID, externalPointer);
@@ -236,8 +238,7 @@ public class CompletedCheckpoint implements Serializable, Checkpoint {
 		}
 	}
 
-	@Override
-	public void discard() throws Exception {
+	private void doDiscard() throws Exception {
 		LOG.trace("Executing discard procedure for {}.", this);
 
 		try {
@@ -280,17 +281,6 @@ public class CompletedCheckpoint implements Serializable, Checkpoint {
 		}
 	}
 
-	public boolean shouldBeDiscardedOnSubsume() {
-		return props.discardOnSubsumed();
-	}
-
-	public boolean shouldBeDiscardedOnShutdown(JobStatus jobStatus) {
-		return jobStatus == JobStatus.FINISHED && props.discardOnJobFinished() ||
-			jobStatus == JobStatus.CANCELED && props.discardOnJobCancelled() ||
-			jobStatus == JobStatus.FAILED && props.discardOnJobFailed() ||
-			jobStatus == JobStatus.SUSPENDED && props.discardOnJobSuspended();
-	}
-
 	// ------------------------------------------------------------------------
 	//  Miscellaneous
 	// ------------------------------------------------------------------------
@@ -330,12 +320,6 @@ public class CompletedCheckpoint implements Serializable, Checkpoint {
 
 	@Override
 	public String toString() {
-		return String.format(
-			"%s %d @ %d for %s located at %s",
-			props.getCheckpointType().getName(),
-			checkpointID,
-			timestamp,
-			job,
-			externalPointer);
+		return String.format("Checkpoint %d @ %d for %s", checkpointID, timestamp, job);
 	}
 }

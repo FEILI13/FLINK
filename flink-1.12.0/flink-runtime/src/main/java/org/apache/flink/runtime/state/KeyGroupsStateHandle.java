@@ -23,7 +23,6 @@ import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
-import java.util.Optional;
 
 /**
  * A handle to the partitioned stream operator state after it has been checkpointed. This state
@@ -84,13 +83,8 @@ public class KeyGroupsStateHandle implements StreamStateHandle, KeyedStateHandle
 	 * @return key-group state over a range that is the intersection between this handle's key-group range and the
 	 *          provided key-group range.
 	 */
-	@Override
 	public KeyGroupsStateHandle getIntersection(KeyGroupRange keyGroupRange) {
-		KeyGroupRangeOffsets offsets = groupRangeOffsets.getIntersection(keyGroupRange);
-		if (offsets.getKeyGroupRange().getNumberOfKeyGroups() <= 0) {
-			return null;
-		}
-		return new KeyGroupsStateHandle(offsets, stateHandle);
+		return new KeyGroupsStateHandle(groupRangeOffsets.getIntersection(keyGroupRange), stateHandle);
 	}
 
 	@Override
@@ -116,11 +110,6 @@ public class KeyGroupsStateHandle implements StreamStateHandle, KeyedStateHandle
 	@Override
 	public FSDataInputStream openInputStream() throws IOException {
 		return stateHandle.openInputStream();
-	}
-
-	@Override
-	public Optional<byte[]> asBytesIfInMemory() {
-		return stateHandle.asBytesIfInMemory();
 	}
 
 	@Override

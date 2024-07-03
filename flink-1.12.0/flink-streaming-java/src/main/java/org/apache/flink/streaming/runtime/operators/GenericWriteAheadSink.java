@@ -19,15 +19,13 @@
 package org.apache.flink.streaming.runtime.operators;
 
 import org.apache.flink.api.common.state.ListState;
-import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.runtime.io.disk.InputViewIterator;
-import org.apache.flink.runtime.state.CheckpointStorageWorkerView;
+import org.apache.flink.runtime.state.CheckpointStorage;
 import org.apache.flink.runtime.state.CheckpointStreamFactory;
-import org.apache.flink.runtime.state.JavaSerializer;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.runtime.state.StreamStateHandle;
@@ -68,7 +66,7 @@ public abstract class GenericWriteAheadSink<IN> extends AbstractStreamOperator<I
 	protected final TypeSerializer<IN> serializer;
 
 	private transient CheckpointStreamFactory.CheckpointStateOutputStream out;
-	private transient CheckpointStorageWorkerView checkpointStorage;
+	private transient CheckpointStorage checkpointStorage;
 
 	private transient ListState<PendingCheckpoint> checkpointedState;
 
@@ -94,13 +92,8 @@ public abstract class GenericWriteAheadSink<IN> extends AbstractStreamOperator<I
 		Preconditions.checkState(this.checkpointedState == null,
 			"The reader state has already been initialized.");
 
-		// We are using JavaSerializer from the flink-runtime module here. This is very naughty and
-		// we shouldn't be doing it because ideally nothing in the API modules/connector depends
-		// directly on flink-runtime. We are doing it here because we need to maintain backwards
-		// compatibility with old state and because we will have to rework/remove this code soon.
-		checkpointedState = context
-							.getOperatorStateStore()
-							.getListState(new ListStateDescriptor<>("pending-checkpoints", new JavaSerializer<>()));
+		checkpointedState = context.getOperatorStateStore()
+			.getSerializableListState("pending-checkpoints");
 
 		int subtaskIdx = getRuntimeContext().getIndexOfThisSubtask();
 		if (context.isRestored()) {

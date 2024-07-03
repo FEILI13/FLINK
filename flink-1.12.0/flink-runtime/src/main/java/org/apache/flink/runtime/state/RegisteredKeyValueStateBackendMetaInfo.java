@@ -22,7 +22,6 @@ import org.apache.flink.api.common.state.StateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.TypeSerializerSchemaCompatibility;
 import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
-import org.apache.flink.runtime.state.StateSnapshotTransformer.StateSnapshotTransformFactory;
 import org.apache.flink.runtime.state.metainfo.StateMetaInfoSnapshot;
 import org.apache.flink.util.Preconditions;
 
@@ -49,8 +48,8 @@ public class RegisteredKeyValueStateBackendMetaInfo<N, S> extends RegisteredStat
 	private final StateSerializerProvider<N> namespaceSerializerProvider;
 	@Nonnull
 	private final StateSerializerProvider<S> stateSerializerProvider;
-	@Nonnull
-	private StateSnapshotTransformFactory<S> stateSnapshotTransformFactory;
+	@Nullable
+	private StateSnapshotTransformer<S> snapshotTransformer;
 
 	public RegisteredKeyValueStateBackendMetaInfo(
 		@Nonnull StateDescriptor.Type stateType,
@@ -61,9 +60,9 @@ public class RegisteredKeyValueStateBackendMetaInfo<N, S> extends RegisteredStat
 		this(
 			stateType,
 			name,
-			StateSerializerProvider.fromNewRegisteredSerializer(namespaceSerializer),
-			StateSerializerProvider.fromNewRegisteredSerializer(stateSerializer),
-			StateSnapshotTransformFactory.noTransform());
+			StateSerializerProvider.fromNewState(namespaceSerializer),
+			StateSerializerProvider.fromNewState(stateSerializer),
+			null);
 	}
 
 	public RegisteredKeyValueStateBackendMetaInfo(
@@ -71,14 +70,14 @@ public class RegisteredKeyValueStateBackendMetaInfo<N, S> extends RegisteredStat
 		@Nonnull String name,
 		@Nonnull TypeSerializer<N> namespaceSerializer,
 		@Nonnull TypeSerializer<S> stateSerializer,
-		@Nonnull StateSnapshotTransformFactory<S> stateSnapshotTransformFactory) {
+		@Nullable StateSnapshotTransformer<S> snapshotTransformer) {
 
 		this(
 			stateType,
 			name,
-			StateSerializerProvider.fromNewRegisteredSerializer(namespaceSerializer),
-			StateSerializerProvider.fromNewRegisteredSerializer(stateSerializer),
-			stateSnapshotTransformFactory);
+			StateSerializerProvider.fromNewState(namespaceSerializer),
+			StateSerializerProvider.fromNewState(stateSerializer),
+			snapshotTransformer);
 	}
 
 	@SuppressWarnings("unchecked")
@@ -86,13 +85,13 @@ public class RegisteredKeyValueStateBackendMetaInfo<N, S> extends RegisteredStat
 		this(
 			StateDescriptor.Type.valueOf(snapshot.getOption(StateMetaInfoSnapshot.CommonOptionsKeys.KEYED_STATE_TYPE)),
 			snapshot.getName(),
-			StateSerializerProvider.fromPreviousSerializerSnapshot(
+			StateSerializerProvider.fromRestoredState(
 				(TypeSerializerSnapshot<N>) Preconditions.checkNotNull(
 					snapshot.getTypeSerializerSnapshot(StateMetaInfoSnapshot.CommonSerializerKeys.NAMESPACE_SERIALIZER))),
-			StateSerializerProvider.fromPreviousSerializerSnapshot(
+			StateSerializerProvider.fromRestoredState(
 				(TypeSerializerSnapshot<S>) Preconditions.checkNotNull(
 					snapshot.getTypeSerializerSnapshot(StateMetaInfoSnapshot.CommonSerializerKeys.VALUE_SERIALIZER))),
-			StateSnapshotTransformFactory.noTransform());
+			null);
 
 		Preconditions.checkState(StateMetaInfoSnapshot.BackendStateType.KEY_VALUE == snapshot.getBackendStateType());
 	}
@@ -102,13 +101,13 @@ public class RegisteredKeyValueStateBackendMetaInfo<N, S> extends RegisteredStat
 		@Nonnull String name,
 		@Nonnull StateSerializerProvider<N> namespaceSerializerProvider,
 		@Nonnull StateSerializerProvider<S> stateSerializerProvider,
-		@Nonnull StateSnapshotTransformFactory<S> stateSnapshotTransformFactory) {
+		@Nullable StateSnapshotTransformer<S> snapshotTransformer) {
 
 		super(name);
 		this.stateType = stateType;
 		this.namespaceSerializerProvider = namespaceSerializerProvider;
 		this.stateSerializerProvider = stateSerializerProvider;
-		this.stateSnapshotTransformFactory = stateSnapshotTransformFactory;
+		this.snapshotTransformer = snapshotTransformer;
 	}
 
 	@Nonnull
@@ -147,17 +146,12 @@ public class RegisteredKeyValueStateBackendMetaInfo<N, S> extends RegisteredStat
 	}
 
 	@Nullable
-	public TypeSerializerSnapshot<S> getPreviousStateSerializerSnapshot() {
-		return stateSerializerProvider.previousSerializerSnapshot;
+	public StateSnapshotTransformer<S> getSnapshotTransformer() {
+		return snapshotTransformer;
 	}
 
-	@Nonnull
-	public StateSnapshotTransformFactory<S> getStateSnapshotTransformFactory() {
-		return stateSnapshotTransformFactory;
-	}
-
-	public void updateSnapshotTransformFactory(StateSnapshotTransformFactory<S> stateSnapshotTransformFactory) {
-		this.stateSnapshotTransformFactory = stateSnapshotTransformFactory;
+	public void updateSnapshotTransformer(StateSnapshotTransformer<S> snapshotTransformer) {
+		this.snapshotTransformer = snapshotTransformer;
 	}
 
 	@Override

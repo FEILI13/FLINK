@@ -51,51 +51,24 @@ public class CassandraPojoSink<IN> extends CassandraSinkBase<IN, ResultSet> {
 	 *
 	 * @param clazz Class instance
 	 */
-	public CassandraPojoSink(
-			Class<IN> clazz,
-			ClusterBuilder builder) {
+	public CassandraPojoSink(Class<IN> clazz, ClusterBuilder builder) {
 		this(clazz, builder, null, null);
 	}
 
-	public CassandraPojoSink(
-			Class<IN> clazz,
-			ClusterBuilder builder,
-			@Nullable MapperOptions options) {
+	public CassandraPojoSink(Class<IN> clazz, ClusterBuilder builder, @Nullable MapperOptions options) {
 		this(clazz, builder, options, null);
 	}
 
-	public CassandraPojoSink(
-			Class<IN> clazz,
-			ClusterBuilder builder,
-			String keyspace) {
+	public CassandraPojoSink(Class<IN> clazz, ClusterBuilder builder, String keyspace) {
 		this(clazz, builder, null, keyspace);
 	}
 
-	public CassandraPojoSink(
-			Class<IN> clazz,
-			ClusterBuilder builder,
-			@Nullable MapperOptions options,
-			String keyspace) {
-		this(clazz, builder, options, keyspace, CassandraSinkBaseConfig.newBuilder().build());
+	public CassandraPojoSink(Class<IN> clazz, ClusterBuilder builder, @Nullable MapperOptions options, String keyspace) {
+		this(clazz, builder, options, keyspace, new NoOpCassandraFailureHandler());
 	}
 
-	CassandraPojoSink(
-			Class<IN> clazz,
-			ClusterBuilder builder,
-			@Nullable MapperOptions options,
-			String keyspace,
-			CassandraSinkBaseConfig config) {
-		this(clazz, builder, options, keyspace, config, new NoOpCassandraFailureHandler());
-	}
-
-	CassandraPojoSink(
-			Class<IN> clazz,
-			ClusterBuilder builder,
-			@Nullable MapperOptions options,
-			String keyspace,
-			CassandraSinkBaseConfig config,
-			CassandraFailureHandler failureHandler) {
-		super(builder, config, failureHandler);
+	public CassandraPojoSink(Class<IN> clazz, ClusterBuilder builder, @Nullable MapperOptions options, String keyspace, CassandraFailureHandler failureHandler) {
+		super(builder, failureHandler);
 		this.clazz = clazz;
 		this.options = options;
 		this.keyspace = keyspace;

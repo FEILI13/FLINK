@@ -18,9 +18,9 @@
 
 package org.apache.flink.runtime.state;
 
+import org.apache.flink.api.common.typeutils.CompatibilityResult;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.api.common.typeutils.TypeSerializerSchemaCompatibility;
-import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
+import org.apache.flink.api.common.typeutils.TypeSerializerConfigSnapshot;
 import org.apache.flink.core.memory.ByteArrayOutputStreamWithPos;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
@@ -487,6 +487,11 @@ public abstract class InternalPriorityQueueTestBase extends TestLogger {
 		}
 
 		@Override
+		public boolean canEqual(Object obj) {
+			return false;
+		}
+
+		@Override
 		public int hashCode() {
 			return 4711;
 		}
@@ -496,11 +501,17 @@ public abstract class InternalPriorityQueueTestBase extends TestLogger {
 		}
 
 		@Override
-		public Snapshot snapshotConfiguration() {
+		public TypeSerializerConfigSnapshot snapshotConfiguration() {
 			return new Snapshot(getRevision());
 		}
 
-		public static class Snapshot implements TypeSerializerSnapshot<TestElement> {
+		@Override
+		public CompatibilityResult<TestElement> ensureCompatibility(TypeSerializerConfigSnapshot configSnapshot) {
+			return (configSnapshot instanceof Snapshot) && ((Snapshot) configSnapshot).revision <= getRevision() ?
+				CompatibilityResult.compatible() : CompatibilityResult.requiresMigration();
+		}
+
+		public static class Snapshot extends TypeSerializerConfigSnapshot {
 
 			private int revision;
 
@@ -522,7 +533,7 @@ public abstract class InternalPriorityQueueTestBase extends TestLogger {
 			}
 
 			@Override
-			public int getCurrentVersion() {
+			public int getVersion() {
 				return 0;
 			}
 
@@ -531,30 +542,15 @@ public abstract class InternalPriorityQueueTestBase extends TestLogger {
 			}
 
 			@Override
-			public void writeSnapshot(DataOutputView out) throws IOException {
+			public void write(DataOutputView out) throws IOException {
+				super.write(out);
 				out.writeInt(revision);
 			}
 
 			@Override
-			public void readSnapshot(int readVersion, DataInputView in, ClassLoader userCodeClassLoader) throws IOException {
+			public void read(DataInputView in) throws IOException {
+				super.read(in);
 				this.revision = in.readInt();
-			}
-
-			@Override
-			public TypeSerializer<TestElement> restoreSerializer() {
-				return new TestElementSerializer();
-			}
-
-			@Override
-			public TypeSerializerSchemaCompatibility<TestElement> resolveSchemaCompatibility(TypeSerializer<TestElement> newSerializer) {
-				if (!(newSerializer instanceof TestElementSerializer)) {
-					return TypeSerializerSchemaCompatibility.incompatible();
-				}
-
-				TestElementSerializer testElementSerializer = (TestElementSerializer) newSerializer;
-				return (revision <= testElementSerializer.getRevision())
-					? TypeSerializerSchemaCompatibility.compatibleAsIs()
-					: TypeSerializerSchemaCompatibility.incompatible();
 			}
 		}
 	}

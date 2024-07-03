@@ -43,7 +43,7 @@ To use this connector, add the following dependency to your project:
 </dependency>
 {% endhighlight %}
 
-Note that the streaming connectors are currently __NOT__ part of the binary distribution. See how to link with them for cluster execution [here]({% link dev/project-configuration.md %}).
+Note that the streaming connectors are currently __NOT__ part of the binary distribution. See how to link with them for cluster execution [here]({{ site.baseurl}}/dev/linking.html).
 
 ## Installing Apache Cassandra
 There are multiple ways to bring up a Cassandra instance on local machine:
@@ -72,16 +72,13 @@ The following configuration methods can be used:
 4. _setMapperOptions(MapperOptions options)_
     * Sets the mapper options that are used to configure the DataStax ObjectMapper.
     * Only applies when processing __POJO__ data types.
-5. _setMaxConcurrentRequests(int maxConcurrentRequests, Duration timeout)_
-    * Sets the maximum allowed number of concurrent requests with a timeout for acquiring permits to execute.
-    * Only applies when __enableWriteAheadLog()__ is not configured.
-6. _enableWriteAheadLog([CheckpointCommitter committer])_
+5. _enableWriteAheadLog([CheckpointCommitter committer])_
     * An __optional__ setting
     * Allows exactly-once processing for non-deterministic algorithms.
-7. _setFailureHandler([CassandraFailureHandler failureHandler])_
+6. _setFailureHandler([CassandraFailureHandler failureHandler])_
     * An __optional__ setting
     * Sets the custom failure handler.
-8. _build()_
+7. _build()_
     * Finalizes the configuration and constructs the CassandraSink instance.
 
 ### Write-ahead Log
@@ -107,11 +104,11 @@ Note that that enabling this feature will have an adverse impact on latency.
 ### Checkpointing and Fault Tolerance
 With checkpointing enabled, Cassandra Sink guarantees at-least-once delivery of action requests to C* instance.
 
-More details on [checkpoints docs]({% link dev/stream/state/checkpointing.md %}) and [fault tolerance guarantee docs]({% link dev/connectors/guarantees.md %})
+More details on [checkpoints docs]({{ site.baseurl }}/dev/stream/state/checkpointing.html) and [fault tolerance guarantee docs]({{ site.baseurl }}/dev/connectors/guarantees.html)
 
 ## Examples
 
-The Cassandra sinks currently support both Tuple and POJO data types, and Flink automatically detects which type of input is used. For general use case of those streaming data type, please refer to [Supported Data Types]({% link dev/types_serialization.md %}#supported-data-types). We show two implementations based on [SocketWindowWordCount](https://github.com/apache/flink/blob/master/flink-examples/flink-examples-streaming/src/main/java/org/apache/flink/streaming/examples/socket/SocketWindowWordCount.java), for Pojo and Tuple data types respectively.
+The Cassandra sinks currently support both Tuple and POJO data types, and Flink automatically detects which type of input is used. For general use case of those streaming data type, please refer to [Supported Data Types]({{ site.baseurl }}/dev/api_concepts.html). We show two implementations based on [SocketWindowWordCount](https://github.com/apache/flink/blob/master/flink-examples/flink-examples-streaming/src/main/java/org/apache/flink/streaming/examples/socket/SocketWindowWordCount.java), for Pojo and Tuple data types respectively.
 
 In all these examples, we assumed the associated Keyspace `example` and Table `wordcount` have been created.
 
@@ -160,8 +157,8 @@ DataStream<Tuple2<String, Long>> result = text
                 }
             }
         })
-        .keyBy(value -> value.f0)
-        .window(TumblingProcessingTimeWindows.of(Time.seconds(5)))
+        .keyBy(0)
+        .timeWindow(Time.seconds(5))
         .sum(1);
 
 CassandraSink.addSink(result)
@@ -185,8 +182,8 @@ val result: DataStream[(String, Long)] = text
   .filter(_.nonEmpty)
   .map((_, 1L))
   // group by the tuple field "0" and sum up tuple field "1"
-  .keyBy(_._1)
-  .window(TumblingProcessingTimeWindows.of(Time.seconds(5)))
+  .keyBy(0)
+  .timeWindow(Time.seconds(5))
   .sum(1)
 
 CassandraSink.addSink(result)
@@ -231,8 +228,8 @@ DataStream<WordCount> result = text
                 }
             }
         })
-        .keyBy(WordCount::getWord)
-        .window(TumblingProcessingTimeWindows.of(Time.seconds(5)))
+        .keyBy("word")
+        .timeWindow(Time.seconds(5))
 
         .reduce(new ReduceFunction<WordCount>() {
             @Override

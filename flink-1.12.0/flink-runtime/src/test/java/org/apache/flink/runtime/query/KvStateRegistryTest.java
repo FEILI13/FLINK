@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.query;
 
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.api.common.typeutils.CompatibilityResult;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.TypeSerializerConfigSnapshot;
 import org.apache.flink.api.common.typeutils.base.IntSerializer;
@@ -322,11 +323,6 @@ public class KvStateRegistryTest extends TestLogger {
 		}
 
 		@Override
-		public StateIncrementalVisitor<Integer, VoidNamespace, String> getStateIncrementalVisitor(int recommendedMaxNumberOfReturnedRecords) {
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
 		public void clear() {
 			// noop
 		}
@@ -395,12 +391,22 @@ public class KvStateRegistryTest extends TestLogger {
 		}
 
 		@Override
+		public boolean canEqual(Object obj) {
+			return true;
+		}
+
+		@Override
 		public int hashCode() {
 			return 0;
 		}
 
 		@Override
 		public TypeSerializerConfigSnapshot<String> snapshotConfiguration() {
+			return null;
+		}
+
+		@Override
+		public CompatibilityResult<String> ensureCompatibility(TypeSerializerConfigSnapshot<?> configSnapshot) {
 			return null;
 		}
 	}

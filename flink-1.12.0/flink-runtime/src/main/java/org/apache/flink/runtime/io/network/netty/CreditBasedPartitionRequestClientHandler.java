@@ -18,17 +18,21 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
-import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.core.memory.MemorySegment;
+import org.apache.flink.core.memory.MemorySegmentFactory;
 import org.apache.flink.runtime.io.network.NetworkClientHandler;
+import org.apache.flink.runtime.io.network.buffer.Buffer;
+import org.apache.flink.runtime.io.network.buffer.FreeingBufferRecycler;
+import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 import org.apache.flink.runtime.io.network.netty.exception.LocalTransportException;
 import org.apache.flink.runtime.io.network.netty.exception.RemoteTransportException;
 import org.apache.flink.runtime.io.network.netty.exception.TransportException;
 import org.apache.flink.runtime.io.network.netty.NettyMessage.AddCredit;
-import org.apache.flink.runtime.io.network.netty.NettyMessage.ResumeConsumption;
 import org.apache.flink.runtime.io.network.partition.PartitionNotFoundException;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
 import org.apache.flink.runtime.io.network.partition.consumer.RemoteInputChannel;
 
+import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.channel.Channel;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelFuture;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelFutureListener;
@@ -40,12 +44,11 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.SocketAddress;
+import java.net.InetSocketAddress;
 import java.util.ArrayDeque;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicReference;
-
-import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * Channel handler to read the messages of buffer response or error response from the
@@ -57,11 +60,15 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 
 	private static final Logger LOG = LoggerFactory.getLogger(CreditBasedPartitionRequestClientHandler.class);
 
-	/** Channels, which already requested partitions from the producers. */
+	/**
+	 * Channels, which already requested partitions from the producers.
+	 */
 	private final ConcurrentMap<InputChannelID, RemoteInputChannel> inputChannels = new ConcurrentHashMap<>();
 
-	/** Messages to be sent to the producers (credit announcement or resume consumption request). */
-	private final ArrayDeque<ClientOutboundMessage> clientOutboundMessages = new ArrayDeque<>();
+	/**
+	 * Channels, which will notify the producers about unannounced credit.
+	 */
+	private final ArrayDeque<RemoteInputChannel> inputChannelsWithCredit = new ArrayDeque<>();
 
 	private final AtomicReference<Throwable> channelError = new AtomicReference<>();
 
@@ -78,6 +85,17 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 	 * be accessed by task thread or canceler thread to cancel partition request during releasing resources.
 	 */
 	private volatile ChannelHandlerContext ctx;
+
+	private final boolean sensitiveFailureDetectionEnabled;
+
+	public CreditBasedPartitionRequestClientHandler() {
+		this(true);
+	}
+
+	public CreditBasedPartitionRequestClientHandler(boolean sensitiveFailureDetectionEnabled) {
+		this.sensitiveFailureDetectionEnabled = sensitiveFailureDetectionEnabled;
+	}
+
 
 	// ------------------------------------------------------------------------
 	// Input channel/receiver registration
@@ -96,11 +114,6 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 	}
 
 	@Override
-	public RemoteInputChannel getInputChannel(InputChannelID inputChannelId) {
-		return inputChannels.get(inputChannelId);
-	}
-
-	@Override
 	public void cancelRequestFor(InputChannelID inputChannelId) {
 		if (inputChannelId == null || ctx == null) {
 			return;
@@ -113,12 +126,7 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 
 	@Override
 	public void notifyCreditAvailable(final RemoteInputChannel inputChannel) {
-		ctx.executor().execute(() -> ctx.pipeline().fireUserEventTriggered(new AddCreditMessage(inputChannel)));
-	}
-
-	@Override
-	public void resumeConsumption(RemoteInputChannel inputChannel) {
-		ctx.executor().execute(() -> ctx.pipeline().fireUserEventTriggered(new ResumeConsumptionMessage(inputChannel)));
+		ctx.executor().execute(() -> ctx.pipeline().fireUserEventTriggered(inputChannel));
 	}
 
 	// ------------------------------------------------------------------------
@@ -140,13 +148,30 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 		// channels have been removed. This indicates a problem with the remote task manager.
 		if (!inputChannels.isEmpty()) {
 			final SocketAddress remoteAddr = ctx.channel().remoteAddress();
-
-			notifyAllChannelsOfErrorAndClose(new RemoteTransportException(
+			RemoteTransportException cause = new RemoteTransportException(
 				"Connection unexpectedly closed by remote task manager '" + remoteAddr + "'. "
-					+ "This might indicate that the remote task manager was lost.", remoteAddr));
-		}
+					+ "This might indicate that the remote task manager was lost.", remoteAddr);
 
-		super.channelInactive(ctx);
+			try {
+				InetSocketAddress inetRemoteAddr = (InetSocketAddress) remoteAddr;
+				for (RemoteInputChannel remoteInputChannel : inputChannels.values()) {
+					if (remoteInputChannel.getConnectionId().getAddress().equals(inetRemoteAddr)) {
+						LOG.debug("Send fail producer trigger to {}.", remoteInputChannel);
+						removeInputChannel(remoteInputChannel);
+						if(this.sensitiveFailureDetectionEnabled)
+							remoteInputChannel.triggerFailProducer(cause);
+						break;
+					}
+				}
+			} catch (ClassCastException e) {
+				LOG.warn("On unexpected network error, the channel's remote address is not of type InetSocketAddress. Therefore, it is not possible to identify the culprit remote channel.");
+
+				notifyAllChannelsOfErrorAndClose(cause);
+				super.channelInactive(ctx);
+			}
+		} else {
+			super.channelInactive(ctx);
+		}
 	}
 
 	/**
@@ -167,13 +192,29 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 			if (cause instanceof IOException && cause.getMessage().equals("Connection reset by peer")) {
 				tex = new RemoteTransportException("Lost connection to task manager '" + remoteAddr + "'. " +
 					"This indicates that the remote task manager was lost.", remoteAddr, cause);
+				try {
+					InetSocketAddress inetRemoteAddr = (InetSocketAddress) remoteAddr;
+					for (RemoteInputChannel remoteInputChannel : inputChannels.values()) {
+						if (remoteInputChannel.getConnectionId().getAddress().equals(inetRemoteAddr)) {
+							LOG.debug("Send fail producer trigger to {}.", remoteInputChannel);
+							removeInputChannel(remoteInputChannel);
+							if(this.sensitiveFailureDetectionEnabled)
+								remoteInputChannel.triggerFailProducer(cause);
+							break;
+						}
+					}
+				} catch (ClassCastException e) {
+					LOG.warn("On unexpected network error, the channel's remote address is not of type InetSocketAddress. Therefore, it is not possible to identify the culprit remote channel.");
+
+					notifyAllChannelsOfErrorAndClose(tex);
+				}
 			} else {
 				final SocketAddress localAddr = ctx.channel().localAddress();
 				tex = new LocalTransportException(
 					String.format("%s (connection to '%s')", cause.getMessage(), remoteAddr), localAddr, cause);
+				notifyAllChannelsOfErrorAndClose(tex);
 			}
 
-			notifyAllChannelsOfErrorAndClose(tex);
 		}
 	}
 
@@ -194,10 +235,10 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 	 */
 	@Override
 	public void userEventTriggered(ChannelHandlerContext ctx, Object msg) throws Exception {
-		if (msg instanceof ClientOutboundMessage) {
-			boolean triggerWrite = clientOutboundMessages.isEmpty();
+		if (msg instanceof RemoteInputChannel) {
+			boolean triggerWrite = inputChannelsWithCredit.isEmpty();
 
-			clientOutboundMessages.add((ClientOutboundMessage) msg);
+			inputChannelsWithCredit.add((RemoteInputChannel) msg);
 
 			if (triggerWrite) {
 				writeAndFlushNextMessageIfPossible(ctx.channel());
@@ -223,7 +264,7 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 				LOG.warn("An Exception was thrown during error notification of a remote input channel.", t);
 			} finally {
 				inputChannels.clear();
-				clientOutboundMessages.clear();
+				inputChannelsWithCredit.clear();
 
 				if (ctx != null) {
 					ctx.close();
@@ -237,8 +278,7 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 	/**
 	 * Checks for an error and rethrows it if one was reported.
 	 */
-	@VisibleForTesting
-	void checkError() throws IOException {
+	private void checkError() throws IOException {
 		final Throwable t = channelError.get();
 
 		if (t != null) {
@@ -258,7 +298,7 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 			NettyMessage.BufferResponse bufferOrEvent = (NettyMessage.BufferResponse) msg;
 
 			RemoteInputChannel inputChannel = inputChannels.get(bufferOrEvent.receiverId);
-			if (inputChannel == null || inputChannel.isReleased()) {
+			if (inputChannel == null) {
 				bufferOrEvent.releaseBuffer();
 
 				cancelRequestFor(bufferOrEvent.receiverId);
@@ -266,12 +306,7 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 				return;
 			}
 
-			try {
-				decodeBufferOrEvent(inputChannel, bufferOrEvent);
-			} catch (Throwable t) {
-				inputChannel.onError(t);
-			}
-
+			decodeBufferOrEvent(inputChannel, bufferOrEvent);
 
 		} else if (msgClazz == NettyMessage.ErrorResponse.class) {
 			// ---- Error ---------------------------------------------------------
@@ -304,12 +339,43 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 	}
 
 	private void decodeBufferOrEvent(RemoteInputChannel inputChannel, NettyMessage.BufferResponse bufferOrEvent) throws Throwable {
-		if (bufferOrEvent.isBuffer() && bufferOrEvent.bufferSize == 0) {
-			inputChannel.onEmptyBuffer(bufferOrEvent.sequenceNumber, bufferOrEvent.backlog);
-		} else if (bufferOrEvent.getBuffer() != null) {
-			inputChannel.onBuffer(bufferOrEvent.getBuffer(), bufferOrEvent.sequenceNumber, bufferOrEvent.backlog);
-		} else {
-			throw new IllegalStateException("The read buffer is null in credit-based input channel.");
+		try {
+			ByteBuf nettyBuffer = bufferOrEvent.getNettyBuffer();
+			final int receivedSize = nettyBuffer.readableBytes();
+			if (bufferOrEvent.isBuffer()) {
+				// ---- Buffer ------------------------------------------------
+
+				// Early return for empty buffers. Otherwise Netty's readBytes() throws an
+				// IndexOutOfBoundsException.
+				if (receivedSize == 0) {
+					inputChannel.onEmptyBuffer(bufferOrEvent.sequenceNumber, bufferOrEvent.backlog);
+					return;
+				}
+
+				Buffer buffer = inputChannel.requestBuffer();
+				if (buffer != null) {
+					LOG.debug("decodeBufferOrEvent(): {} received buffer {}.", inputChannel, buffer);
+					nettyBuffer.readBytes(buffer.asByteBuf(), receivedSize);
+
+					inputChannel.onBuffer(buffer, bufferOrEvent.sequenceNumber, bufferOrEvent.backlog);
+				} else if (inputChannel.isReleased()) {
+					cancelRequestFor(bufferOrEvent.receiverId);
+				} else {
+					throw new IllegalStateException("No buffer available in credit-based input channel.");
+				}
+			} else {
+				// ---- Event -------------------------------------------------
+				// TODO We can just keep the serialized data in the Netty buffer and release it later at the reader
+				byte[] byteArray = new byte[receivedSize];
+				nettyBuffer.readBytes(byteArray);
+
+				MemorySegment memSeg = MemorySegmentFactory.wrap(byteArray);
+				Buffer buffer = new NetworkBuffer(memSeg, FreeingBufferRecycler.INSTANCE, false, receivedSize);
+
+				inputChannel.onBuffer(buffer, bufferOrEvent.sequenceNumber, bufferOrEvent.backlog);
+			}
+		} finally {
+			bufferOrEvent.releaseBuffer();
 		}
 	}
 
@@ -325,17 +391,20 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 		}
 
 		while (true) {
-			ClientOutboundMessage outboundMessage = clientOutboundMessages.poll();
+			RemoteInputChannel inputChannel = inputChannelsWithCredit.poll();
 
 			// The input channel may be null because of the write callbacks
 			// that are executed after each write.
-			if (outboundMessage == null) {
+			if (inputChannel == null) {
 				return;
 			}
 
-			//It is no need to notify credit or resume data consumption for the released channel.
-			if (!outboundMessage.inputChannel.isReleased()) {
-				Object msg = outboundMessage.buildMessage();
+			//It is no need to notify credit for the released channel.
+			if (!inputChannel.isReleased()) {
+				AddCredit msg = new AddCredit(
+					inputChannel.getPartitionId(),
+					inputChannel.getAndResetUnannouncedCredit(),
+					inputChannel.getInputChannelId());
 
 				// Write and flush and wait until this is done before
 				// trying to continue with the next input channel.
@@ -361,40 +430,6 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 			} catch (Throwable t) {
 				notifyAllChannelsOfErrorAndClose(t);
 			}
-		}
-	}
-
-	private static abstract class ClientOutboundMessage {
-		protected final RemoteInputChannel inputChannel;
-
-		ClientOutboundMessage(RemoteInputChannel inputChannel) {
-			this.inputChannel = inputChannel;
-		}
-
-		abstract Object buildMessage();
-	}
-
-	private static class AddCreditMessage extends ClientOutboundMessage {
-
-		AddCreditMessage(RemoteInputChannel inputChannel) {
-			super(checkNotNull(inputChannel));
-		}
-
-		@Override
-		public Object buildMessage() {
-			return new AddCredit(inputChannel.getAndResetUnannouncedCredit(), inputChannel.getInputChannelId());
-		}
-	}
-
-	private static class ResumeConsumptionMessage extends ClientOutboundMessage {
-
-		ResumeConsumptionMessage(RemoteInputChannel inputChannel) {
-			super(checkNotNull(inputChannel));
-		}
-
-		@Override
-		Object buildMessage() {
-			return new ResumeConsumption(inputChannel.getInputChannelId());
 		}
 	}
 }

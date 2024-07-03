@@ -36,7 +36,7 @@ public class AsynchronousOperationResult<V> implements AsynchronouslyCreatedReso
 
 	private static final String FIELD_NAME_STATUS = "status";
 
-	public static final String FIELD_NAME_OPERATION = "operation";
+	private static final String FIELD_NAME_OPERATION = "operation";
 
 	@JsonProperty(FIELD_NAME_STATUS)
 	private final QueueStatus queueStatus;

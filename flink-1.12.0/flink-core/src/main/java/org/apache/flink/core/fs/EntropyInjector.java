@@ -89,10 +89,6 @@ public class EntropyInjector {
 
 	// ------------------------------------------------------------------------
 
-	public static boolean isEntropyInjecting(FileSystem fs) {
-		return getEntropyFs(fs) != null;
-	}
-
 	@Nullable
 	private static EntropyInjectingFileSystem getEntropyFs(FileSystem fs) {
 		if (fs instanceof EntropyInjectingFileSystem) {
@@ -102,13 +98,6 @@ public class EntropyInjector {
 			FileSystem delegate = ((SafetyNetWrapperFileSystem) fs).getWrappedDelegate();
 			if (delegate instanceof EntropyInjectingFileSystem) {
 				return (EntropyInjectingFileSystem) delegate;
-			}
-			else if (delegate instanceof PluginFileSystemFactory.ClassLoaderFixingFileSystem) {
-				FileSystem innerFs = ((PluginFileSystemFactory.ClassLoaderFixingFileSystem) delegate).getInner();
-				if (innerFs instanceof EntropyInjectingFileSystem) {
-					return (EntropyInjectingFileSystem) innerFs;
-				}
-				return null;
 			}
 			else {
 				return null;

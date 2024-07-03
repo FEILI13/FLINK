@@ -21,38 +21,32 @@ package org.apache.flink.runtime.leaderelection;
 import org.apache.flink.api.common.time.Deadline;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
-import org.apache.flink.runtime.leaderretrieval.DefaultLeaderRetrievalService;
-import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalDriver;
-import org.apache.flink.runtime.leaderretrieval.TestingLeaderRetrievalEventHandler;
-import org.apache.flink.runtime.leaderretrieval.ZooKeeperLeaderRetrievalDriver;
+import org.apache.flink.runtime.leaderretrieval.ZooKeeperLeaderRetrievalService;
 import org.apache.flink.runtime.util.ZooKeeperUtils;
-import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.TestLogger;
 
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.CuratorFramework;
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.api.CreateBuilder;
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.recipes.cache.ChildData;
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.recipes.cache.NodeCache;
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.recipes.cache.NodeCacheListener;
-import org.apache.flink.shaded.zookeeper3.org.apache.zookeeper.CreateMode;
-import org.apache.flink.shaded.zookeeper3.org.apache.zookeeper.KeeperException;
-
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.api.CreateBuilder;
+import org.apache.curator.framework.recipes.cache.ChildData;
+import org.apache.curator.framework.recipes.cache.NodeCache;
+import org.apache.curator.framework.recipes.cache.NodeCacheListener;
 import org.apache.curator.test.TestingServer;
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.KeeperException;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Matchers;
 import org.mockito.Mockito;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import javax.annotation.Nonnull;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.time.Duration;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -60,11 +54,10 @@ import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
@@ -74,12 +67,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 /**
- * Tests for the {@link ZooKeeperLeaderElectionDriver} and the
- * {@link org.apache.flink.runtime.leaderretrieval.ZooKeeperLeaderRetrievalDriver}. To directly test the
- * {@link ZooKeeperLeaderElectionDriver} and {@link org.apache.flink.runtime.leaderretrieval.ZooKeeperLeaderRetrievalDriver},
- * some simple tests will use {@link TestingLeaderElectionEventHandler} which will not write the leader information to
- * ZooKeeper. For the complicated tests(e.g. multiple leaders), we will use {@link DefaultLeaderElectionService} with
- * {@link TestingContender}.
+ * Tests for the {@link ZooKeeperLeaderElectionService} and the {@link ZooKeeperLeaderRetrievalService}.
  */
 public class ZooKeeperLeaderElectionTest extends TestLogger {
 	private TestingServer testingServer;
@@ -89,10 +77,9 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 	private CuratorFramework client;
 
 	private static final String TEST_URL = "akka//user/jobmanager";
-	private static final LeaderInformation TEST_LEADER = LeaderInformation.known(UUID.randomUUID(), TEST_URL);
 	private static final long timeout = 200L * 1000L;
 
-	private static final Logger LOG = LoggerFactory.getLogger(ZooKeeperLeaderElectionTest.class);
+	private static Logger LOG = LoggerFactory.getLogger(ZooKeeperLeaderElectionTest.class);
 
 	@Before
 	public void before() {
@@ -128,39 +115,43 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 	 */
 	@Test
 	public void testZooKeeperLeaderElectionRetrieval() throws Exception {
+		ZooKeeperLeaderElectionService leaderElectionService = null;
+		ZooKeeperLeaderRetrievalService leaderRetrievalService = null;
 
-		final TestingLeaderElectionEventHandler electionEventHandler =
-			new TestingLeaderElectionEventHandler(TEST_LEADER);
-		final TestingLeaderRetrievalEventHandler retrievalEventHandler = new TestingLeaderRetrievalEventHandler();
-		LeaderElectionDriver leaderElectionDriver = null;
-		LeaderRetrievalDriver leaderRetrievalDriver = null;
 		try {
+			leaderElectionService = ZooKeeperUtils.createLeaderElectionService(client, configuration);
+			leaderRetrievalService = ZooKeeperUtils.createLeaderRetrievalService(client, configuration);
 
-			leaderElectionDriver = createAndInitLeaderElectionDriver(client, electionEventHandler);
-			leaderRetrievalDriver =
-				ZooKeeperUtils.createLeaderRetrievalDriverFactory(client, configuration)
-					.createLeaderRetrievalDriver(retrievalEventHandler, retrievalEventHandler::handleError);
+			TestingContender contender = new TestingContender(TEST_URL, leaderElectionService);
+			TestingListener listener = new TestingListener();
 
-			electionEventHandler.waitForLeader(timeout);
-			assertThat(electionEventHandler.getConfirmedLeaderInformation(), is(TEST_LEADER));
+			leaderElectionService.start(contender);
+			leaderRetrievalService.start(listener);
 
-			retrievalEventHandler.waitForNewLeader(timeout);
+			contender.waitForLeader(timeout);
 
-			assertThat(retrievalEventHandler.getLeaderSessionID(), is(TEST_LEADER.getLeaderSessionID()));
-			assertThat(retrievalEventHandler.getAddress(), is(TEST_LEADER.getLeaderAddress()));
+			assertTrue(contender.isLeader());
+			assertEquals(leaderElectionService.getLeaderSessionID(), contender.getLeaderSessionID());
+
+			listener.waitForNewLeader(timeout);
+
+			assertEquals(TEST_URL, listener.getAddress());
+			assertEquals(leaderElectionService.getLeaderSessionID(), listener.getLeaderSessionID());
+
 		} finally {
-			if (leaderElectionDriver != null) {
-				leaderElectionDriver.close();
+			if (leaderElectionService != null) {
+				leaderElectionService.stop();
 			}
-			if (leaderRetrievalDriver != null) {
-				leaderRetrievalDriver.close();
+
+			if (leaderRetrievalService != null) {
+				leaderRetrievalService.stop();
 			}
 		}
 	}
 
 	/**
 	 * Tests repeatedly the reelection of still available LeaderContender. After a contender has
-	 * been elected as the leader, it is removed. This forces the DefaultLeaderElectionService
+	 * been elected as the leader, it is removed. This forces the ZooKeeperLeaderElectionService
 	 * to elect a new leader.
 	 */
 	@Test
@@ -169,9 +160,9 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 
 		int num = 10;
 
-		DefaultLeaderElectionService[] leaderElectionService = new DefaultLeaderElectionService[num];
+		ZooKeeperLeaderElectionService[] leaderElectionService = new ZooKeeperLeaderElectionService[num];
 		TestingContender[] contenders = new TestingContender[num];
-		DefaultLeaderRetrievalService leaderRetrievalService = null;
+		ZooKeeperLeaderRetrievalService leaderRetrievalService = null;
 
 		TestingListener listener = new TestingListener();
 
@@ -184,7 +175,7 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 
 			for (int i = 0; i < num; i++) {
 				leaderElectionService[i] = ZooKeeperUtils.createLeaderElectionService(client, configuration);
-				contenders[i] = new TestingContender(createAddress(i), leaderElectionService[i]);
+				contenders[i] = new TestingContender(TEST_URL + "_" + i, leaderElectionService[i]);
 
 				LOG.debug("Start leader election service for contender #{}.", i);
 
@@ -208,7 +199,7 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 					TestingContender contender = contenders[index];
 
 					// check that the retrieval service has retrieved the correct leader
-					if (address.equals(createAddress(index)) && listener.getLeaderSessionID().equals(contender.getLeaderSessionID())) {
+					if (address.equals(contender.getAddress()) && listener.getLeaderSessionID().equals(contender.getLeaderSessionID())) {
 						// kill the election service of the leader
 						LOG.debug("Stop leader election service of contender #{}.", numberSeenLeaders);
 						leaderElectionService[index].stop();
@@ -229,17 +220,12 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 				leaderRetrievalService.stop();
 			}
 
-			for (DefaultLeaderElectionService electionService : leaderElectionService) {
+			for (ZooKeeperLeaderElectionService electionService : leaderElectionService) {
 				if (electionService != null) {
 					electionService.stop();
 				}
 			}
 		}
-	}
-
-	@Nonnull
-	private String createAddress(int i) {
-		return TEST_URL + "_" + i;
 	}
 
 	/**
@@ -252,9 +238,9 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 		int num = 3;
 		int numTries = 30;
 
-		DefaultLeaderElectionService[] leaderElectionService = new DefaultLeaderElectionService[num];
+		ZooKeeperLeaderElectionService[] leaderElectionService = new ZooKeeperLeaderElectionService[num];
 		TestingContender[] contenders = new TestingContender[num];
-		DefaultLeaderRetrievalService leaderRetrievalService = null;
+		ZooKeeperLeaderRetrievalService leaderRetrievalService = null;
 
 		TestingListener listener = new TestingListener();
 
@@ -305,7 +291,7 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 				leaderRetrievalService.stop();
 			}
 
-			for (DefaultLeaderElectionService electionService : leaderElectionService) {
+			for (ZooKeeperLeaderElectionService electionService : leaderElectionService) {
 				if (electionService != null) {
 					electionService.stop();
 				}
@@ -319,46 +305,52 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 	 * ZooKeeper.
 	 */
 	@Test
-	public void testLeaderShouldBeCorrectedWhenOverwritten() throws Exception {
-		final String faultyContenderUrl = "faultyContender";
+	public void testMultipleLeaders() throws Exception {
+		final String FAULTY_CONTENDER_URL = "faultyContender";
 		final String leaderPath = "/leader";
 
 		configuration.setString(HighAvailabilityOptions.HA_ZOOKEEPER_LEADER_PATH, leaderPath);
 
-		final TestingLeaderElectionEventHandler electionEventHandler =
-			new TestingLeaderElectionEventHandler(TEST_LEADER);
-		final TestingLeaderRetrievalEventHandler retrievalEventHandler = new TestingLeaderRetrievalEventHandler();
-
-		LeaderElectionDriver leaderElectionDriver = null;
-		LeaderRetrievalDriver leaderRetrievalDriver = null;
-
-		CuratorFramework anotherClient = null;
+		ZooKeeperLeaderElectionService leaderElectionService = null;
+		ZooKeeperLeaderRetrievalService leaderRetrievalService = null;
+		ZooKeeperLeaderRetrievalService leaderRetrievalService2 = null;
+		TestingListener listener = new TestingListener();
+		TestingListener listener2 = new TestingListener();
+		TestingContender contender;
 
 		try {
+			leaderElectionService = ZooKeeperUtils.createLeaderElectionService(client, configuration);
+			leaderRetrievalService = ZooKeeperUtils.createLeaderRetrievalService(client, configuration);
+			leaderRetrievalService2 = ZooKeeperUtils.createLeaderRetrievalService(client, configuration);
 
-			leaderElectionDriver = createAndInitLeaderElectionDriver(client, electionEventHandler);
+			contender = new TestingContender(TEST_URL, leaderElectionService);
 
-			electionEventHandler.waitForLeader(timeout);
-			assertThat(electionEventHandler.getConfirmedLeaderInformation(), is(TEST_LEADER));
+			leaderElectionService.start(contender);
+			leaderRetrievalService.start(listener);
 
-			anotherClient = ZooKeeperUtils.startCuratorFramework(configuration);
+			listener.waitForNewLeader(timeout);
+
+			assertEquals(listener.getLeaderSessionID(), contender.getLeaderSessionID());
+			assertEquals(TEST_URL, listener.getAddress());
+
+			CuratorFramework client = ZooKeeperUtils.startCuratorFramework(configuration);
 
 			ByteArrayOutputStream baos = new ByteArrayOutputStream();
 			ObjectOutputStream oos = new ObjectOutputStream(baos);
 
-			oos.writeUTF(faultyContenderUrl);
-			oos.writeObject(UUID.randomUUID());
+			oos.writeUTF(FAULTY_CONTENDER_URL);
+			oos.writeObject(null);
 
 			oos.close();
 
-			// overwrite the current leader address, the leader should notice that
+			// overwrite the current leader address, the leader should notice that and correct it
 			boolean dataWritten = false;
 
-			while (!dataWritten) {
-				anotherClient.delete().forPath(leaderPath);
+			while(!dataWritten) {
+				client.delete().forPath(leaderPath);
 
 				try {
-					anotherClient.create().forPath(leaderPath, baos.toByteArray());
+					client.create().forPath(leaderPath, baos.toByteArray());
 
 					dataWritten = true;
 				} catch (KeeperException.NodeExistsException e) {
@@ -366,26 +358,28 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 				}
 			}
 
-			// The faulty leader should be corrected on ZooKeeper
-			leaderRetrievalDriver =
-				ZooKeeperUtils.createLeaderRetrievalDriverFactory(client, configuration)
-					.createLeaderRetrievalDriver(retrievalEventHandler, retrievalEventHandler::handleError);
+			leaderRetrievalService2.start(listener2);
 
-			if (retrievalEventHandler.waitForNewLeader(timeout).equals(faultyContenderUrl)) {
-				retrievalEventHandler.waitForNewLeader(timeout);
+			listener2.waitForNewLeader(timeout);
+
+			if (FAULTY_CONTENDER_URL.equals(listener2.getAddress())) {
+				listener2.waitForNewLeader(timeout);
 			}
 
-			assertThat(retrievalEventHandler.getLeaderSessionID(), is(TEST_LEADER.getLeaderSessionID()));
-			assertThat(retrievalEventHandler.getAddress(), is(TEST_LEADER.getLeaderAddress()));
+			assertEquals(listener2.getLeaderSessionID(), contender.getLeaderSessionID());
+			assertEquals(listener2.getAddress(), contender.getAddress());
+
 		} finally {
-			if (leaderElectionDriver != null) {
-				leaderElectionDriver.close();
+			if (leaderElectionService != null) {
+				leaderElectionService.stop();
 			}
-			if (leaderRetrievalDriver != null) {
-				leaderRetrievalDriver.close();
+
+			if (leaderRetrievalService != null) {
+				leaderRetrievalService.stop();
 			}
-			if (anotherClient != null) {
-				anotherClient.close();
+
+			if (leaderRetrievalService2 != null) {
+				leaderRetrievalService2.stop();
 			}
 		}
 	}
@@ -396,19 +390,35 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 	 */
 	@Test
 	public void testExceptionForwarding() throws Exception {
-		LeaderElectionDriver leaderElectionDriver = null;
-		final TestingLeaderElectionEventHandler electionEventHandler =
-			new TestingLeaderElectionEventHandler(TEST_LEADER);
+		ZooKeeperLeaderElectionService leaderElectionService = null;
+		ZooKeeperLeaderRetrievalService leaderRetrievalService = null;
+		TestingListener listener = new TestingListener();
+		TestingContender testingContender;
 
-		CuratorFramework client = null;
+		CuratorFramework client;
 		final CreateBuilder mockCreateBuilder = mock(CreateBuilder.class, Mockito.RETURNS_DEEP_STUBS);
-		final String exMsg = "Test exception";
-		final Exception testException = new Exception(exMsg);
+		final Exception testException = new Exception("Test exception");
 
 		try {
 			client = spy(ZooKeeperUtils.startCuratorFramework(configuration));
 
-			doAnswer(invocation -> mockCreateBuilder).when(client).create();
+			Answer<CreateBuilder> answer = new Answer<CreateBuilder>() {
+				private int counter = 0;
+
+				@Override
+				public CreateBuilder answer(InvocationOnMock invocation) throws Throwable {
+					counter++;
+
+					// at first we have to create the leader latch, there it mustn't fail yet
+					if (counter < 2) {
+						return (CreateBuilder) invocation.callRealMethod();
+					} else {
+						return mockCreateBuilder;
+					}
+				}
+			};
+
+			doAnswer(answer).when(client).create();
 
 			when(
 				mockCreateBuilder
@@ -416,20 +426,25 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 				.withMode(Matchers.any(CreateMode.class))
 				.forPath(anyString(), any(byte[].class))).thenThrow(testException);
 
-			leaderElectionDriver = createAndInitLeaderElectionDriver(client, electionEventHandler);
+			leaderElectionService = new ZooKeeperLeaderElectionService(client, "/latch", "/leader");
+			leaderRetrievalService = ZooKeeperUtils.createLeaderRetrievalService(client, configuration);
 
-			electionEventHandler.waitForError(timeout);
+			testingContender = new TestingContender(TEST_URL, leaderElectionService);
 
-			assertNotNull(electionEventHandler.getError());
-			assertThat(ExceptionUtils.findThrowableWithMessage(
-				electionEventHandler.getError(), exMsg).isPresent(), is(true));
+			leaderElectionService.start(testingContender);
+			leaderRetrievalService.start(listener);
+
+			testingContender.waitForError(timeout);
+
+			assertNotNull(testingContender.getError());
+			assertEquals(testException, testingContender.getError().getCause());
 		} finally {
-			if (leaderElectionDriver != null) {
-				leaderElectionDriver.close();
+			if (leaderElectionService != null) {
+				leaderElectionService.stop();
 			}
 
-			if (client != null) {
-				client.close();
+			if (leaderRetrievalService != null) {
+				leaderRetrievalService.stop();
 			}
 		}
 	}
@@ -441,11 +456,10 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 	 */
 	@Test
 	public void testEphemeralZooKeeperNodes() throws Exception {
-		LeaderElectionDriver leaderElectionDriver = null;
-		LeaderRetrievalDriver leaderRetrievalDriver = null;
-		final TestingLeaderElectionEventHandler electionEventHandler =
-			new TestingLeaderElectionEventHandler(TEST_LEADER);
-		final TestingLeaderRetrievalEventHandler retrievalEventHandler = new TestingLeaderRetrievalEventHandler();
+		ZooKeeperLeaderElectionService leaderElectionService;
+		ZooKeeperLeaderRetrievalService leaderRetrievalService = null;
+		TestingContender testingContender;
+		TestingListener listener;
 
 		CuratorFramework client = null;
 		CuratorFramework client2 = null;
@@ -455,9 +469,10 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 			client = ZooKeeperUtils.startCuratorFramework(configuration);
 			client2 = ZooKeeperUtils.startCuratorFramework(configuration);
 
-			leaderElectionDriver = createAndInitLeaderElectionDriver(client, electionEventHandler);
-			leaderRetrievalDriver = ZooKeeperUtils.createLeaderRetrievalDriverFactory(client2, configuration)
-				.createLeaderRetrievalDriver(retrievalEventHandler, retrievalEventHandler::handleError);
+			leaderElectionService = ZooKeeperUtils.createLeaderElectionService(client, configuration);
+			leaderRetrievalService = ZooKeeperUtils.createLeaderRetrievalService(client2, configuration);
+			testingContender = new TestingContender(TEST_URL, leaderElectionService);
+			listener = new TestingListener();
 
 			final String leaderPath = configuration.getString(HighAvailabilityOptions.HA_ZOOKEEPER_LEADER_PATH);
 			cache = new NodeCache(client2, leaderPath);
@@ -468,9 +483,9 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 			cache.getListenable().addListener(existsListener);
 			cache.start();
 
-			electionEventHandler.waitForLeader(timeout);
+			leaderElectionService.start(testingContender);
 
-			retrievalEventHandler.waitForNewLeader(timeout);
+			testingContender.waitForLeader(timeout);
 
 			Future<Boolean> existsFuture = existsListener.nodeExists();
 
@@ -478,7 +493,7 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 
 			cache.getListenable().addListener(deletedCacheListener);
 
-			leaderElectionDriver.close();
+			leaderElectionService.stop();
 
 			// now stop the underlying client
 			client.close();
@@ -488,8 +503,10 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 			// make sure that the leader node has been deleted
 			deletedFuture.get(timeout, TimeUnit.MILLISECONDS);
 
+			leaderRetrievalService.start(listener);
+
 			try {
-				retrievalEventHandler.waitForNewLeader(1000L);
+				listener.waitForNewLeader(1000L);
 
 				fail("TimeoutException was expected because there is no leader registered and " +
 						"thus there shouldn't be any leader information in ZooKeeper.");
@@ -497,8 +514,8 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 				//that was expected
 			}
 		} finally {
-			if (leaderRetrievalDriver != null) {
-				leaderRetrievalDriver.close();
+			if(leaderRetrievalService != null) {
+				leaderRetrievalService.stop();
 			}
 
 			if (cache != null) {
@@ -507,44 +524,6 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 
 			if (client2 != null) {
 				client2.close();
-			}
-		}
-	}
-
-	@Test
-	public void testNotLeaderShouldNotCleanUpTheLeaderInformation() throws Exception {
-
-		final TestingLeaderElectionEventHandler electionEventHandler =
-			new TestingLeaderElectionEventHandler(TEST_LEADER);
-		final TestingLeaderRetrievalEventHandler retrievalEventHandler = new TestingLeaderRetrievalEventHandler();
-		ZooKeeperLeaderElectionDriver leaderElectionDriver = null;
-		ZooKeeperLeaderRetrievalDriver leaderRetrievalDriver = null;
-
-		try {
-			leaderElectionDriver = createAndInitLeaderElectionDriver(client, electionEventHandler);
-
-			electionEventHandler.waitForLeader(timeout);
-			assertThat(electionEventHandler.getConfirmedLeaderInformation(), is(TEST_LEADER));
-
-			// Leader is revoked
-			leaderElectionDriver.notLeader();
-			electionEventHandler.waitForRevokeLeader(timeout);
-			assertThat(electionEventHandler.getConfirmedLeaderInformation(), is(LeaderInformation.empty()));
-			// The data on ZooKeeper it not be cleared
-			leaderRetrievalDriver =
-				ZooKeeperUtils.createLeaderRetrievalDriverFactory(client, configuration)
-					.createLeaderRetrievalDriver(retrievalEventHandler, retrievalEventHandler::handleError);
-
-			retrievalEventHandler.waitForNewLeader(timeout);
-
-			assertThat(retrievalEventHandler.getLeaderSessionID(), is(TEST_LEADER.getLeaderSessionID()));
-			assertThat(retrievalEventHandler.getAddress(), is(TEST_LEADER.getLeaderAddress()));
-		} finally {
-			if (leaderElectionDriver != null) {
-				leaderElectionDriver.close();
-			}
-			if (leaderRetrievalDriver != null) {
-				leaderRetrievalDriver.close();
 			}
 		}
 	}
@@ -597,16 +576,5 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 				cache.getListenable().removeListener(this);
 			}
 		}
-	}
-
-	private ZooKeeperLeaderElectionDriver createAndInitLeaderElectionDriver(
-			CuratorFramework client,
-			TestingLeaderElectionEventHandler electionEventHandler) throws Exception {
-
-		final ZooKeeperLeaderElectionDriver leaderElectionDriver =
-			ZooKeeperUtils.createLeaderElectionDriverFactory(client, configuration)
-				.createLeaderElectionDriver(electionEventHandler, electionEventHandler::handleError, TEST_URL);
-		electionEventHandler.init(leaderElectionDriver);
-		return leaderElectionDriver;
 	}
 }

@@ -19,21 +19,14 @@
 
 source "$(dirname "$0")"/common.sh
 
-TEST_PROGRAM_JAR=${END_TO_END_DIR}/flink-parent-child-classloading-test-program/target/ClassLoaderTestProgram.jar
-
-echo "Moving fake LibPackage.jar from end-to-end tests to lib/"
-cp ${END_TO_END_DIR}/flink-parent-child-classloading-test-lib-package/target/LibPackage.jar ${FLINK_DIR}/lib/
-
-function classloader_cleanup() {
-  stop_cluster
-  $FLINK_DIR/bin/taskmanager.sh stop-all
-}
-on_exit classloader_cleanup
+TEST_PROGRAM_JAR=${END_TO_END_DIR}/flink-parent-child-classloading-test/target/ClassLoaderTestProgram.jar
 
 echo "Testing parent-first class loading"
 
-delete_config_key "classloader.parent-first-patterns"
-set_config_key "classloader.resolve-order" "parent-first"
+# remove any leftover classloader settings
+sed -i -e 's/classloader.resolve-order: .*//' "$FLINK_DIR/conf/flink-conf.yaml"
+sed -i -e 's/classloader.parent-first-patterns: .*//' $FLINK_DIR/conf/flink-conf.yaml
+echo "classloader.resolve-order: parent-first" >> "$FLINK_DIR/conf/flink-conf.yaml"
 
 start_cluster
 
@@ -41,11 +34,14 @@ $FLINK_DIR/bin/flink run -p 1 $TEST_PROGRAM_JAR --resolve-order parent-first --o
 
 stop_cluster
 
+# remove classloader settings again
+sed -i -e 's/classloader.resolve-order: .*//' $FLINK_DIR/conf/flink-conf.yaml
+
 OUTPUT=`cat $TEST_DATA_DIR/out/cl_out_pf`
 # first field: whether we found the method on TaskManager
-# result of getResource("parent-child-test.properties"), should be from the parent
-# ordered result of getResources("parent-child-test.properties"), should have parent first
-EXPECTED="Hello, from lib package!:hello-from-lib-package:hello-from-lib-packagehello-from-user-package"
+# result of getResource(".version.properties"), should be from the parent
+# ordered result of getResources(".version.properties"), should have parent first
+EXPECTED="NoSuchMethodError:[0-9a-f]{6,}:[0-9a-f]{6,}hello-there-42"
 if ! [[ "$OUTPUT" =~ $EXPECTED ]]; then
   echo "Output from Flink program does not match expected output."
   echo -e "EXPECTED: $EXPECTED"
@@ -57,8 +53,10 @@ fi
 # "parent-first-pattern" is "org.apache.flink"
 echo "Testing child-first class loading with Flink classes loaded via parent"
 
-delete_config_key "classloader.parent-first-patterns"
-set_config_key "classloader.resolve-order" "child-first"
+# remove any leftover classloader settings
+sed -i -e 's/classloader.resolve-order: .*//' "$FLINK_DIR/conf/flink-conf.yaml"
+sed -i -e 's/classloader.parent-first-patterns: .*//' $FLINK_DIR/conf/flink-conf.yaml
+echo "classloader.resolve-order: child-first" >> "$FLINK_DIR/conf/flink-conf.yaml"
 
 start_cluster
 
@@ -66,11 +64,14 @@ $FLINK_DIR/bin/flink run -p 1 $TEST_PROGRAM_JAR --resolve-order parent-first --o
 
 stop_cluster
 
+# remove classloader settings again
+sed -i -e 's/classloader.resolve-order: .*//' $FLINK_DIR/conf/flink-conf.yaml
+
 OUTPUT=`cat $TEST_DATA_DIR/out/cl_out_cf_pf`
 # first field: whether we found the method on TaskManager
-# result of getResource("parent-child-test.properties"), should be from the child
-# ordered result of getResources("parent-child-test.properties"), should be child first
-EXPECTED="Hello, from lib package!:hello-from-user-package:hello-from-user-packagehello-from-lib-package"
+# result of getResource(".version.properties"), should be from the child
+# ordered result of getResources(".version.properties"), should be child first
+EXPECTED="NoSuchMethodError:hello-there-42:hello-there-42[0-9a-f]{6,}"
 if ! [[ "$OUTPUT" =~ $EXPECTED ]]; then
   echo "Output from Flink program does not match expected output."
   echo -e "EXPECTED: $EXPECTED"
@@ -80,8 +81,10 @@ fi
 
 echo "Testing child-first class loading"
 
-set_config_key "classloader.parent-first-patterns" "foo.bar"
-set_config_key "classloader.resolve-order" "child-first"
+# remove any leftover classloader settings
+sed -i -e 's/classloader.resolve-order: .*//' "$FLINK_DIR/conf/flink-conf.yaml"
+echo "classloader.resolve-order: child-first" >> "$FLINK_DIR/conf/flink-conf.yaml"
+echo "classloader.parent-first-patterns: foo.bar" >> "$FLINK_DIR/conf/flink-conf.yaml"
 
 start_cluster
 
@@ -89,11 +92,15 @@ $FLINK_DIR/bin/flink run -p 1 $TEST_PROGRAM_JAR --resolve-order child-first --ou
 
 stop_cluster
 
+# remove classloader settings again
+sed -i -e 's/classloader.resolve-order: .*//' $FLINK_DIR/conf/flink-conf.yaml
+sed -i -e 's/classloader.parent-first-patterns: .*//' $FLINK_DIR/conf/flink-conf.yaml
+
 OUTPUT=`cat $TEST_DATA_DIR/out/cl_out_cf`
 # first field: whether we found the method on TaskManager
-# result of getResource("parent-child-test.properties"), should be from the child
-# ordered result of getResources("parent-child-test.properties"), should be child first
-EXPECTED="Hello, from user package!:hello-from-user-package:hello-from-user-packagehello-from-lib-package"
+# result of getResource(".version.properties"), should be from the child
+# ordered result of getResources(".version.properties"), should be child first
+EXPECTED="Hello, World!:hello-there-42:hello-there-42[0-9a-f]{6,}"
 if ! [[ "$OUTPUT" =~ $EXPECTED ]]; then
   echo "Output from Flink program does not match expected output."
   echo -e "EXPECTED: $EXPECTED"

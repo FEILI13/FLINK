@@ -18,7 +18,7 @@
 
 package org.apache.flink.runtime.clusterframework;
 
-import org.apache.flink.api.common.JobStatus;
+import org.apache.flink.runtime.jobgraph.JobStatus;
 
 /**
  * The status of an application.
@@ -32,7 +32,7 @@ public enum ApplicationStatus {
 	FAILED(1443),
 	
 	/** Application was canceled or killed on request */
-	CANCELED(0),
+	CANCELED(1444),
 
 	/** Application status is not known */
 	UNKNOWN(1445);

@@ -31,6 +31,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 
@@ -51,6 +52,22 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 public abstract class RetryingRegistration<F extends Serializable, G extends RpcGateway, S extends RegistrationResponse.Success> {
 
 	// ------------------------------------------------------------------------
+	//  default configuration values
+	// ------------------------------------------------------------------------
+
+	/** Default value for the initial registration timeout (milliseconds). */
+	private static final long INITIAL_REGISTRATION_TIMEOUT_MILLIS = 100;
+
+	/** Default value for the maximum registration timeout, after exponential back-off (milliseconds). */
+	private static final long MAX_REGISTRATION_TIMEOUT_MILLIS = 30000;
+
+	/** The pause (milliseconds) made after an registration attempt caused an exception (other than timeout). */
+	private static final long ERROR_REGISTRATION_DELAY_MILLIS = 10000;
+
+	/** The pause (milliseconds) made after the registration attempt was refused. */
+	private static final long REFUSED_REGISTRATION_DELAY_MILLIS = 30000;
+
+	// ------------------------------------------------------------------------
 	// Fields
 	// ------------------------------------------------------------------------
 
@@ -68,7 +85,13 @@ public abstract class RetryingRegistration<F extends Serializable, G extends Rpc
 
 	private final CompletableFuture<Tuple2<G, S>> completionFuture;
 
-	private final RetryingRegistrationConfiguration retryingRegistrationConfiguration;
+	private final long initialRegistrationTimeout;
+
+	private final long maxRegistrationTimeout;
+
+	private final long delayOnError;
+
+	private final long delayOnRefusedRegistration;
 
 	private volatile boolean canceled;
 
@@ -80,8 +103,28 @@ public abstract class RetryingRegistration<F extends Serializable, G extends Rpc
 			String targetName,
 			Class<G> targetType,
 			String targetAddress,
+			F fencingToken) {
+		this(log, rpcService, targetName, targetType, targetAddress, fencingToken,
+				INITIAL_REGISTRATION_TIMEOUT_MILLIS, MAX_REGISTRATION_TIMEOUT_MILLIS,
+				ERROR_REGISTRATION_DELAY_MILLIS, REFUSED_REGISTRATION_DELAY_MILLIS);
+	}
+
+	public RetryingRegistration(
+			Logger log,
+			RpcService rpcService,
+			String targetName,
+			Class<G> targetType,
+			String targetAddress,
 			F fencingToken,
-			RetryingRegistrationConfiguration retryingRegistrationConfiguration) {
+			long initialRegistrationTimeout,
+			long maxRegistrationTimeout,
+			long delayOnError,
+			long delayOnRefusedRegistration) {
+
+		checkArgument(initialRegistrationTimeout > 0, "initial registration timeout must be greater than zero");
+		checkArgument(maxRegistrationTimeout > 0, "maximum registration timeout must be greater than zero");
+		checkArgument(delayOnError >= 0, "delay on error must be non-negative");
+		checkArgument(delayOnRefusedRegistration >= 0, "delay on refused registration must be non-negative");
 
 		this.log = checkNotNull(log);
 		this.rpcService = checkNotNull(rpcService);
@@ -89,7 +132,10 @@ public abstract class RetryingRegistration<F extends Serializable, G extends Rpc
 		this.targetType = checkNotNull(targetType);
 		this.targetAddress = checkNotNull(targetAddress);
 		this.fencingToken = checkNotNull(fencingToken);
-		this.retryingRegistrationConfiguration = checkNotNull(retryingRegistrationConfiguration);
+		this.initialRegistrationTimeout = initialRegistrationTimeout;
+		this.maxRegistrationTimeout = maxRegistrationTimeout;
+		this.delayOnError = delayOnError;
+		this.delayOnRefusedRegistration = delayOnRefusedRegistration;
 
 		this.completionFuture = new CompletableFuture<>();
 	}
@@ -137,28 +183,28 @@ public abstract class RetryingRegistration<F extends Serializable, G extends Rpc
 		}
 
 		try {
-			// trigger resolution of the target address to a callable gateway
-			final CompletableFuture<G> rpcGatewayFuture;
+			// trigger resolution of the resource manager address to a callable gateway
+			final CompletableFuture<G> resourceManagerFuture;
 
 			if (FencedRpcGateway.class.isAssignableFrom(targetType)) {
-				rpcGatewayFuture = (CompletableFuture<G>) rpcService.connect(
+				resourceManagerFuture = (CompletableFuture<G>) rpcService.connect(
 					targetAddress,
 					fencingToken,
 					targetType.asSubclass(FencedRpcGateway.class));
 			} else {
-				rpcGatewayFuture = rpcService.connect(targetAddress, targetType);
+				resourceManagerFuture = rpcService.connect(targetAddress, targetType);
 			}
 
 			// upon success, start the registration attempts
-			CompletableFuture<Void> rpcGatewayAcceptFuture = rpcGatewayFuture.thenAcceptAsync(
-				(G rpcGateway) -> {
+			CompletableFuture<Void> resourceManagerAcceptFuture = resourceManagerFuture.thenAcceptAsync(
+				(G result) -> {
 					log.info("Resolved {} address, beginning registration", targetName);
-					register(rpcGateway, 1, retryingRegistrationConfiguration.getInitialRegistrationTimeoutMillis());
+					register(result, 1, initialRegistrationTimeout);
 				},
 				rpcService.getExecutor());
 
 			// upon failure, retry, unless this is cancelled
-			rpcGatewayAcceptFuture.whenCompleteAsync(
+			resourceManagerAcceptFuture.whenCompleteAsync(
 				(Void v, Throwable failure) -> {
 					if (failure != null && !canceled) {
 						final Throwable strippedFailure = ExceptionUtils.stripCompletionException(failure);
@@ -167,18 +213,18 @@ public abstract class RetryingRegistration<F extends Serializable, G extends Rpc
 								"Could not resolve {} address {}, retrying in {} ms.",
 								targetName,
 								targetAddress,
-								retryingRegistrationConfiguration.getErrorDelayMillis(),
+								delayOnError,
 								strippedFailure);
 						} else {
 							log.info(
-								"Could not resolve {} address {}, retrying in {} ms: {}",
+								"Could not resolve {} address {}, retrying in {} ms: {}.",
 								targetName,
 								targetAddress,
-								retryingRegistrationConfiguration.getErrorDelayMillis(),
+								delayOnError,
 								strippedFailure.getMessage());
 						}
 
-						startRegistrationLater(retryingRegistrationConfiguration.getErrorDelayMillis());
+						startRegistrationLater(delayOnError);
 					}
 				},
 				rpcService.getExecutor());
@@ -201,7 +247,7 @@ public abstract class RetryingRegistration<F extends Serializable, G extends Rpc
 		}
 
 		try {
-			log.debug("Registration at {} attempt {} (timeout={}ms)", targetName, attempt, timeoutMillis);
+			log.info("Registration at {} attempt {} (timeout={}ms)", targetName, attempt, timeoutMillis);
 			CompletableFuture<RegistrationResponse> registrationFuture = invokeRegistration(gateway, fencingToken, timeoutMillis);
 
 			// if the registration was successful, let the TaskExecutor know
@@ -222,8 +268,8 @@ public abstract class RetryingRegistration<F extends Serializable, G extends Rpc
 								log.error("Received unknown response to registration attempt: {}", result);
 							}
 
-							log.info("Pausing and re-attempting registration in {} ms", retryingRegistrationConfiguration.getRefusedDelayMillis());
-							registerLater(gateway, 1, retryingRegistrationConfiguration.getInitialRegistrationTimeoutMillis(), retryingRegistrationConfiguration.getRefusedDelayMillis());
+							log.info("Pausing and re-attempting registration in {} ms", delayOnRefusedRegistration);
+							registerLater(gateway, 1, initialRegistrationTimeout, delayOnRefusedRegistration);
 						}
 					}
 				},
@@ -242,15 +288,15 @@ public abstract class RetryingRegistration<F extends Serializable, G extends Rpc
 									targetName, targetAddress, attempt, timeoutMillis);
 							}
 
-							long newTimeoutMillis = Math.min(2 * timeoutMillis, retryingRegistrationConfiguration.getMaxRegistrationTimeoutMillis());
+							long newTimeoutMillis = Math.min(2 * timeoutMillis, maxRegistrationTimeout);
 							register(gateway, attempt + 1, newTimeoutMillis);
 						}
 						else {
 							// a serious failure occurred. we still should not give up, but keep trying
 							log.error("Registration at {} failed due to an error", targetName, failure);
-							log.info("Pausing and re-attempting registration in {} ms", retryingRegistrationConfiguration.getErrorDelayMillis());
+							log.info("Pausing and re-attempting registration in {} ms", delayOnError);
 
-							registerLater(gateway, 1, retryingRegistrationConfiguration.getInitialRegistrationTimeoutMillis(), retryingRegistrationConfiguration.getErrorDelayMillis());
+							registerLater(gateway, 1, initialRegistrationTimeout, delayOnError);
 						}
 					}
 				},

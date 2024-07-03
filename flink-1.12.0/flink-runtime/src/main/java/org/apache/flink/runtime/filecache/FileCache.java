@@ -150,10 +150,9 @@ public class FileCache {
 			for (File dir : storageDirectories) {
 				try {
 					FileUtils.deleteDirectory(dir);
-					LOG.info("removed file cache directory {}", dir.getAbsolutePath());
 				}
 				catch (IOException e) {
-					LOG.error("File cache could not properly clean up storage directory: {}", dir.getAbsolutePath(), e);
+					LOG.error("File cache could not properly clean up storage directory.");
 				}
 			}
 
@@ -285,13 +284,11 @@ public class FileCache {
 
 		private final Path filePath;
 		private final Path cachedPath;
-		private final boolean executable;
-		private final boolean isZipped;
+		private boolean executable;
 
 		public CopyFromDFSProcess(DistributedCacheEntry e, Path cachedPath) {
 			this.filePath = new Path(e.filePath);
 			this.executable = e.isExecutable;
-			this.isZipped = e.isZipped;
 
 			String sourceFile = e.filePath;
 			int posOfSep = sourceFile.lastIndexOf("/");
@@ -308,9 +305,6 @@ public class FileCache {
 			// let exceptions propagate. we can retrieve them later from
 			// the future and report them upon access to the result
 			FileUtils.copy(filePath, cachedPath, this.executable);
-			if (isZipped) {
-				return FileUtils.expandDirectory(cachedPath, cachedPath.getParent());
-			}
 			return cachedPath;
 		}
 	}

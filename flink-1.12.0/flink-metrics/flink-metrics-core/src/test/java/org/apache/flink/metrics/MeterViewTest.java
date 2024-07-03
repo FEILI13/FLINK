@@ -18,8 +18,6 @@
 
 package org.apache.flink.metrics;
 
-import org.apache.flink.util.TestLogger;
-
 import org.junit.Test;
 
 import static org.apache.flink.metrics.View.UPDATE_INTERVAL_SECONDS;
@@ -28,12 +26,12 @@ import static org.junit.Assert.assertEquals;
 /**
  * Tests for the MeterView.
  */
-public class MeterViewTest extends TestLogger {
+public class MeterViewTest {
 	@Test
 	public void testGetCount() {
 		Counter c = new SimpleCounter();
 		c.inc(5);
-		Meter m = new MeterView(c);
+		Meter m = new MeterView(c, 60);
 
 		assertEquals(5, m.getCount());
 	}
@@ -41,7 +39,7 @@ public class MeterViewTest extends TestLogger {
 	@Test
 	public void testMarkEvent() {
 		Counter c = new SimpleCounter();
-		Meter m = new MeterView(c);
+		Meter m = new MeterView(c, 60);
 
 		assertEquals(0, m.getCount());
 		m.markEvent();
@@ -53,7 +51,7 @@ public class MeterViewTest extends TestLogger {
 	@Test
 	public void testGetRate() {
 		Counter c = new SimpleCounter();
-		MeterView m = new MeterView(c);
+		MeterView m = new MeterView(c, 60);
 
 		// values = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 		for (int x = 0; x < 12; x++) {

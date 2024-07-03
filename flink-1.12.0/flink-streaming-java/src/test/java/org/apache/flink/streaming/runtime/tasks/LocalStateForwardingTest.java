@@ -23,7 +23,6 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
-import org.apache.flink.runtime.checkpoint.CheckpointMetricsBuilder;
 import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
 import org.apache.flink.runtime.checkpoint.StateObjectCollection;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
@@ -34,12 +33,10 @@ import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.operators.testutils.MockInputSplitProvider;
 import org.apache.flink.runtime.state.DoneFuture;
-import org.apache.flink.runtime.state.InputChannelStateHandle;
 import org.apache.flink.runtime.state.KeyedStateHandle;
 import org.apache.flink.runtime.state.LocalRecoveryConfig;
 import org.apache.flink.runtime.state.LocalRecoveryDirectoryProviderImpl;
 import org.apache.flink.runtime.state.OperatorStateHandle;
-import org.apache.flink.runtime.state.ResultSubpartitionStateHandle;
 import org.apache.flink.runtime.state.SnapshotResult;
 import org.apache.flink.runtime.state.StateObject;
 import org.apache.flink.runtime.state.TaskLocalStateStore;
@@ -65,7 +62,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.RunnableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.apache.flink.runtime.checkpoint.StateObjectCollection.singleton;
 import static org.mockito.Mockito.mock;
 
 /**
@@ -81,7 +77,7 @@ public class LocalStateForwardingTest extends TestLogger {
 	 * async checkpointing thread to the {@link org.apache.flink.runtime.state.TaskStateManager}.
 	 */
 	@Test
-	public void testReportingFromSnapshotToTaskStateManager() throws Exception {
+	public void testReportingFromSnapshotToTaskStateManager() {
 
 		TestTaskStateManager taskStateManager = new TestTaskStateManager();
 
@@ -96,7 +92,7 @@ public class LocalStateForwardingTest extends TestLogger {
 
 		StreamTask testStreamTask = new StreamTaskTest.NoOpStreamTask(streamMockEnvironment);
 		CheckpointMetaData checkpointMetaData = new CheckpointMetaData(0L, 0L);
-		CheckpointMetricsBuilder checkpointMetrics = new CheckpointMetricsBuilder();
+		CheckpointMetrics checkpointMetrics = new CheckpointMetrics();
 
 		Map<OperatorID, OperatorSnapshotFutures> snapshots = new HashMap<>(1);
 		OperatorSnapshotFutures osFuture = new OperatorSnapshotFutures();
@@ -105,25 +101,18 @@ public class LocalStateForwardingTest extends TestLogger {
 		osFuture.setKeyedStateRawFuture(createSnapshotResult(KeyedStateHandle.class));
 		osFuture.setOperatorStateManagedFuture(createSnapshotResult(OperatorStateHandle.class));
 		osFuture.setOperatorStateRawFuture(createSnapshotResult(OperatorStateHandle.class));
-		osFuture.setInputChannelStateFuture(createSnapshotCollectionResult(InputChannelStateHandle.class));
-		osFuture.setResultSubpartitionStateFuture(createSnapshotCollectionResult(ResultSubpartitionStateHandle.class));
 
 		OperatorID operatorID = new OperatorID();
 		snapshots.put(operatorID, osFuture);
 
-		AsyncCheckpointRunnable checkpointRunnable = new AsyncCheckpointRunnable(
-			snapshots,
-			checkpointMetaData,
-			checkpointMetrics,
-			0L,
-			testStreamTask.getName(),
-			asyncCheckpointRunnable -> {},
-			asyncCheckpointRunnable -> {},
-			testStreamTask.getEnvironment(),
-			testStreamTask);
+		StreamTask.AsyncCheckpointRunnable checkpointRunnable =
+			new StreamTask.AsyncCheckpointRunnable(
+				testStreamTask,
+				snapshots,
+				checkpointMetaData,
+				checkpointMetrics,
+				0L);
 
-		checkpointMetrics.setAlignmentDurationNanos(0L);
-		checkpointMetrics.setBytesProcessedDuringAlignment(0L);
 		checkpointRunnable.run();
 
 		TaskStateSnapshot lastJobManagerTaskStateSnapshot = taskStateManager.getLastJobManagerTaskStateSnapshot();
@@ -139,8 +128,6 @@ public class LocalStateForwardingTest extends TestLogger {
 		performCheck(osFuture.getKeyedStateRawFuture(), jmState.getRawKeyedState(), tmState.getRawKeyedState());
 		performCheck(osFuture.getOperatorStateManagedFuture(), jmState.getManagedOperatorState(), tmState.getManagedOperatorState());
 		performCheck(osFuture.getOperatorStateRawFuture(), jmState.getRawOperatorState(), tmState.getRawOperatorState());
-		performCollectionCheck(osFuture.getInputChannelStateFuture(), jmState.getInputChannelState(), tmState.getInputChannelState());
-		performCollectionCheck(osFuture.getResultSubpartitionStateFuture(), jmState.getResultSubpartitionState(), tmState.getResultSubpartitionState());
 	}
 
 	/**
@@ -243,27 +230,7 @@ public class LocalStateForwardingTest extends TestLogger {
 			tmState.iterator().next());
 	}
 
-	private static <T extends StateObject> void performCollectionCheck(
-			Future<SnapshotResult<StateObjectCollection<T>>> resultFuture,
-			StateObjectCollection<T> jmState,
-			StateObjectCollection<T> tmState) {
-
-		SnapshotResult<StateObjectCollection<T>> snapshotResult;
-		try {
-			snapshotResult = resultFuture.get();
-		} catch (Exception e) {
-			throw new RuntimeException(e);
-		}
-
-		Assert.assertEquals(snapshotResult.getJobManagerOwnedSnapshot(), jmState);
-		Assert.assertEquals(snapshotResult.getTaskLocalSnapshot(), tmState);
-	}
-
 	private static <T extends StateObject> RunnableFuture<SnapshotResult<T>> createSnapshotResult(Class<T> clazz) {
 		return DoneFuture.of(SnapshotResult.withLocalState(mock(clazz), mock(clazz)));
-	}
-
-	private static <T extends StateObject> RunnableFuture<SnapshotResult<StateObjectCollection<T>>> createSnapshotCollectionResult(Class<T> clazz) {
-		return DoneFuture.of(SnapshotResult.withLocalState(singleton(mock(clazz)), singleton(mock(clazz))));
 	}
 }

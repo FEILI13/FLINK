@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.io.network.api.writer;
 
 import org.apache.flink.core.io.IOReadableWritable;
+import org.apache.flink.api.common.services.RandomService;
 
 /**
  * This is the default implementation of the {@link ChannelSelector} interface. It represents a simple round-robin
@@ -29,24 +30,37 @@ import org.apache.flink.core.io.IOReadableWritable;
  */
 public class RoundRobinChannelSelector<T extends IOReadableWritable> implements ChannelSelector<T> {
 
-	/** Stores the index of the channel to send the next record to. */
-	private int nextChannelToSendTo = -1;
+	/**
+	 * Stores the index of the channel to send the next record to.
+	 */
+	private final int[] nextChannelToSendTo = new int[1];
 
-	private int numberOfChannels;
-
-	@Override
-	public void setup(int numberOfChannels) {
-		this.numberOfChannels = numberOfChannels;
+	/**
+	 * Constructs a new default channel selector.
+	 */
+	public RoundRobinChannelSelector() {
+		this.nextChannelToSendTo[0] = 0;
 	}
 
 	@Override
-	public int selectChannel(final T record) {
-		nextChannelToSendTo = (nextChannelToSendTo + 1) % numberOfChannels;
-		return nextChannelToSendTo;
+	public int[] selectChannels(final T record, final int numberOfOutputChannels) {
+
+		int newChannel = ++this.nextChannelToSendTo[0];
+		if (newChannel >= numberOfOutputChannels) {
+			this.nextChannelToSendTo[0] = 0;
+		}
+
+		return this.nextChannelToSendTo;
 	}
 
 	@Override
-	public boolean isBroadcast() {
-		return false;
+	public void setRandomService(RandomService randomService) {
+
+	}
+
+
+	@Override
+	public void notifyEpochStart(long epochID) {
+		this.nextChannelToSendTo[0] = 0;
 	}
 }

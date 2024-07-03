@@ -35,7 +35,6 @@ import java.lang.ref.PhantomReference;
 import java.lang.ref.ReferenceQueue;
 import java.util.IdentityHashMap;
 import java.util.Map;
-import java.util.function.Supplier;
 
 /**
  * This implementation of an {@link AbstractCloseableRegistry} registers {@link WrappingProxyCloseable}. When
@@ -69,23 +68,13 @@ public class SafetyNetCloseableRegistry extends
 	//CHECKSTYLE.ON: StaticVariableName
 
 	SafetyNetCloseableRegistry() {
-		this(() -> new CloseableReaperThread());
-	}
-
-	@VisibleForTesting
-	SafetyNetCloseableRegistry(Supplier<CloseableReaperThread> reaperThreadSupplier) {
 		super(new IdentityHashMap<>());
 
 		synchronized (REAPER_THREAD_LOCK) {
 			if (0 == GLOBAL_SAFETY_NET_REGISTRY_COUNT) {
 				Preconditions.checkState(null == REAPER_THREAD);
-				try {
-					REAPER_THREAD = reaperThreadSupplier.get();
-					REAPER_THREAD.start();
-				} catch (Throwable throwable) {
-					REAPER_THREAD = null;
-					throw throwable;
-				}
+				REAPER_THREAD = new CloseableReaperThread();
+				REAPER_THREAD.start();
 			}
 			++GLOBAL_SAFETY_NET_REGISTRY_COUNT;
 		}
@@ -98,7 +87,7 @@ public class SafetyNetCloseableRegistry extends
 
 		assert Thread.holdsLock(getSynchronizationLock());
 
-		Closeable innerCloseable = WrappingProxyUtil.stripProxy(wrappingProxyCloseable);
+		Closeable innerCloseable = WrappingProxyUtil.stripProxy(wrappingProxyCloseable.getWrappedDelegate());
 
 		if (null == innerCloseable) {
 			return;
@@ -119,7 +108,7 @@ public class SafetyNetCloseableRegistry extends
 
 		assert Thread.holdsLock(getSynchronizationLock());
 
-		Closeable innerCloseable = WrappingProxyUtil.stripProxy(closeable);
+		Closeable innerCloseable = WrappingProxyUtil.stripProxy(closeable.getWrappedDelegate());
 
 		return null != innerCloseable && closeableMap.remove(innerCloseable) != null;
 	}
@@ -175,26 +164,21 @@ public class SafetyNetCloseableRegistry extends
 
 		@Override
 		public void close() throws IOException {
-			// Mark sure the inner closeable is still registered and thus unclosed to
-			// prevent duplicated and concurrent closing from registry closing. This could
-			// happen if registry is closing after this phantom reference was enqueued.
-			if (closeableRegistry.removeCloseableInternal(innerCloseable)) {
-				LOG.warn("Closing unclosed resource via safety-net: {}", getDebugString());
-				innerCloseable.close();
-			}
+			closeableRegistry.removeCloseableInternal(innerCloseable);
+			innerCloseable.close();
 		}
 	}
 
 	/**
 	 * Reaper runnable collects and closes leaking resources.
 	 */
-	static class CloseableReaperThread extends Thread {
+	static final class CloseableReaperThread extends Thread {
 
 		private final ReferenceQueue<WrappingProxyCloseable<? extends Closeable>> referenceQueue;
 
 		private volatile boolean running;
 
-		protected CloseableReaperThread() {
+		private CloseableReaperThread() {
 			super("CloseableReaperThread");
 			this.setDaemon(true);
 
@@ -210,6 +194,7 @@ public class SafetyNetCloseableRegistry extends
 
 					if (toClose != null) {
 						try {
+							LOG.warn("Closing unclosed resource via safety-net: {}", toClose.getDebugString());
 							toClose.close();
 						}
 						catch (Throwable t) {

@@ -19,13 +19,13 @@
 package org.apache.flink.runtime.rest.handler.job;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
 import org.apache.flink.runtime.executiongraph.AccessExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.AccessExecutionVertex;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
+import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.rest.handler.HandlerRequest;
 import org.apache.flink.runtime.rest.handler.RestHandlerException;
 import org.apache.flink.runtime.rest.handler.legacy.ExecutionGraphCache;
@@ -52,6 +52,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
 /**
@@ -59,17 +60,19 @@ import java.util.concurrent.Executor;
  */
 public class JobDetailsHandler extends AbstractExecutionGraphHandler<JobDetailsInfo, JobMessageParameters> implements JsonArchivist {
 
-	private final MetricFetcher metricFetcher;
+	private final MetricFetcher<?> metricFetcher;
 
 	public JobDetailsHandler(
+			CompletableFuture<String> localRestAddress,
 			GatewayRetriever<? extends RestfulGateway> leaderRetriever,
 			Time timeout,
 			Map<String, String> responseHeaders,
 			MessageHeaders<EmptyRequestBody, JobDetailsInfo, JobMessageParameters> messageHeaders,
 			ExecutionGraphCache executionGraphCache,
 			Executor executor,
-			MetricFetcher metricFetcher) {
+			MetricFetcher<?> metricFetcher) {
 		super(
+			localRestAddress,
 			leaderRetriever,
 			timeout,
 			responseHeaders,
@@ -95,9 +98,9 @@ public class JobDetailsHandler extends AbstractExecutionGraphHandler<JobDetailsI
 		return Collections.singleton(new ArchivedJson(path, json));
 	}
 
-	private static JobDetailsInfo createJobDetailsInfo(AccessExecutionGraph executionGraph, @Nullable MetricFetcher metricFetcher) {
+	private static JobDetailsInfo createJobDetailsInfo(AccessExecutionGraph executionGraph, @Nullable MetricFetcher<?> metricFetcher) {
 		final long now = System.currentTimeMillis();
-		final long startTime = executionGraph.getStatusTimestamp(JobStatus.INITIALIZING);
+		final long startTime = executionGraph.getStatusTimestamp(JobStatus.CREATED);
 		final long endTime = executionGraph.getState().isGloballyTerminalState() ?
 			executionGraph.getStatusTimestamp(executionGraph.getState()) : -1L;
 		final long duration = (endTime > 0L ? endTime : now) - startTime;
@@ -147,7 +150,7 @@ public class JobDetailsHandler extends AbstractExecutionGraphHandler<JobDetailsI
 			AccessExecutionJobVertex ejv,
 			long now,
 			JobID jobId,
-			MetricFetcher metricFetcher) {
+			MetricFetcher<?> metricFetcher) {
 		int[] tasksPerState = new int[ExecutionState.values().length];
 		long startTime = Long.MAX_VALUE;
 		long endTime = 0;
@@ -203,8 +206,8 @@ public class JobDetailsHandler extends AbstractExecutionGraphHandler<JobDetailsI
 		}
 
 		final IOMetricsInfo jobVertexMetrics = new IOMetricsInfo(
-			counts.getNumBytesIn(),
-			counts.isNumBytesInComplete(),
+			counts.getNumBytesInLocal() + counts.getNumBytesInRemote(),
+			counts.isNumBytesInLocalComplete() && counts.isNumBytesInRemoteComplete(),
 			counts.getNumBytesOut(),
 			counts.isNumBytesOutComplete(),
 			counts.getNumRecordsIn(),

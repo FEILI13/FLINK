@@ -35,8 +35,6 @@ import java.util.Map;
  */
 public final class KvStateSerializer {
 
-	//The magic number is as a flag between key and namespace.
-	private static final int MAGIC_NUMBER = 42;
 	// ------------------------------------------------------------------------
 	// Generic serialization utils
 	// ------------------------------------------------------------------------
@@ -65,7 +63,7 @@ public final class KvStateSerializer {
 		DataOutputSerializer dos = new DataOutputSerializer(32);
 
 		keySerializer.serialize(key, dos);
-		dos.writeByte(MAGIC_NUMBER);
+		dos.writeByte(42);
 		namespaceSerializer.serialize(namespace, dos);
 
 		return dos.getCopyOfBuffer();
@@ -95,7 +93,7 @@ public final class KvStateSerializer {
 		try {
 			K key = keySerializer.deserialize(dis);
 			byte magicNumber = dis.readByte();
-			if (magicNumber != MAGIC_NUMBER) {
+			if (magicNumber != 42) {
 				throw new IOException("Unexpected magic number " + magicNumber + ".");
 			}
 			N namespace = namespaceSerializer.deserialize(dis);

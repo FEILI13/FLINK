@@ -19,11 +19,10 @@
 package org.apache.flink.runtime.io.network.netty;
 
 import org.apache.flink.runtime.io.network.NetworkSequenceViewReader;
-import org.apache.flink.runtime.io.network.TaskEventPublisher;
+import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.netty.NettyMessage.AddCredit;
 import org.apache.flink.runtime.io.network.netty.NettyMessage.CancelPartitionRequest;
 import org.apache.flink.runtime.io.network.netty.NettyMessage.CloseRequest;
-import org.apache.flink.runtime.io.network.netty.NettyMessage.ResumeConsumption;
 import org.apache.flink.runtime.io.network.partition.PartitionNotFoundException;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionProvider;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannelID;
@@ -46,18 +45,25 @@ class PartitionRequestServerHandler extends SimpleChannelInboundHandler<NettyMes
 
 	private final ResultPartitionProvider partitionProvider;
 
-	private final TaskEventPublisher taskEventPublisher;
+	private final TaskEventDispatcher taskEventDispatcher;
 
 	private final PartitionRequestQueue outboundQueue;
 
+	private final boolean creditBasedEnabled;
+
+	private final boolean sensitiveFailureDetectionEnabled;
+
 	PartitionRequestServerHandler(
 		ResultPartitionProvider partitionProvider,
-		TaskEventPublisher taskEventPublisher,
-		PartitionRequestQueue outboundQueue) {
+		TaskEventDispatcher taskEventDispatcher,
+		PartitionRequestQueue outboundQueue,
+		boolean creditBasedEnabled, boolean sensitiveFailureDetectionEnabled) {
 
 		this.partitionProvider = partitionProvider;
-		this.taskEventPublisher = taskEventPublisher;
+		this.taskEventDispatcher = taskEventDispatcher;
 		this.outboundQueue = outboundQueue;
+		this.creditBasedEnabled = creditBasedEnabled;
+		this.sensitiveFailureDetectionEnabled = sensitiveFailureDetectionEnabled;
 	}
 
 	@Override
@@ -85,17 +91,24 @@ class PartitionRequestServerHandler extends SimpleChannelInboundHandler<NettyMes
 
 				try {
 					NetworkSequenceViewReader reader;
-					reader = new CreditBasedSequenceNumberingViewReader(
-						request.receiverId,
-						request.credit,
-						outboundQueue);
+					if (creditBasedEnabled) {
+						reader = new CreditBasedSequenceNumberingViewReader(
+							request.receiverId,
+							request.credit,
+							outboundQueue, sensitiveFailureDetectionEnabled);
+						LOG.info("New reader {}.", reader);
+					} else {
+						reader = new SequenceNumberingViewReader(
+							request.receiverId,
+							outboundQueue);
+					}
 
 					reader.requestSubpartitionView(
 						partitionProvider,
 						request.partitionId,
 						request.queueIndex);
 
-					outboundQueue.notifyReaderCreated(reader);
+					outboundQueue.notifyReaderCreated(reader, request.partitionId, request.queueIndex);
 				} catch (PartitionNotFoundException notFound) {
 					respondWithError(ctx, notFound, request.receiverId);
 				}
@@ -106,7 +119,7 @@ class PartitionRequestServerHandler extends SimpleChannelInboundHandler<NettyMes
 			else if (msgClazz == TaskEventRequest.class) {
 				TaskEventRequest request = (TaskEventRequest) msg;
 
-				if (!taskEventPublisher.publish(request.partitionId, request.event)) {
+				if (!taskEventDispatcher.publish(request.partitionId, request.event)) {
 					respondWithError(ctx, new IllegalArgumentException("Task event receiver not found."), request.receiverId);
 				}
 			} else if (msgClazz == CancelPartitionRequest.class) {
@@ -118,11 +131,7 @@ class PartitionRequestServerHandler extends SimpleChannelInboundHandler<NettyMes
 			} else if (msgClazz == AddCredit.class) {
 				AddCredit request = (AddCredit) msg;
 
-				outboundQueue.addCreditOrResumeConsumption(request.receiverId, reader -> reader.addCredit(request.credit));
-			} else if (msgClazz == ResumeConsumption.class) {
-				ResumeConsumption request = (ResumeConsumption) msg;
-
-				outboundQueue.addCreditOrResumeConsumption(request.receiverId, NetworkSequenceViewReader::resumeConsumption);
+				outboundQueue.addCredit(request.receiverId, request.credit);
 			} else {
 				LOG.warn("Received unexpected client request: {}", msg);
 			}

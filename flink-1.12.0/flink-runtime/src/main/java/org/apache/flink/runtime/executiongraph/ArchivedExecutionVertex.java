@@ -21,8 +21,6 @@ import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.runtime.util.EvictingBoundedList;
 
-import javax.annotation.Nullable;
-
 import java.io.Serializable;
 
 public class ArchivedExecutionVertex implements AccessExecutionVertex, Serializable {
@@ -95,7 +93,6 @@ public class ArchivedExecutionVertex implements AccessExecutionVertex, Serializa
 		return currentExecution.getAssignedResourceLocation();
 	}
 
-	@Nullable
 	@Override
 	public ArchivedExecution getPriorExecutionAttempt(int attemptNumber) {
 		if (attemptNumber >= 0 && attemptNumber < priorExecutions.size()) {

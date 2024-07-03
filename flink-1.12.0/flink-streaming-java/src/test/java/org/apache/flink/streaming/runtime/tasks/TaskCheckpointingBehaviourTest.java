@@ -22,14 +22,13 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.ReadableConfig;
-import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.testutils.OneShotLatch;
-import org.apache.flink.runtime.blob.VoidPermanentBlobService;
+import org.apache.flink.runtime.blob.BlobCacheService;
+import org.apache.flink.runtime.blob.PermanentBlobCache;
+import org.apache.flink.runtime.blob.TransientBlobCache;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
-import org.apache.flink.runtime.checkpoint.CheckpointMetricsBuilder;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
@@ -38,28 +37,27 @@ import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.execution.ExecutionState;
-import org.apache.flink.runtime.execution.librarycache.TestingClassLoaderLease;
+import org.apache.flink.runtime.execution.librarycache.BlobLibraryCacheManager;
+import org.apache.flink.runtime.execution.librarycache.FlinkUserCodeClassLoaders;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.JobInformation;
 import org.apache.flink.runtime.executiongraph.TaskInformation;
-import org.apache.flink.runtime.externalresource.ExternalResourceInfoProvider;
 import org.apache.flink.runtime.filecache.FileCache;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
-import org.apache.flink.runtime.io.network.NettyShuffleEnvironmentBuilder;
+import org.apache.flink.runtime.io.network.NetworkEnvironment;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
+import org.apache.flink.runtime.io.network.netty.PartitionProducerStateChecker;
 import org.apache.flink.runtime.io.network.partition.NoOpResultPartitionConsumableNotifier;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
-import org.apache.flink.runtime.query.KvStateRegistry;
-import org.apache.flink.runtime.shuffle.ShuffleEnvironment;
-import org.apache.flink.runtime.state.AbstractSnapshotStrategy;
+import org.apache.flink.runtime.query.TaskKvStateRegistry;
+import org.apache.flink.runtime.state.AbstractStateBackend;
 import org.apache.flink.runtime.state.CheckpointStreamFactory;
 import org.apache.flink.runtime.state.CheckpointStreamFactory.CheckpointStateOutputStream;
 import org.apache.flink.runtime.state.DefaultOperatorStateBackend;
-import org.apache.flink.runtime.state.DefaultOperatorStateBackendBuilder;
 import org.apache.flink.runtime.state.OperatorStateBackend;
 import org.apache.flink.runtime.state.OperatorStateCheckpointOutputStream;
 import org.apache.flink.runtime.state.OperatorStateHandle;
@@ -70,11 +68,7 @@ import org.apache.flink.runtime.state.StreamStateHandle;
 import org.apache.flink.runtime.state.TestTaskStateManager;
 import org.apache.flink.runtime.state.memory.MemoryStateBackend;
 import org.apache.flink.runtime.state.testutils.BackendForTestStream;
-import org.apache.flink.runtime.taskexecutor.KvStateService;
-import org.apache.flink.runtime.taskexecutor.PartitionProducerStateChecker;
-import org.apache.flink.runtime.taskexecutor.TestGlobalAggregateManager;
 import org.apache.flink.runtime.taskmanager.CheckpointResponder;
-import org.apache.flink.runtime.taskmanager.NoOpTaskOperatorEventGateway;
 import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.runtime.taskmanager.TaskManagerActions;
 import org.apache.flink.runtime.util.EnvironmentInformation;
@@ -82,7 +76,6 @@ import org.apache.flink.runtime.util.TestingTaskManagerRuntimeInfo;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.StreamFilter;
 import org.apache.flink.streaming.api.operators.StreamOperator;
-import org.apache.flink.streaming.runtime.tasks.mailbox.MailboxDefaultAction;
 import org.apache.flink.util.SerializedValue;
 import org.apache.flink.util.TestLogger;
 
@@ -93,15 +86,16 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
-import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.RunnableFuture;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * This test checks that task checkpoints that block and do not react to thread interrupts. It also checks correct
@@ -113,16 +107,27 @@ public class TaskCheckpointingBehaviourTest extends TestLogger {
 
 	@Test
 	public void testDeclineOnCheckpointErrorInSyncPart() throws Exception {
-		TestDeclinedCheckpointResponder checkpointResponder = new TestDeclinedCheckpointResponder();
-		Task task = createTask(new FilterOperator(), new SyncFailureInducingStateBackend(), checkpointResponder);
-		runTaskExpectFailure(task);
+		runTestDeclineOnCheckpointError(new SyncFailureInducingStateBackend());
 	}
 
 	@Test
 	public void testDeclineOnCheckpointErrorInAsyncPart() throws Exception {
-		TestDeclinedCheckpointResponder checkpointResponder = new TestDeclinedCheckpointResponder();
-		Task task = createTask(new FilterOperator(), new AsyncFailureInducingStateBackend(), checkpointResponder);
-		runTaskExpectCheckpointDeclined(task, checkpointResponder);
+		runTestDeclineOnCheckpointError(new AsyncFailureInducingStateBackend());
+	}
+
+	@Test
+	public void testTaskFailingOnCheckpointErrorInSyncPart() throws Exception {
+		Throwable failureCause = runTestTaskFailingOnCheckpointError(new SyncFailureInducingStateBackend());
+		assertNotNull(failureCause);
+
+		String expectedMessageStart = "Could not perform checkpoint";
+		assertEquals(expectedMessageStart, failureCause.getMessage().substring(0, expectedMessageStart.length()));
+	}
+
+	@Test
+	public void testTaskFailingOnCheckpointErrorInAsyncPart() throws Exception {
+		Throwable failureCause = runTestTaskFailingOnCheckpointError(new AsyncFailureInducingStateBackend());
+		assertEquals(AsynchronousException.class, failureCause.getClass());
 	}
 
 	@Test
@@ -131,7 +136,7 @@ public class TaskCheckpointingBehaviourTest extends TestLogger {
 		StateBackend lockingStateBackend = new BackendForTestStream(LockingOutputStream::new);
 
 		Task task =
-			createTask(new TestOperator(), lockingStateBackend, mock(CheckpointResponder.class));
+			createTask(new TestOperator(), lockingStateBackend, mock(CheckpointResponder.class), true);
 
 		// start the task and wait until it is in "restore"
 		task.startTaskThread();
@@ -146,7 +151,13 @@ public class TaskCheckpointingBehaviourTest extends TestLogger {
 		assertNull(task.getFailureCause());
 	}
 
-	private void runTaskExpectCheckpointDeclined(Task task, TestDeclinedCheckpointResponder checkpointResponder) throws Exception{
+	private void runTestDeclineOnCheckpointError(AbstractStateBackend backend) throws Exception{
+
+		TestDeclinedCheckpointResponder checkpointResponder = new TestDeclinedCheckpointResponder();
+
+		Task task =
+			createTask(new FilterOperator(), backend, checkpointResponder, false);
+
 		// start the task and wait until it is in "restore"
 		task.startTaskThread();
 
@@ -158,10 +169,18 @@ public class TaskCheckpointingBehaviourTest extends TestLogger {
 		task.getExecutingThread().join();
 	}
 
-	private void runTaskExpectFailure(Task task) throws Exception{
+	private Throwable runTestTaskFailingOnCheckpointError(AbstractStateBackend backend) throws Exception {
+
+		Task task =
+			createTask(new FilterOperator(), backend, mock(CheckpointResponder.class), true);
+
+		// start the task and wait until it is in "restore"
 		task.startTaskThread();
+
 		task.getExecutingThread().join();
-		Assert.assertEquals(ExecutionState.FAILED, task.getExecutionState());
+
+		assertEquals(ExecutionState.FAILED, task.getExecutionState());
+		return task.getFailureCause();
 	}
 
 	// ------------------------------------------------------------------------
@@ -171,7 +190,8 @@ public class TaskCheckpointingBehaviourTest extends TestLogger {
 	private static Task createTask(
 		StreamOperator<?> op,
 		StateBackend backend,
-		CheckpointResponder checkpointResponder) throws IOException {
+		CheckpointResponder checkpointResponder,
+		boolean failOnCheckpointErrors) throws IOException {
 
 		Configuration taskConfig = new Configuration();
 		StreamConfig cfg = new StreamConfig(taskConfig);
@@ -180,6 +200,7 @@ public class TaskCheckpointingBehaviourTest extends TestLogger {
 		cfg.setStateBackend(backend);
 
 		ExecutionConfig executionConfig = new ExecutionConfig();
+		executionConfig.setFailTaskOnCheckpointError(failOnCheckpointErrors);
 
 		JobInformation jobInformation = new JobInformation(
 				new JobID(),
@@ -197,7 +218,14 @@ public class TaskCheckpointingBehaviourTest extends TestLogger {
 				TestStreamTask.class.getName(),
 				taskConfig);
 
-		ShuffleEnvironment<?, ?> shuffleEnvironment = new NettyShuffleEnvironmentBuilder().build();
+		TaskKvStateRegistry mockKvRegistry = mock(TaskKvStateRegistry.class);
+		TaskEventDispatcher taskEventDispatcher = new TaskEventDispatcher();
+		NetworkEnvironment network = mock(NetworkEnvironment.class);
+		when(network.createKvStateTaskRegistry(any(JobID.class), any(JobVertexID.class))).thenReturn(mockKvRegistry);
+		when(network.getTaskEventDispatcher()).thenReturn(taskEventDispatcher);
+
+		BlobCacheService blobService =
+			new BlobCacheService(mock(PermanentBlobCache.class), mock(TransientBlobCache.class));
 
 		return new Task(
 				jobInformation,
@@ -211,20 +239,19 @@ public class TaskCheckpointingBehaviourTest extends TestLogger {
 				0,
 				mock(MemoryManager.class),
 				mock(IOManager.class),
-				shuffleEnvironment,
-				new KvStateService(new KvStateRegistry(), null, null),
+				network,
 				mock(BroadcastVariableManager.class),
-				new TaskEventDispatcher(),
-				ExternalResourceInfoProvider.NO_EXTERNAL_RESOURCES,
 				new TestTaskStateManager(),
 				mock(TaskManagerActions.class),
 				mock(InputSplitProvider.class),
 				checkpointResponder,
-				new NoOpTaskOperatorEventGateway(),
-				new TestGlobalAggregateManager(),
-				TestingClassLoaderLease.newBuilder().build(),
+				blobService,
+				new BlobLibraryCacheManager(
+					blobService.getPermanentBlobService(),
+					FlinkUserCodeClassLoaders.ResolveOrder.CHILD_FIRST,
+					new String[0]),
 				new FileCache(new String[] { EnvironmentInformation.getTemporaryFileDirectory() },
-					VoidPermanentBlobService.INSTANCE),
+					blobService.getPermanentBlobService()),
 				new TestingTaskManagerRuntimeInfo(),
 				UnregisteredMetricGroups.createUnregisteredTaskMetricGroup(),
 				new NoOpResultPartitionConsumableNotifier(),
@@ -274,46 +301,26 @@ public class TaskCheckpointingBehaviourTest extends TestLogger {
 		private static final long serialVersionUID = -1915780414440060539L;
 
 		@Override
-		public OperatorStateBackend createOperatorStateBackend(
-			Environment env,
-			String operatorIdentifier,
-			@Nonnull Collection<OperatorStateHandle> stateHandles,
-			CloseableRegistry cancelStreamRegistry) throws Exception {
-			return new DefaultOperatorStateBackendBuilder(
-				env.getUserCodeClassLoader().asClassLoader(),
+		public OperatorStateBackend createOperatorStateBackend(Environment env, String operatorIdentifier) throws Exception {
+			return new DefaultOperatorStateBackend(
+				env.getUserClassLoader(),
 				env.getExecutionConfig(),
-				true,
-				stateHandles,
-				cancelStreamRegistry) {
+				true) {
+				@Nonnull
 				@Override
-				@SuppressWarnings("unchecked")
-				public DefaultOperatorStateBackend build() {
-					return new DefaultOperatorStateBackend(
-						executionConfig,
-						cancelStreamRegistry,
-						new HashMap<>(),
-						new HashMap<>(),
-						new HashMap<>(),
-						new HashMap<>(),
-						mock(AbstractSnapshotStrategy.class)
-					) {
-						@Nonnull
-						@Override
-						public RunnableFuture<SnapshotResult<OperatorStateHandle>> snapshot(
-							long checkpointId,
-							long timestamp,
-							@Nonnull CheckpointStreamFactory streamFactory,
-							@Nonnull CheckpointOptions checkpointOptions) throws Exception {
+				public RunnableFuture<SnapshotResult<OperatorStateHandle>> snapshot(
+					long checkpointId,
+					long timestamp,
+					@Nonnull CheckpointStreamFactory streamFactory,
+					@Nonnull CheckpointOptions checkpointOptions) throws Exception {
 
-							throw new Exception("Sync part snapshot exception.");
-						}
-					};
+					throw new Exception("Sync part snapshot exception.");
 				}
-			}.build();
+			};
 		}
 
 		@Override
-		public SyncFailureInducingStateBackend configure(ReadableConfig configuration, ClassLoader classLoader) {
+		public SyncFailureInducingStateBackend configure(Configuration config) {
 			// retain this instance, no re-configuration!
 			return this;
 		}
@@ -324,48 +331,28 @@ public class TaskCheckpointingBehaviourTest extends TestLogger {
 		private static final long serialVersionUID = -7613628662587098470L;
 
 		@Override
-		public OperatorStateBackend createOperatorStateBackend(
-			Environment env,
-			String operatorIdentifier,
-			@Nonnull Collection<OperatorStateHandle> stateHandles,
-			CloseableRegistry cancelStreamRegistry) throws Exception {
-			return new DefaultOperatorStateBackendBuilder(
-				env.getUserCodeClassLoader().asClassLoader(),
+		public OperatorStateBackend createOperatorStateBackend(Environment env, String operatorIdentifier) throws Exception {
+			return new DefaultOperatorStateBackend(
+				env.getUserClassLoader(),
 				env.getExecutionConfig(),
-				true,
-				stateHandles,
-				cancelStreamRegistry) {
+				true) {
+				@Nonnull
 				@Override
-				@SuppressWarnings("unchecked")
-				public DefaultOperatorStateBackend build() {
-					return new DefaultOperatorStateBackend(
-						executionConfig,
-						cancelStreamRegistry,
-						new HashMap<>(),
-						new HashMap<>(),
-						new HashMap<>(),
-						new HashMap<>(),
-						mock(AbstractSnapshotStrategy.class)
-					) {
-						@Nonnull
-						@Override
-						public RunnableFuture<SnapshotResult<OperatorStateHandle>> snapshot(
-							long checkpointId,
-							long timestamp,
-							@Nonnull CheckpointStreamFactory streamFactory,
-							@Nonnull CheckpointOptions checkpointOptions) throws Exception {
+				public RunnableFuture<SnapshotResult<OperatorStateHandle>> snapshot(
+					long checkpointId,
+					long timestamp,
+					@Nonnull CheckpointStreamFactory streamFactory,
+					@Nonnull CheckpointOptions checkpointOptions) throws Exception {
 
-							return new FutureTask<>(() -> {
-								throw new Exception("Async part snapshot exception.");
-							});
-						}
-					};
+					return new FutureTask<>(() -> {
+						throw new Exception("Async part snapshot exception.");
+					});
 				}
-			}.build();
+			};
 		}
 
 		@Override
-		public AsyncFailureInducingStateBackend configure(ReadableConfig config, ClassLoader classLoader) {
+		public AsyncFailureInducingStateBackend configure(Configuration config) {
 			// retain this instance, no re-configuration!
 			return this;
 		}
@@ -466,7 +453,7 @@ public class TaskCheckpointingBehaviourTest extends TestLogger {
 	 */
 	public static final class TestStreamTask extends OneInputStreamTask<Object, Object> {
 
-		public TestStreamTask(Environment env) throws Exception {
+		public TestStreamTask(Environment env) {
 			super(env);
 		}
 
@@ -474,21 +461,24 @@ public class TaskCheckpointingBehaviourTest extends TestLogger {
 		public void init() {}
 
 		@Override
-		protected void processInput(MailboxDefaultAction.Controller controller) throws Exception {
+		protected void run() throws Exception {
+
 			triggerCheckpointOnBarrier(
 				new CheckpointMetaData(
 					11L,
 					System.currentTimeMillis()),
 				CheckpointOptions.forCheckpointWithDefaultLocation(),
-				new CheckpointMetricsBuilder());
+				new CheckpointMetrics());
 
 			while (isRunning()) {
 				Thread.sleep(1L);
 			}
-			controller.allActionsCompleted();
 		}
 
 		@Override
 		protected void cleanup() {}
+
+		@Override
+		protected void cancelTask() {}
 	}
 }

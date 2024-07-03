@@ -77,6 +77,8 @@ public class ReduceOperator<IN> extends SingleInputUdfOperator<IN, IN, ReduceOpe
 		this.grouper = input;
 		this.defaultName = defaultName;
 		this.hint = CombineHint.OPTIMIZER_CHOOSES;
+
+		UdfOperatorUtils.analyzeSingleInputUdf(this, ReduceFunction.class, defaultName, function, grouper.keys);
 	}
 
 	@Override

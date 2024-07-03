@@ -120,7 +120,7 @@ public class TaskExecutorLocalStateStoresManager {
 
 				if (LOG.isDebugEnabled()) {
 					LOG.debug("Registered new allocation id {} for local state stores for job {}.",
-						allocationID.toHexString(), jobId);
+						allocationID, jobId);
 				}
 			}
 
@@ -232,7 +232,7 @@ public class TaskExecutorLocalStateStoresManager {
 
 	@VisibleForTesting
 	String allocationSubDirString(AllocationID allocationID) {
-		return "aid_" + allocationID.toHexString();
+		return "aid_" + allocationID;
 	}
 
 	private File[] allocationBaseDirectories(AllocationID allocationID) {

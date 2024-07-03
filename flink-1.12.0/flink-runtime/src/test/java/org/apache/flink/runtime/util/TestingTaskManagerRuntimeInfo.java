@@ -22,7 +22,6 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
 
 import java.io.File;
-import java.net.InetAddress;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -33,7 +32,6 @@ public class TestingTaskManagerRuntimeInfo implements TaskManagerRuntimeInfo {
 
 	private final Configuration configuration;
 	private final String[] tmpDirectories;
-	private final String taskManagerExternalAddress;
 
 	public TestingTaskManagerRuntimeInfo() {
 		this(new Configuration(), System.getProperty("java.io.tmpdir").split(",|" + File.pathSeparator));
@@ -48,16 +46,8 @@ public class TestingTaskManagerRuntimeInfo implements TaskManagerRuntimeInfo {
 	}
 
 	public TestingTaskManagerRuntimeInfo(Configuration configuration, String[] tmpDirectories) {
-		this(configuration, tmpDirectories, InetAddress.getLoopbackAddress().getHostAddress());
-	}
-
-	public TestingTaskManagerRuntimeInfo(
-			Configuration configuration,
-			String[] tmpDirectories,
-			String taskManagerExternalAddress) {
 		this.configuration = configuration;
 		this.tmpDirectories = tmpDirectories;
-		this.taskManagerExternalAddress = taskManagerExternalAddress;
 	}
 
 	@Override
@@ -74,10 +64,5 @@ public class TestingTaskManagerRuntimeInfo implements TaskManagerRuntimeInfo {
 	public boolean shouldExitJvmOnOutOfMemoryError() {
 		// never kill the JVM in tests
 		return false;
-	}
-
-	@Override
-	public String getTaskManagerExternalAddress() {
-		return taskManagerExternalAddress;
 	}
 }

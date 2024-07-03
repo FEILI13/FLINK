@@ -26,8 +26,6 @@ package org.apache.flink.runtime.webmonitor.history;
  * https://github.com/netty/netty/blob/4.0/example/src/main/java/io/netty/example/http/file/HttpStaticFileServerHandler.java
  *****************************************************************************/
 
-import org.apache.flink.runtime.rest.NotFoundException;
-import org.apache.flink.runtime.rest.handler.RestHandlerException;
 import org.apache.flink.runtime.rest.handler.legacy.files.StaticFileServerHandler;
 import org.apache.flink.runtime.rest.handler.router.RoutedRequest;
 import org.apache.flink.runtime.rest.handler.util.HandlerUtils;
@@ -108,23 +106,14 @@ public class HistoryServerStaticFileServerHandler extends SimpleChannelInboundHa
 	public void channelRead0(ChannelHandlerContext ctx, RoutedRequest routedRequest) throws Exception {
 		String requestPath = routedRequest.getPath();
 
-		try {
-			respondWithFile(ctx, routedRequest.getRequest(), requestPath);
-		} catch (RestHandlerException rhe) {
-			HandlerUtils.sendErrorResponse(
-				ctx,
-				routedRequest.getRequest(),
-				new ErrorResponseBody(rhe.getMessage()),
-				rhe.getHttpResponseStatus(),
-				Collections.emptyMap());
-		}
+		respondWithFile(ctx, routedRequest.getRequest(), requestPath);
 	}
 
 	/**
 	 * Response when running with leading JobManager.
 	 */
 	private void respondWithFile(ChannelHandlerContext ctx, HttpRequest request, String requestPath)
-		throws IOException, ParseException, RestHandlerException {
+		throws IOException, ParseException {
 
 		// make sure we request the "index.html" in case there is a directory request
 		if (requestPath.endsWith("/")) {
@@ -142,12 +131,14 @@ public class HistoryServerStaticFileServerHandler extends SimpleChannelInboundHa
 			// file does not exist. Try to load it with the classloader
 			ClassLoader cl = HistoryServerStaticFileServerHandler.class.getClassLoader();
 
-			try (InputStream resourceStream = cl.getResourceAsStream("web" + requestPath)) {
+			String pathToLoad = requestPath.replace("index.html", "index_hs.html");
+
+			try (InputStream resourceStream = cl.getResourceAsStream("web" + pathToLoad)) {
 				boolean success = false;
 				try {
 					if (resourceStream != null) {
 						URL root = cl.getResource("web");
-						URL requested = cl.getResource("web" + requestPath);
+						URL requested = cl.getResource("web" + pathToLoad);
 
 						if (root != null && requested != null) {
 							URI rootURI = new URI(root.getPath()).normalize();
@@ -156,7 +147,7 @@ public class HistoryServerStaticFileServerHandler extends SimpleChannelInboundHa
 							// Check that we don't load anything from outside of the
 							// expected scope.
 							if (!rootURI.relativize(requestedURI).equals(requestedURI)) {
-								LOG.debug("Loading missing file from classloader: {}", requestPath);
+								LOG.debug("Loading missing file from classloader: {}", pathToLoad);
 								// ensure that directory to file exists.
 								file.getParentFile().mkdirs();
 								Files.copy(resourceStream, file.toPath());
@@ -169,14 +160,38 @@ public class HistoryServerStaticFileServerHandler extends SimpleChannelInboundHa
 					LOG.error("error while responding", t);
 				} finally {
 					if (!success) {
-						LOG.debug("Unable to load requested file {} from classloader", requestPath);
-						throw new NotFoundException("File not found.");
+						LOG.debug("Unable to load requested file {} from classloader", pathToLoad);
+						HandlerUtils.sendErrorResponse(
+							ctx,
+							request,
+							new ErrorResponseBody("File not found."),
+							NOT_FOUND,
+							Collections.emptyMap());
+						return;
 					}
 				}
 			}
 		}
 
-		StaticFileServerHandler.checkFileValidity(file, rootPath, LOG);
+		if (!file.exists() || file.isHidden() || file.isDirectory() || !file.isFile()) {
+			HandlerUtils.sendErrorResponse(
+				ctx,
+				request,
+				new ErrorResponseBody("File not found."),
+				NOT_FOUND,
+				Collections.emptyMap());
+			return;
+		}
+
+		if (!file.getCanonicalFile().toPath().startsWith(rootPath.toPath())) {
+			HandlerUtils.sendErrorResponse(
+				ctx,
+				request,
+				new ErrorResponseBody("File not found."),
+				NOT_FOUND,
+				Collections.emptyMap());
+			return;
+		}
 
 		// cache validation
 		final String ifModifiedSince = request.headers().get(IF_MODIFIED_SINCE);
@@ -207,9 +222,6 @@ public class HistoryServerStaticFileServerHandler extends SimpleChannelInboundHa
 		try {
 			raf = new RandomAccessFile(file, "r");
 		} catch (FileNotFoundException e) {
-			if (LOG.isDebugEnabled()) {
-				LOG.debug("Could not find file {}.", file.getAbsolutePath());
-			}
 			HandlerUtils.sendErrorResponse(
 				ctx,
 				request,
@@ -255,7 +267,12 @@ public class HistoryServerStaticFileServerHandler extends SimpleChannelInboundHa
 		} catch (Exception e) {
 			raf.close();
 			LOG.error("Failed to serve file.", e);
-			throw new RestHandlerException("Internal server error.", INTERNAL_SERVER_ERROR);
+			HandlerUtils.sendErrorResponse(
+				ctx,
+				request,
+				new ErrorResponseBody("Internal server error."),
+				INTERNAL_SERVER_ERROR,
+				Collections.emptyMap());
 		}
 	}
 

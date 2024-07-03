@@ -21,6 +21,7 @@ package org.apache.flink.runtime.operators.shipping;
 import org.apache.flink.api.common.distributions.DataDistribution;
 import org.apache.flink.api.common.functions.Partitioner;
 import org.apache.flink.api.common.typeutils.TypeComparator;
+import org.apache.flink.api.common.services.RandomService;
 import org.apache.flink.runtime.io.network.api.writer.ChannelSelector;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.util.MathUtils;
@@ -36,13 +37,13 @@ import org.apache.flink.util.MathUtils;
 public class OutputEmitter<T> implements ChannelSelector<SerializationDelegate<T>> {
 	
 	/** the shipping strategy used by this output emitter */
-	private final ShipStrategyType strategy;
+	private final ShipStrategyType strategy; 
+
+	/** the reused array defining target channels */
+	private int[] channels;
 
 	/** counter to go over channels round robin */
-	private int nextChannelToSendTo;
-
-	/** the total number of output channels */
-	private int numberOfChannels;
+	private int nextChannelToSendTo = 0;
 	
 	/** the comparator for hashing / sorting */
 	private final TypeComparator<T> comparator;
@@ -83,14 +84,11 @@ public class OutputEmitter<T> implements ChannelSelector<SerializationDelegate<T
 	public OutputEmitter(ShipStrategyType strategy, TypeComparator<T> comparator) {
 		this(strategy, 0, comparator, null, null);
 	}
-
+	
+	
 	@SuppressWarnings("unchecked")
-	public OutputEmitter(
-			ShipStrategyType strategy,
-			int indexInSubtaskGroup,
-			TypeComparator<T> comparator,
-			Partitioner<?> partitioner,
-			DataDistribution distribution) {
+	public OutputEmitter(ShipStrategyType strategy, int indexInSubtaskGroup, 
+							TypeComparator<T> comparator, Partitioner<?> partitioner, DataDistribution distribution) {
 		if (strategy == null) { 
 			throw new NullPointerException();
 		}
@@ -101,6 +99,7 @@ public class OutputEmitter<T> implements ChannelSelector<SerializationDelegate<T
 		this.partitioner = (Partitioner<Object>) partitioner;
 		this.distribution = distribution;
 
+
 		switch (strategy) {
 		case PARTITION_CUSTOM:
 			extractedKeys = new Object[1];
@@ -108,8 +107,10 @@ public class OutputEmitter<T> implements ChannelSelector<SerializationDelegate<T
 		case PARTITION_HASH:
 		case PARTITION_RANDOM:
 		case PARTITION_FORCED_REBALANCE:
+			channels = new int[1];
 			break;
 		case PARTITION_RANGE:
+			channels = new int[1];
 			if (comparator != null) {
 				this.flatComparators = comparator.getFlatComparators();
 				this.keys = new Object[flatComparators.length];
@@ -131,12 +132,7 @@ public class OutputEmitter<T> implements ChannelSelector<SerializationDelegate<T
 	// ------------------------------------------------------------------------
 
 	@Override
-	public void setup(int numberOfChannels) {
-		this.numberOfChannels = numberOfChannels;
-	}
-
-	@Override
-	public final int selectChannel(SerializationDelegate<T> record) {
+	public final int[] selectChannels(SerializationDelegate<T> record, int numberOfChannels) {
 		switch (strategy) {
 		case FORWARD:
 			return forward();
@@ -145,6 +141,8 @@ public class OutputEmitter<T> implements ChannelSelector<SerializationDelegate<T
 			return robin(numberOfChannels);
 		case PARTITION_HASH:
 			return hashPartitionDefault(record.getInstance(), numberOfChannels);
+		case BROADCAST:
+			return broadcast(numberOfChannels);
 		case PARTITION_CUSTOM:
 			return customPartition(record.getInstance(), numberOfChannels);
 		case PARTITION_RANGE:
@@ -155,22 +153,19 @@ public class OutputEmitter<T> implements ChannelSelector<SerializationDelegate<T
 	}
 
 	@Override
-	public boolean isBroadcast() {
-		if (strategy == ShipStrategyType.BROADCAST) {
-			return true;
-		} else {
-			return false;
-		}
+	public void setRandomService(RandomService randomService) {
+
 	}
-	
+
 	// --------------------------------------------------------------------------------------------
 
-	private int forward() {
-		return 0;
+	private int[] forward() {
+		return this.channels;
 	}
 
-	private int robin(int numberOfChannels) {
-		int nextChannel = nextChannelToSendTo;
+	private int[] robin(int numberOfChannels) {
+		int nextChannel = this.nextChannelToSendTo;
+
 		if (nextChannel >= numberOfChannels) {
 			if (nextChannel == numberOfChannels) {
 				nextChannel = 0;
@@ -178,18 +173,37 @@ public class OutputEmitter<T> implements ChannelSelector<SerializationDelegate<T
 				nextChannel %= numberOfChannels;
 			}
 		}
-		nextChannelToSendTo = nextChannel + 1;
 
-		return nextChannel;
+		this.channels[0] = nextChannel;
+		this.nextChannelToSendTo = nextChannel + 1;
+
+		return this.channels;
 	}
 
-	private int hashPartitionDefault(T record, int numberOfChannels) {
+	private int[] broadcast(int numberOfChannels) {
+		if (channels == null || channels.length != numberOfChannels) {
+			channels = new int[numberOfChannels];
+			for (int i = 0; i < numberOfChannels; i++) {
+				channels[i] = i;
+			}
+		}
+
+		return channels;
+	}
+
+	private int[] hashPartitionDefault(T record, int numberOfChannels) {
 		int hash = this.comparator.hash(record);
 
-		return MathUtils.murmurHash(hash) % numberOfChannels;
+		this.channels[0] = MathUtils.murmurHash(hash) % numberOfChannels;
+
+		return this.channels;
 	}
 
-	private int rangePartition(final T record, int numberOfChannels) {
+	private final int[] rangePartition(final T record, int numberOfChannels) {
+		if (this.channels == null || this.channels.length != 1) {
+			this.channels = new int[1];
+		}
+
 		if (this.partitionBoundaries == null) {
 			this.partitionBoundaries = new Object[numberOfChannels - 1][];
 			for (int i = 0; i < numberOfChannels - 1; i++) {
@@ -213,26 +227,30 @@ public class OutputEmitter<T> implements ChannelSelector<SerializationDelegate<T
 				} else if (result < 0) {
 					high = mid - 1;
 				} else {
-					return mid;
+					this.channels[0] = mid;
+					return this.channels;
 				}
 			}
-			// key not found, but the low index is the target bucket, since the boundaries are the upper bound
-			return low;
+			this.channels[0] = low;	// key not found, but the low index is the target
+			// bucket, since the boundaries are the upper bound
+			return this.channels;
 		} else {
 			throw new IllegalStateException(
 				"The number of channels to partition among is inconsistent with the partitioners state.");
 		}
 	}
 
-	private int customPartition(T record, int numberOfChannels) {
-		if (extractedKeys == null) {
+	private int[] customPartition(T record, int numberOfChannels) {
+		if (channels == null) {
+			channels = new int[1];
 			extractedKeys = new Object[1];
 		}
 
 		try {
 			if (comparator.extractKeys(record, extractedKeys, 0) == 1) {
 				final Object key = extractedKeys[0];
-				return partitioner.partition(key, numberOfChannels);
+				channels[0] = partitioner.partition(key, numberOfChannels);
+				return channels;
 			}
 			else {
 				throw new RuntimeException("Inconsistency in the key comparator - comparator extracted more than one field.");
@@ -257,5 +275,10 @@ public class OutputEmitter<T> implements ChannelSelector<SerializationDelegate<T
 			}
 		}
 		return 0;
+	}
+
+	@Override
+	public void notifyEpochStart(long epochID) {
+		nextChannelToSendTo = 0;
 	}
 }

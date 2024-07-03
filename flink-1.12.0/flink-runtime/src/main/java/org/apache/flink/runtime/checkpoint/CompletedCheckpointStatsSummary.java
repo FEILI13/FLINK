@@ -35,24 +35,21 @@ public class CompletedCheckpointStatsSummary implements Serializable {
 	/** Duration statistics for all completed checkpoints. */
 	private final MinMaxAvgStats duration;
 
-	private final MinMaxAvgStats processedData;
-
-	private final MinMaxAvgStats persistedData;
+	/** Byte buffered during alignment for all completed checkpoints. */
+	private final MinMaxAvgStats alignmentBuffered;
 
 	CompletedCheckpointStatsSummary() {
-		this(new MinMaxAvgStats(), new MinMaxAvgStats(), new MinMaxAvgStats(), new MinMaxAvgStats());
+		this(new MinMaxAvgStats(), new MinMaxAvgStats(), new MinMaxAvgStats());
 	}
 
 	private CompletedCheckpointStatsSummary(
 			MinMaxAvgStats stateSize,
 			MinMaxAvgStats duration,
-			MinMaxAvgStats processedData,
-			MinMaxAvgStats persistedData) {
+			MinMaxAvgStats alignmentBuffered) {
 
 		this.stateSize = checkNotNull(stateSize);
 		this.duration = checkNotNull(duration);
-		this.processedData = checkNotNull(processedData);
-		this.persistedData = checkNotNull(persistedData);
+		this.alignmentBuffered = checkNotNull(alignmentBuffered);
 	}
 
 	/**
@@ -63,8 +60,7 @@ public class CompletedCheckpointStatsSummary implements Serializable {
 	void updateSummary(CompletedCheckpointStats completed) {
 		stateSize.add(completed.getStateSize());
 		duration.add(completed.getEndToEndDuration());
-		processedData.add(completed.getProcessedData());
-		persistedData.add(completed.getPersistedData());
+		alignmentBuffered.add(completed.getAlignmentBuffered());
 	}
 
 	/**
@@ -76,8 +72,7 @@ public class CompletedCheckpointStatsSummary implements Serializable {
 		return new CompletedCheckpointStatsSummary(
 				stateSize.createSnapshot(),
 				duration.createSnapshot(),
-				processedData.createSnapshot(),
-				persistedData.createSnapshot());
+				alignmentBuffered.createSnapshot());
 	}
 
 	/**
@@ -98,11 +93,15 @@ public class CompletedCheckpointStatsSummary implements Serializable {
 		return duration;
 	}
 
-	public MinMaxAvgStats getProcessedDataStats() {
-		return processedData;
-	}
-
-	public MinMaxAvgStats getPersistedDataStats() {
-		return persistedData;
+	/**
+	 * Returns the summary stats for the bytes buffered during alignment.
+	 *
+	 * <p>If no alignments are reported or happen (at least once mode), the
+	 * returned stats are in their initial state.
+	 *
+	 * @return Summary stats for the bytes buffered during alignment.
+	 */
+	public MinMaxAvgStats getAlignmentBufferedStats() {
+		return alignmentBuffered;
 	}
 }

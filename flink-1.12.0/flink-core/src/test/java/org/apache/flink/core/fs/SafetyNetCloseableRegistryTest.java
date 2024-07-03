@@ -43,32 +43,25 @@ public class SafetyNetCloseableRegistryTest
 	public final TemporaryFolder tmpFolder = new TemporaryFolder();
 
 	@Override
-	protected void registerCloseable(final Closeable closeable) throws IOException {
-		final WrappingProxyCloseable<Closeable> wrappingProxyCloseable = new WrappingProxyCloseable<Closeable>() {
+	protected WrappingProxyCloseable<? extends Closeable> createCloseable() {
+		return new WrappingProxyCloseable<Closeable>() {
 
 			@Override
-			public void close() throws IOException {
-				closeable.close();
-			}
+			public void close() throws IOException {}
 
 			@Override
 			public Closeable getWrappedDelegate() {
-				return closeable;
+				return this;
 			}
 		};
-		closeableRegistry.registerCloseable(wrappingProxyCloseable);
 	}
 
 	@Override
 	protected AbstractCloseableRegistry<
 		WrappingProxyCloseable<? extends Closeable>,
 		SafetyNetCloseableRegistry.PhantomDelegatingCloseableRef> createRegistry() {
-		// SafetyNetCloseableRegistry has a global reaper thread to reclaim leaking resources,
-		// in normal cases, that thread will be interrupted in closing of last active registry
-		// and then shutdown in background. But in testing codes, some assertions need leaking
-		// resources reclaimed, so we override reaper thread to join itself on interrupt. Thus,
-		// after close of last active registry, we can assert post-close-invariants safely.
-		return new SafetyNetCloseableRegistry(JoinOnInterruptReaperThread::new);
+
+		return new SafetyNetCloseableRegistry();
 	}
 
 	@Override
@@ -201,45 +194,5 @@ public class SafetyNetCloseableRegistryTest
 			Assert.assertTrue(SafetyNetCloseableRegistry.isReaperThreadRunning());
 		}
 		Assert.assertFalse(SafetyNetCloseableRegistry.isReaperThreadRunning());
-	}
-
-	/**
-	 * Test whether failure to start thread in {@link SafetyNetCloseableRegistry}
-	 * constructor can lead to failure of subsequent state check.
-	 */
-	@Test
-	public void testReaperThreadStartFailed() throws Exception {
-
-		try {
-			new SafetyNetCloseableRegistry(() -> new OutOfMemoryReaperThread());
-		} catch (java.lang.OutOfMemoryError error) {
-		}
-		Assert.assertFalse(SafetyNetCloseableRegistry.isReaperThreadRunning());
-
-		// the OOM error will not lead to failure of subsequent constructor call.
-		SafetyNetCloseableRegistry closeableRegistry = new SafetyNetCloseableRegistry();
-		Assert.assertTrue(SafetyNetCloseableRegistry.isReaperThreadRunning());
-
-		closeableRegistry.close();
-	}
-
-	private static class JoinOnInterruptReaperThread extends SafetyNetCloseableRegistry.CloseableReaperThread {
-		@Override
-		public void interrupt() {
-			super.interrupt();
-			try {
-				join();
-			} catch (InterruptedException ex) {
-				Thread.currentThread().interrupt();
-			}
-		}
-	}
-
-	private static class OutOfMemoryReaperThread extends SafetyNetCloseableRegistry.CloseableReaperThread {
-
-		@Override
-		public synchronized void start() {
-			throw new java.lang.OutOfMemoryError();
-		}
 	}
 }

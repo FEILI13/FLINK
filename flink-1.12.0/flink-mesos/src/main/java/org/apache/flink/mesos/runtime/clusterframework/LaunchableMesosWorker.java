@@ -28,8 +28,6 @@ import org.apache.flink.mesos.util.MesosConfiguration;
 import org.apache.flink.mesos.util.MesosResourceAllocation;
 import org.apache.flink.runtime.clusterframework.ContainerSpecification;
 import org.apache.flink.runtime.clusterframework.ContaineredTaskManagerParameters;
-import org.apache.flink.runtime.clusterframework.TaskExecutorProcessUtils;
-import org.apache.flink.runtime.util.config.memory.ProcessMemoryUtils;
 import org.apache.flink.util.Preconditions;
 
 import com.netflix.fenzo.ConstraintEvaluator;
@@ -89,7 +87,7 @@ public class LaunchableMesosWorker implements LaunchableTask {
 	 * @param containerSpec an abstract container specification for launch time.
 	 * @param taskID the taskID for this worker.
 	 */
-	LaunchableMesosWorker(
+	public LaunchableMesosWorker(
 			MesosArtifactResolver resolver,
 			MesosTaskManagerParameters params,
 			ContainerSpecification containerSpec,
@@ -131,28 +129,28 @@ public class LaunchableMesosWorker implements LaunchableTask {
 			return params.cpus();
 		}
 
-		double getGPUs() {
+		public double getGPUs() {
 			return params.gpus();
 		}
 
 		@Override
 		public double getMemory() {
-			return params.containeredParameters().getTaskExecutorProcessSpec().getTotalProcessMemorySize().getMebiBytes();
+			return params.containeredParameters().taskManagerTotalMemoryMB();
 		}
 
 		@Override
 		public double getNetworkMbps() {
-			return params.network();
+			return 0.0;
 		}
 
 		@Override
 		public double getDisk() {
-			return params.disk();
+			return 0.0;
 		}
 
 		@Override
 		public int getPorts() {
-			return extractPortKeys(containerSpec.getFlinkConfiguration()).size();
+			return extractPortKeys(containerSpec.getDynamicConfiguration()).size();
 		}
 
 		@Override
@@ -191,8 +189,6 @@ public class LaunchableMesosWorker implements LaunchableTask {
 				"cpus=" + getCPUs() +
 				", memory=" + getMemory() +
 				", gpus=" + getGPUs() +
-				", disk=" + getDisk() +
-				", network=" + getNetworkMbps() +
 				"}";
 		}
 	}
@@ -211,7 +207,7 @@ public class LaunchableMesosWorker implements LaunchableTask {
 		final Configuration dynamicProperties = new Configuration();
 
 		// incorporate the dynamic properties set by the template
-		dynamicProperties.addAll(containerSpec.getFlinkConfiguration());
+		dynamicProperties.addAll(containerSpec.getDynamicConfiguration());
 
 		// build a TaskInfo with assigned resources, environment variables, etc
 		final Protos.TaskInfo.Builder taskInfo = Protos.TaskInfo.newBuilder()
@@ -224,14 +220,6 @@ public class LaunchableMesosWorker implements LaunchableTask {
 		taskInfo.addAllResources(allocation.takeScalar("cpus", taskRequest.getCPUs(), roles));
 		taskInfo.addAllResources(allocation.takeScalar("gpus", taskRequest.getGPUs(), roles));
 		taskInfo.addAllResources(allocation.takeScalar("mem", taskRequest.getMemory(), roles));
-
-		if (taskRequest.getDisk() > 0.0) {
-			taskInfo.addAllResources(allocation.takeScalar("disk", taskRequest.getDisk(), roles));
-		}
-
-		if (taskRequest.getNetworkMbps() > 0.0) {
-			taskInfo.addAllResources(allocation.takeScalar("network", taskRequest.getNetworkMbps(), roles));
-		}
 
 		final Protos.CommandInfo.Builder cmd = taskInfo.getCommandBuilder();
 		final Protos.Environment.Builder env = cmd.getEnvironmentBuilder();
@@ -250,7 +238,7 @@ public class LaunchableMesosWorker implements LaunchableTask {
 		}
 
 		// take needed ports for the TM
-		Set<String> tmPortKeys = extractPortKeys(containerSpec.getFlinkConfiguration());
+		Set<String> tmPortKeys = extractPortKeys(containerSpec.getDynamicConfiguration());
 		List<Protos.Resource> portResources = allocation.takeRanges("ports", tmPortKeys.size(), roles);
 		taskInfo.addAllResources(portResources);
 		Iterator<String> portsToAssign = tmPortKeys.iterator();
@@ -277,11 +265,15 @@ public class LaunchableMesosWorker implements LaunchableTask {
 			env.addVariables(variable(entry.getKey(), entry.getValue()));
 		}
 
-		// set the ResourceID of TM to the Mesos task
-		dynamicProperties.set(TaskManagerOptions.TASK_MANAGER_RESOURCE_ID, taskInfo.getTaskId().getValue());
+		// propagate the Mesos task ID to the TM
+		env.addVariables(variable(MesosConfigKeys.ENV_FLINK_CONTAINER_ID, taskInfo.getTaskId().getValue()));
 
 		// finalize the memory parameters
-		jvmArgs.append(" ").append(ProcessMemoryUtils.generateJvmParametersStr(tmParams.getTaskExecutorProcessSpec()));
+		jvmArgs.append(" -Xms").append(tmParams.taskManagerHeapSizeMB()).append("m");
+		jvmArgs.append(" -Xmx").append(tmParams.taskManagerHeapSizeMB()).append("m");
+		if (tmParams.taskManagerDirectMemoryLimitMB() >= 0) {
+			jvmArgs.append(" -XX:MaxDirectMemorySize=").append(tmParams.taskManagerDirectMemoryLimitMB()).append("m");
+		}
 
 		// pass dynamic system properties
 		jvmArgs.append(' ').append(
@@ -302,9 +294,7 @@ public class LaunchableMesosWorker implements LaunchableTask {
 		launchCommand
 			.append(params.command())
 			.append(" ")
-			.append(ContainerSpecification.formatSystemProperties(dynamicProperties))
-			.append(" ")
-			.append(TaskExecutorProcessUtils.generateDynamicConfigsStr(tmParams.getTaskExecutorProcessSpec()));
+			.append(ContainerSpecification.formatSystemProperties(dynamicProperties));
 		cmd.setValue(launchCommand.toString());
 
 		// build the container info
@@ -343,8 +333,6 @@ public class LaunchableMesosWorker implements LaunchableTask {
 		containerInfo.addAllVolumes(params.containerVolumes());
 		taskInfo.setContainer(containerInfo);
 
-		LOG.info("Starting TaskExecutor {} with command: {}", slaveId, taskInfo.getCommand().getValue());
-
 		return taskInfo.build();
 	}
 
@@ -363,7 +351,7 @@ public class LaunchableMesosWorker implements LaunchableTask {
 		if (portKeys != null) {
 			Arrays.stream(portKeys.split(","))
 				.map(String::trim)
-				.peek(key -> LOG.debug("Adding port key {} to mesos request", key))
+				.peek(key -> LOG.debug("Adding port key {} to mesos request"))
 				.forEach(tmPortKeys::add);
 		}
 

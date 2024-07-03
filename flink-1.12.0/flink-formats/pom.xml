@@ -26,16 +26,13 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-parent</artifactId>
-		<version>1.12.0</version>
+		<version>1.7-CLONOS-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 
-	<properties>
-		<flink.format.parquet.version>1.11.1</flink.format.parquet.version>
-	</properties>
 
 	<artifactId>flink-formats</artifactId>
-	<name>Flink : Formats : </name>
+	<name>flink-formats</name>
 	<packaging>pom</packaging>
 
 	<modules>
@@ -44,11 +41,6 @@ under the License.
 		<module>flink-avro-confluent-registry</module>
 		<module>flink-parquet</module>
 		<module>flink-sequence-file</module>
-		<module>flink-compress</module>
-		<module>flink-csv</module>
-		<module>flink-orc</module>
-		<module>flink-orc-nohive</module>
-		<module>flink-hadoop-bulk</module>
 	</modules>
 
 	<!-- override these root dependencies as 'provided', so they don't end up
@@ -67,24 +59,5 @@ under the License.
 			<artifactId>flink-test-utils-junit</artifactId>
 		</dependency>
 	</dependencies>
-
-	<profiles>
-
-		<!-- Create SQL Client uber jars by default -->
-		<profile>
-			<id>sql-jars</id>
-			<activation>
-				<property>
-					<name>!skipSqlJars</name>
-				</property>
-			</activation>
-			<modules>
-				<module>flink-sql-orc</module>
-				<module>flink-sql-parquet</module>
-				<module>flink-sql-avro</module>
-				<module>flink-sql-avro-confluent-registry</module>
-			</modules>
-		</profile>
-	</profiles>
 
 </project>

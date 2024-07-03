@@ -18,18 +18,13 @@
 
 package org.apache.flink.runtime.io.network.partition.consumer;
 
-import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.ConnectionManager;
-import org.apache.flink.runtime.io.network.TaskEventPublisher;
-import org.apache.flink.runtime.io.network.metrics.InputChannelMetrics;
-import org.apache.flink.runtime.io.network.partition.ChannelStateHolder;
+import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionManager;
-import org.apache.flink.util.Preconditions;
-
-import javax.annotation.Nullable;
+import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 
 import java.io.IOException;
 import java.util.Optional;
@@ -40,11 +35,11 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * An input channel place holder to be replaced by either a {@link RemoteInputChannel}
  * or {@link LocalInputChannel} at runtime.
  */
-class UnknownInputChannel extends InputChannel implements ChannelStateHolder {
+class UnknownInputChannel extends InputChannel {
 
 	private final ResultPartitionManager partitionManager;
 
-	private final TaskEventPublisher taskEventPublisher;
+	private final TaskEventDispatcher taskEventDispatcher;
 
 	private final ConnectionManager connectionManager;
 
@@ -53,39 +48,27 @@ class UnknownInputChannel extends InputChannel implements ChannelStateHolder {
 
 	private final int maxBackoff;
 
-	private final int networkBuffersPerChannel;
-
-	private final InputChannelMetrics metrics;
-
-	@Nullable
-	private ChannelStateWriter channelStateWriter;
+	private final TaskIOMetricGroup metrics;
 
 	public UnknownInputChannel(
 			SingleInputGate gate,
 			int channelIndex,
 			ResultPartitionID partitionId,
 			ResultPartitionManager partitionManager,
-			TaskEventPublisher taskEventPublisher,
+			TaskEventDispatcher taskEventDispatcher,
 			ConnectionManager connectionManager,
 			int initialBackoff,
 			int maxBackoff,
-			int networkBuffersPerChannel,
-			InputChannelMetrics metrics) {
+			TaskIOMetricGroup metrics) {
 
 		super(gate, channelIndex, partitionId, initialBackoff, maxBackoff, null, null);
 
 		this.partitionManager = checkNotNull(partitionManager);
-		this.taskEventPublisher = checkNotNull(taskEventPublisher);
+		this.taskEventDispatcher = checkNotNull(taskEventDispatcher);
 		this.connectionManager = checkNotNull(connectionManager);
 		this.metrics = checkNotNull(metrics);
 		this.initialBackoff = initialBackoff;
 		this.maxBackoff = maxBackoff;
-		this.networkBuffersPerChannel = networkBuffersPerChannel;
-	}
-
-	@Override
-	public void resumeConsumption() {
-		throw new UnsupportedOperationException("UnknownInputChannel should never be blocked.");
 	}
 
 	@Override
@@ -117,6 +100,10 @@ class UnknownInputChannel extends InputChannel implements ChannelStateHolder {
 	}
 
 	@Override
+	public void notifySubpartitionConsumed() {
+	}
+
+	@Override
 	public void releaseAllResources() throws IOException {
 		// Nothing to do here
 	}
@@ -131,37 +118,10 @@ class UnknownInputChannel extends InputChannel implements ChannelStateHolder {
 	// ------------------------------------------------------------------------
 
 	public RemoteInputChannel toRemoteInputChannel(ConnectionID producerAddress) {
-		return new RemoteInputChannel(
-			inputGate,
-			getChannelIndex(),
-			partitionId,
-			checkNotNull(producerAddress),
-			connectionManager,
-			initialBackoff,
-			maxBackoff,
-			networkBuffersPerChannel,
-			metrics.getNumBytesInRemoteCounter(),
-			metrics.getNumBuffersInRemoteCounter(),
-			channelStateWriter == null ? ChannelStateWriter.NO_OP : channelStateWriter);
+		return new RemoteInputChannel(inputGate, channelIndex, partitionId, checkNotNull(producerAddress), connectionManager, initialBackoff, maxBackoff, metrics);
 	}
 
 	public LocalInputChannel toLocalInputChannel() {
-		return new LocalInputChannel(
-			inputGate,
-			getChannelIndex(),
-			partitionId,
-			partitionManager,
-			taskEventPublisher,
-			initialBackoff,
-			maxBackoff,
-			metrics.getNumBytesInRemoteCounter(),
-			metrics.getNumBuffersInRemoteCounter(),
-			channelStateWriter == null ? ChannelStateWriter.NO_OP : channelStateWriter);
-	}
-
-	@Override
-	public void setChannelStateWriter(ChannelStateWriter channelStateWriter) {
-		Preconditions.checkState(this.channelStateWriter == null);
-		this.channelStateWriter = channelStateWriter;
+		return new LocalInputChannel(inputGate, channelIndex, partitionId, partitionManager, taskEventDispatcher, initialBackoff, maxBackoff, metrics);
 	}
 }

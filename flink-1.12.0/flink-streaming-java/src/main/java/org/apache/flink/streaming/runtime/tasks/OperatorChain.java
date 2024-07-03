@@ -21,108 +21,64 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.runtime.event.AbstractEvent;
+import org.apache.flink.metrics.Counter;
+import org.apache.flink.metrics.Gauge;
+import org.apache.flink.metrics.SimpleCounter;
+import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.execution.Environment;
-import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
-import org.apache.flink.runtime.io.network.api.writer.RecordWriterDelegate;
-import org.apache.flink.runtime.io.network.partition.consumer.IndexedInputGate;
-import org.apache.flink.runtime.jobgraph.OperatorID;
+import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
+import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.metrics.MetricNames;
+import org.apache.flink.runtime.metrics.groups.OperatorIOMetricGroup;
 import org.apache.flink.runtime.metrics.groups.OperatorMetricGroup;
-import org.apache.flink.runtime.operators.coordination.OperatorEvent;
-import org.apache.flink.runtime.operators.coordination.OperatorEventDispatcher;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
+import org.apache.flink.streaming.api.collector.selector.CopyingDirectedOutput;
+import org.apache.flink.streaming.api.collector.selector.DirectedOutput;
+import org.apache.flink.streaming.api.collector.selector.OutputSelector;
 import org.apache.flink.streaming.api.graph.StreamConfig;
-import org.apache.flink.streaming.api.graph.StreamConfig.InputConfig;
-import org.apache.flink.streaming.api.graph.StreamConfig.SourceInputConfig;
 import org.apache.flink.streaming.api.graph.StreamEdge;
-import org.apache.flink.streaming.api.operators.BoundedMultiInput;
-import org.apache.flink.streaming.api.operators.Input;
-import org.apache.flink.streaming.api.operators.MultipleInputStreamOperator;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.operators.Output;
-import org.apache.flink.streaming.api.operators.SourceOperator;
 import org.apache.flink.streaming.api.operators.StreamOperator;
-import org.apache.flink.streaming.api.operators.StreamOperatorFactory;
-import org.apache.flink.streaming.api.operators.StreamOperatorFactoryUtil;
-import org.apache.flink.streaming.api.operators.StreamTaskStateInitializer;
+import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.io.RecordWriterOutput;
-import org.apache.flink.streaming.runtime.io.StreamTaskSourceInput;
+import org.apache.flink.streaming.runtime.io.StreamRecordWriter;
+import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
+import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
-import org.apache.flink.streaming.runtime.tasks.mailbox.MailboxExecutorFactory;
-import org.apache.flink.util.FlinkException;
+import org.apache.flink.streaming.runtime.streamstatus.StreamStatusProvider;
 import org.apache.flink.util.OutputTag;
-import org.apache.flink.util.SerializedValue;
-
+import org.apache.flink.util.XORShiftRandom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
-
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Collectors;
+import java.util.*;
 
-import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
-import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * The {@code OperatorChain} contains all operators that are executed as one chain within a single
  * {@link StreamTask}.
  *
- * <p>The main entry point to the chain is it's {@code mainOperator}. {@code mainOperator} is driving
- * the execution of the {@link StreamTask}, by pulling the records from network inputs and/or source
- * inputs and pushing produced records to the remaining chained operators.
- *
  * @param <OUT> The type of elements accepted by the chain, i.e., the input type of the chain's
- *              main operator.
+ *              head operator.
  */
 @Internal
-public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements StreamStatusMaintainer, BoundedMultiInput {
+public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements StreamStatusMaintainer {
 
 	private static final Logger LOG = LoggerFactory.getLogger(OperatorChain.class);
 
+	private final StreamOperator<?>[] allOperators;
+
 	private final RecordWriterOutput<?>[] streamOutputs;
 
-	private final WatermarkGaugeExposingOutput<StreamRecord<OUT>> mainOperatorOutput;
+	private final WatermarkGaugeExposingOutput<StreamRecord<OUT>> chainEntryPoint;
 
-	/**
-	 * For iteration, {@link StreamIterationHead} and {@link StreamIterationTail} used for executing
-	 * feedback edges do not contain any operators, in which case, {@code mainOperatorWrapper} and
-	 * {@code tailOperatorWrapper} are null.
-	 *
-	 * <p>Usually first operator in the chain is the same as {@link #mainOperatorWrapper}, but that's
-	 * not the case if there are chained source inputs. In this case, one of the source inputs
-	 * will be the first operator. For example the following operator chain is possible:
-	 * first
-	 *      \
-	 *      main (multi-input) -> ... -> tail
-	 *      /
-	 * second
-	 * Where "first" and "second" (there can be more) are chained source operators. When it comes to
-	 * things like closing, stat initialisation or state snapshotting, the operator chain is traversed:
-	 * first, second, main, ..., tail
-	 * or in reversed order:
-	 * tail, ..., main, second, first
-	 */
-	@Nullable private final StreamOperatorWrapper<OUT, OP> mainOperatorWrapper;
-	@Nullable private final StreamOperatorWrapper<?, ?> firstOperatorWrapper;
-	@Nullable private final StreamOperatorWrapper<?, ?> tailOperatorWrapper;
-
-	private final Map<SourceInputConfig, ChainedSource> chainedSources;
-
-	private final int numOperators;
-
-	private final OperatorEventDispatcherImpl operatorEventDispatcher;
+	private final OP headOperator;
 
 	/**
 	 * Current status of the input stream of the operator chain.
@@ -134,16 +90,12 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 
 	public OperatorChain(
 			StreamTask<OUT, OP> containingTask,
-			RecordWriterDelegate<SerializationDelegate<StreamRecord<OUT>>> recordWriterDelegate) {
-
-		this.operatorEventDispatcher = new OperatorEventDispatcherImpl(
-				containingTask.getEnvironment().getUserCodeClassLoader().asClassLoader(),
-				containingTask.getEnvironment().getOperatorCoordinatorEventGateway());
+			List<StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>>> streamRecordWriters) {
 
 		final ClassLoader userCodeClassloader = containingTask.getUserCodeClassLoader();
 		final StreamConfig configuration = containingTask.getConfiguration();
 
-		StreamOperatorFactory<OUT> operatorFactory = configuration.getStreamOperatorFactory(userCodeClassloader);
+		headOperator = configuration.getStreamOperator(userCodeClassloader);
 
 		// we read the chained configs, and the order of record writer registrations by output name
 		Map<Integer, StreamConfig> chainedConfigs = configuration.getTransitiveChainedTaskConfigsWithSelf(userCodeClassloader);
@@ -157,51 +109,40 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		// from here on, we need to make sure that the output writers are shut down again on failure
 		boolean success = false;
 		try {
-			createChainOutputs(outEdgesInOrder, recordWriterDelegate, chainedConfigs, containingTask, streamOutputMap);
+			for (int i = 0; i < outEdgesInOrder.size(); i++) {
+				StreamEdge outEdge = outEdgesInOrder.get(i);
+
+				RecordWriterOutput<?> streamOutput = createStreamOutput(
+					streamRecordWriters.get(i),
+					outEdge,
+					chainedConfigs.get(outEdge.getSourceId()),
+					containingTask.getEnvironment());
+
+				this.streamOutputs[i] = streamOutput;
+				streamOutputMap.put(outEdge, streamOutput);
+			}
 
 			// we create the chain of operators and grab the collector that leads into the chain
-			List<StreamOperatorWrapper<?, ?>> allOpWrappers = new ArrayList<>(chainedConfigs.size());
-			this.mainOperatorOutput = createOutputCollector(
+			List<StreamOperator<?>> allOps = new ArrayList<>(chainedConfigs.size());
+			this.chainEntryPoint = createOutputCollector(
 				containingTask,
 				configuration,
 				chainedConfigs,
 				userCodeClassloader,
 				streamOutputMap,
-				allOpWrappers,
-				containingTask.getMailboxExecutorFactory());
+				allOps);
 
-			if (operatorFactory != null) {
-				Tuple2<OP, Optional<ProcessingTimeService>> mainOperatorAndTimeService = StreamOperatorFactoryUtil.createOperator(
-						operatorFactory,
-						containingTask,
-						configuration,
-						mainOperatorOutput,
-						operatorEventDispatcher);
+			if (headOperator != null) {
+				WatermarkGaugeExposingOutput<StreamRecord<OUT>> output = getChainEntryPoint();
+				headOperator.setup(containingTask, configuration, output);
 
-				OP mainOperator = mainOperatorAndTimeService.f0;
-				mainOperator.getMetricGroup().gauge(MetricNames.IO_CURRENT_OUTPUT_WATERMARK, mainOperatorOutput.getWatermarkGauge());
-				this.mainOperatorWrapper = createOperatorWrapper(mainOperator, containingTask, configuration, mainOperatorAndTimeService.f1, true);
-
-				// add main operator to end of chain
-				allOpWrappers.add(mainOperatorWrapper);
-
-				this.tailOperatorWrapper = allOpWrappers.get(0);
-			} else {
-				checkState(allOpWrappers.size() == 0);
-				this.mainOperatorWrapper = null;
-				this.tailOperatorWrapper = null;
+				headOperator.getMetricGroup().gauge(MetricNames.IO_CURRENT_OUTPUT_WATERMARK, output.getWatermarkGauge());
 			}
 
-			this.chainedSources = createChainedSources(
-				containingTask,
-				configuration.getInputs(userCodeClassloader),
-				chainedConfigs,
-				userCodeClassloader,
-				allOpWrappers);
+			// add head operator to end of chain
+			allOps.add(headOperator);
 
-			this.numOperators = allOpWrappers.size();
-
-			firstOperatorWrapper = linkOperatorWrappers(allOpWrappers);
+			this.allOperators = allOps.toArray(new StreamOperator<?>[allOps.size()]);
 
 			success = true;
 		}
@@ -220,129 +161,20 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 
 	@VisibleForTesting
 	OperatorChain(
-			List<StreamOperatorWrapper<?, ?>> allOperatorWrappers,
+			StreamOperator<?>[] allOperators,
 			RecordWriterOutput<?>[] streamOutputs,
-			WatermarkGaugeExposingOutput<StreamRecord<OUT>> mainOperatorOutput,
-			StreamOperatorWrapper<OUT, OP> mainOperatorWrapper) {
+			WatermarkGaugeExposingOutput<StreamRecord<OUT>> chainEntryPoint,
+			OP headOperator) {
 
+		this.allOperators = checkNotNull(allOperators);
 		this.streamOutputs = checkNotNull(streamOutputs);
-		this.mainOperatorOutput = checkNotNull(mainOperatorOutput);
-		this.operatorEventDispatcher = null;
-
-		checkState(allOperatorWrappers != null && allOperatorWrappers.size() > 0);
-		this.mainOperatorWrapper = checkNotNull(mainOperatorWrapper);
-		this.tailOperatorWrapper = allOperatorWrappers.get(0);
-		this.numOperators = allOperatorWrappers.size();
-		this.chainedSources = Collections.emptyMap();
-
-		firstOperatorWrapper = linkOperatorWrappers(allOperatorWrappers);
-	}
-
-	private void createChainOutputs(
-			List<StreamEdge> outEdgesInOrder,
-			RecordWriterDelegate<SerializationDelegate<StreamRecord<OUT>>> recordWriterDelegate,
-			Map<Integer, StreamConfig> chainedConfigs,
-			StreamTask<OUT, OP> containingTask,
-			Map<StreamEdge, RecordWriterOutput<?>> streamOutputMap) {
-		for (int i = 0; i < outEdgesInOrder.size(); i++) {
-			StreamEdge outEdge = outEdgesInOrder.get(i);
-
-			RecordWriterOutput<?> streamOutput = createStreamOutput(
-				recordWriterDelegate.getRecordWriter(i),
-				outEdge,
-				chainedConfigs.get(outEdge.getSourceId()),
-				containingTask.getEnvironment());
-
-			this.streamOutputs[i] = streamOutput;
-			streamOutputMap.put(outEdge, streamOutput);
-		}
-	}
-
-	@SuppressWarnings("rawtypes")
-	private Map<SourceInputConfig, ChainedSource> createChainedSources(
-			StreamTask<OUT, OP> containingTask,
-			InputConfig[] configuredInputs,
-			Map<Integer, StreamConfig> chainedConfigs,
-			ClassLoader userCodeClassloader,
-			List<StreamOperatorWrapper<?, ?>> allOpWrappers) {
-		if (Arrays.stream(configuredInputs).noneMatch(input -> input instanceof SourceInputConfig)) {
-			return Collections.emptyMap();
-		}
-		checkState(
-			mainOperatorWrapper.getStreamOperator() instanceof MultipleInputStreamOperator,
-			"Creating chained input is only supported with MultipleInputStreamOperator and MultipleInputStreamTask");
-		Map<SourceInputConfig, ChainedSource> chainedSourceInputs = new HashMap<>();
-		MultipleInputStreamOperator<?> multipleInputOperator = (MultipleInputStreamOperator<?>) mainOperatorWrapper.getStreamOperator();
-		List<Input> operatorInputs = multipleInputOperator.getInputs();
-
-		int sourceInputGateIndex = Arrays.stream(containingTask.getEnvironment().getAllInputGates())
-			.mapToInt(IndexedInputGate::getInputGateIndex)
-			.max()
-			.orElse(-1) + 1;
-
-		for (int inputId = 0; inputId < configuredInputs.length; inputId++) {
-			if (!(configuredInputs[inputId] instanceof SourceInputConfig)) {
-				continue;
-			}
-			SourceInputConfig sourceInput = (SourceInputConfig) configuredInputs[inputId];
-			int sourceEdgeId = sourceInput.getInputEdge().getSourceId();
-			StreamConfig sourceInputConfig = chainedConfigs.get(sourceEdgeId);
-			OutputTag outputTag = sourceInput.getInputEdge().getOutputTag();
-
-			WatermarkGaugeExposingOutput chainedSourceOutput = createChainedSourceOutput(
-				containingTask,
-				operatorInputs.get(inputId),
-				(OperatorMetricGroup) multipleInputOperator.getMetricGroup(),
-				outputTag);
-
-			SourceOperator<?, ?> sourceOperator = (SourceOperator<?, ?>) createOperator(
-				containingTask,
-				sourceInputConfig,
-				userCodeClassloader,
-				(WatermarkGaugeExposingOutput<StreamRecord<OUT>>) chainedSourceOutput,
-				allOpWrappers,
-				true);
-			chainedSourceInputs.put(
-				sourceInput,
-				new ChainedSource(
-					chainedSourceOutput,
-					new StreamTaskSourceInput<>(sourceOperator, sourceInputGateIndex++, inputId)));
-		}
-		return chainedSourceInputs;
-	}
-
-	@SuppressWarnings("rawtypes")
-	private WatermarkGaugeExposingOutput<StreamRecord> createChainedSourceOutput(
-			StreamTask<?, OP> containingTask,
-			Input input,
-			OperatorMetricGroup metricGroup,
-			OutputTag outputTag) {
-		if (!containingTask.getExecutionConfig().isObjectReuseEnabled()) {
-			throw new UnsupportedOperationException("Currently chained sources are supported only with objectReuse enabled");
-		}
-		/**
-		 * Chained sources are closed when {@link org.apache.flink.streaming.runtime.io.StreamTaskSourceInput}
-		 * are being closed.
-		 */
-		return new ChainingOutput<>(
-			input,
-			metricGroup,
-			this,
-			outputTag,
-			null);
+		this.chainEntryPoint = checkNotNull(chainEntryPoint);
+		this.headOperator = checkNotNull(headOperator);
 	}
 
 	@Override
 	public StreamStatus getStreamStatus() {
 		return streamStatus;
-	}
-
-	public OperatorEventDispatcher getOperatorEventDispatcher() {
-		return operatorEventDispatcher;
-	}
-
-	public void dispatchOperatorEvent(OperatorID operator, SerializedValue<OperatorEvent> event) throws FlinkException {
-		operatorEventDispatcher.dispatchEventToHandlers(operator, event);
 	}
 
 	@Override
@@ -357,59 +189,29 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		}
 	}
 
-	public void broadcastEvent(AbstractEvent event) throws IOException {
-		broadcastEvent(event, false);
+	public void broadcastCheckpointBarrier(long id, long timestamp, CheckpointOptions checkpointOptions) throws IOException, InterruptedException {
+		CheckpointBarrier barrier = new CheckpointBarrier(id, timestamp, checkpointOptions);
+		for (RecordWriterOutput<?> streamOutput : streamOutputs) {
+			streamOutput.broadcastEvent(barrier);
+		}
 	}
 
-	public void broadcastEvent(AbstractEvent event, boolean isPriorityEvent) throws IOException {
+	public void broadcastCheckpointCancelMarker(long id) throws IOException, InterruptedException {
+		CancelCheckpointMarker barrier = new CancelCheckpointMarker(id);
 		for (RecordWriterOutput<?> streamOutput : streamOutputs) {
-			streamOutput.broadcastEvent(event, isPriorityEvent);
+			streamOutput.broadcastEvent(barrier);
 		}
 	}
 
 	public void prepareSnapshotPreBarrier(long checkpointId) throws Exception {
 		// go forward through the operator chain and tell each operator
 		// to prepare the checkpoint
-		for (StreamOperatorWrapper<?, ?> operatorWrapper : getAllOperators()) {
-			if (!operatorWrapper.isClosed()) {
-				operatorWrapper.getStreamOperator().prepareSnapshotPreBarrier(checkpointId);
+		final StreamOperator<?>[] operators = this.allOperators;
+		for (int i = operators.length - 1; i >= 0; --i) {
+			final StreamOperator<?> op = operators[i];
+			if (op != null) {
+				op.prepareSnapshotPreBarrier(checkpointId);
 			}
-		}
-	}
-
-	/**
-	 * Ends the main operator input specified by {@code inputId}).
-	 *
-	 * @param inputId the input ID starts from 1 which indicates the first input.
-	 */
-	@Override
-	public void endInput(int inputId) throws Exception {
-		if (mainOperatorWrapper != null) {
-			mainOperatorWrapper.endOperatorInput(inputId);
-		}
-	}
-
-	/**
-	 * Initialize state and open all operators in the chain from <b>tail to heads</b>,
-	 * contrary to {@link StreamOperator#close()} which happens <b>heads to tail</b>
-	 * (see {@link #closeOperators(StreamTaskActionExecutor)}).
-	 */
-	protected void initializeStateAndOpenOperators(StreamTaskStateInitializer streamTaskStateInitializer) throws Exception {
-		for (StreamOperatorWrapper<?, ?> operatorWrapper : getAllOperators(true)) {
-			StreamOperator<?> operator = operatorWrapper.getStreamOperator();
-			operator.initializeState(streamTaskStateInitializer);
-			operator.open();
-		}
-	}
-
-	/**
-	 * Closes all operators in a chain effect way. Closing happens from <b>heads to tail</b> operator
-	 * in the chain, contrary to {@link StreamOperator#open()} which happens <b>tail to heads</b>
-	 * (see {@link #initializeStateAndOpenOperators(StreamTaskStateInitializer)}).
-	 */
-	protected void closeOperators(StreamTaskActionExecutor actionExecutor) throws Exception {
-		if (firstOperatorWrapper != null) {
-			firstOperatorWrapper.close(actionExecutor);
 		}
 	}
 
@@ -417,52 +219,12 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		return streamOutputs;
 	}
 
-	/**
-	 * Returns an {@link Iterable} which traverses all operators in forward topological order.
-	 */
-	public Iterable<StreamOperatorWrapper<?, ?>> getAllOperators() {
-		return getAllOperators(false);
+	public StreamOperator<?>[] getAllOperators() {
+		return allOperators;
 	}
 
-	/**
-	 * Returns an {@link Iterable} which traverses all operators in forward or reverse
-	 * topological order.
-	 */
-	public Iterable<StreamOperatorWrapper<?, ?>> getAllOperators(boolean reverse) {
-		return reverse ?
-			new StreamOperatorWrapper.ReadIterator(tailOperatorWrapper, true) :
-			new StreamOperatorWrapper.ReadIterator(mainOperatorWrapper, false);
-	}
-
-	public int getNumberOfOperators() {
-		return numOperators;
-	}
-
-	public WatermarkGaugeExposingOutput<StreamRecord<OUT>> getMainOperatorOutput() {
-		return mainOperatorOutput;
-	}
-
-	public Output<StreamRecord<?>> getChainedSourceOutput(SourceInputConfig sourceInput) {
-		checkArgument(
-			chainedSources.containsKey(sourceInput),
-			"Chained source with sourcedId = [%s] was not found",
-			sourceInput);
-		return chainedSources.get(sourceInput).getSourceOutput();
-	}
-
-	public StreamTaskSourceInput<?> getSourceTaskInput(SourceInputConfig sourceInput) {
-		checkArgument(
-			chainedSources.containsKey(sourceInput),
-			"Chained source with sourcedId = [%s] was not found",
-			sourceInput);
-		return chainedSources.get(sourceInput).getSourceTaskInput();
-	}
-
-	public List<StreamTaskSourceInput<?>> getSourceTaskInputs() {
-		return chainedSources.values()
-			.stream()
-			.map(ChainedSource::getSourceTaskInput)
-			.collect(Collectors.toList());
+	public WatermarkGaugeExposingOutput<StreamRecord<OUT>> getChainEntryPoint() {
+		return chainEntryPoint;
 	}
 
 	/**
@@ -491,9 +253,12 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		}
 	}
 
-	@Nullable
-	public OP getMainOperator() {
-		return (mainOperatorWrapper == null) ? null : mainOperatorWrapper.getStreamOperator();
+	public OP getHeadOperator() {
+		return headOperator;
+	}
+
+	public int getChainLength() {
+		return allOperators == null ? 0 : allOperators.length;
 	}
 
 	// ------------------------------------------------------------------------
@@ -506,8 +271,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 			Map<Integer, StreamConfig> chainedConfigs,
 			ClassLoader userCodeClassloader,
 			Map<StreamEdge, RecordWriterOutput<?>> streamOutputs,
-			List<StreamOperatorWrapper<?, ?>> allOperatorWrappers,
-			MailboxExecutorFactory mailboxExecutorFactory) {
+			List<StreamOperator<?>> allOperators) {
 		List<Tuple2<WatermarkGaugeExposingOutput<StreamRecord<T>>, StreamEdge>> allOutputs = new ArrayList<>(4);
 
 		// create collectors for the network outputs
@@ -523,53 +287,69 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 			int outputId = outputEdge.getTargetId();
 			StreamConfig chainedOpConfig = chainedConfigs.get(outputId);
 
-			WatermarkGaugeExposingOutput<StreamRecord<T>> output = createOperatorChain(
+			WatermarkGaugeExposingOutput<StreamRecord<T>> output = createChainedOperator(
 				containingTask,
 				chainedOpConfig,
 				chainedConfigs,
 				userCodeClassloader,
 				streamOutputs,
-				allOperatorWrappers,
-				outputEdge.getOutputTag(),
-				mailboxExecutorFactory);
+				allOperators,
+				outputEdge.getOutputTag());
 			allOutputs.add(new Tuple2<>(output, outputEdge));
 		}
 
-		if (allOutputs.size() == 1) {
-			return allOutputs.get(0).f0;
-		} else {
-			// send to N outputs. Note that this includes the special case
-			// of sending to zero outputs
-			@SuppressWarnings({"unchecked"})
-			Output<StreamRecord<T>>[] asArray = new Output[allOutputs.size()];
-			for (int i = 0; i < allOutputs.size(); i++) {
-				asArray[i] = allOutputs.get(i).f0;
+		// if there are multiple outputs, or the outputs are directed, we need to
+		// wrap them as one output
+
+		List<OutputSelector<T>> selectors = operatorConfig.getOutputSelectors(userCodeClassloader);
+
+		if (selectors == null || selectors.isEmpty()) {
+			// simple path, no selector necessary
+			if (allOutputs.size() == 1) {
+				return allOutputs.get(0).f0;
 			}
+			else {
+				// send to N outputs. Note that this includes the special case
+				// of sending to zero outputs
+				@SuppressWarnings({"unchecked", "rawtypes"})
+				Output<StreamRecord<T>>[] asArray = new Output[allOutputs.size()];
+				for (int i = 0; i < allOutputs.size(); i++) {
+					asArray[i] = allOutputs.get(i).f0;
+				}
+
+				// This is the inverse of creating the normal ChainingOutput.
+				// If the chaining output does not copy we need to copy in the broadcast output,
+				// otherwise multi-chaining would not work correctly.
+				if (containingTask.getExecutionConfig().isObjectReuseEnabled()) {
+					return new CopyingBroadcastingOutputCollector<>(asArray, this);
+				} else  {
+					return new BroadcastingOutputCollector<>(asArray, this);
+				}
+			}
+		}
+		else {
+			// selector present, more complex routing necessary
 
 			// This is the inverse of creating the normal ChainingOutput.
 			// If the chaining output does not copy we need to copy in the broadcast output,
 			// otherwise multi-chaining would not work correctly.
 			if (containingTask.getExecutionConfig().isObjectReuseEnabled()) {
-				return new CopyingBroadcastingOutputCollector<>(asArray, this);
+				return new CopyingDirectedOutput<>(selectors, allOutputs);
 			} else {
-				return new BroadcastingOutputCollector<>(asArray, this);
+				return new DirectedOutput<>(selectors, allOutputs);
 			}
+
 		}
 	}
 
-	/**
-	 * Recursively create chain of operators that starts from the given {@param operatorConfig}.
-	 * Operators are created tail to head and wrapped into an {@link WatermarkGaugeExposingOutput}.
-	 */
-	private <IN, OUT> WatermarkGaugeExposingOutput<StreamRecord<IN>> createOperatorChain(
-			StreamTask<OUT, ?> containingTask,
+	private <IN, OUT> WatermarkGaugeExposingOutput<StreamRecord<IN>> createChainedOperator(
+			StreamTask<?, ?> containingTask,
 			StreamConfig operatorConfig,
 			Map<Integer, StreamConfig> chainedConfigs,
 			ClassLoader userCodeClassloader,
 			Map<StreamEdge, RecordWriterOutput<?>> streamOutputs,
-			List<StreamOperatorWrapper<?, ?>> allOperatorWrappers,
-			OutputTag<IN> outputTag,
-			MailboxExecutorFactory mailboxExecutorFactory) {
+			List<StreamOperator<?>> allOperators,
+			OutputTag<IN> outputTag) {
 		// create the output that the operator writes to first. this may recursively create more operators
 		WatermarkGaugeExposingOutput<StreamRecord<OUT>> chainedOperatorOutput = createOutputCollector(
 			containingTask,
@@ -577,77 +357,33 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 			chainedConfigs,
 			userCodeClassloader,
 			streamOutputs,
-			allOperatorWrappers,
-			mailboxExecutorFactory);
-
-		OneInputStreamOperator<IN, OUT> chainedOperator = createOperator(
-			containingTask,
-			operatorConfig,
-			userCodeClassloader,
-			chainedOperatorOutput,
-			allOperatorWrappers,
-			false);
-
-		return wrapOperatorIntoOutput(
-			chainedOperator,
-			containingTask,
-			operatorConfig,
-			userCodeClassloader,
-			outputTag);
-	}
-
-	/**
-	 * Create and return a single operator from the given {@param operatorConfig} that will be producing
-	 * records to the {@param output}.
-	 */
-	private <OUT, OP extends StreamOperator<OUT>> OP createOperator(
-			StreamTask<OUT, ?> containingTask,
-			StreamConfig operatorConfig,
-			ClassLoader userCodeClassloader,
-			WatermarkGaugeExposingOutput<StreamRecord<OUT>> output,
-			List<StreamOperatorWrapper<?, ?>> allOperatorWrappers,
-			boolean isHead) {
+			allOperators);
 
 		// now create the operator and give it the output collector to write its output to
-		Tuple2<OP, Optional<ProcessingTimeService>> chainedOperatorAndTimeService =
-			StreamOperatorFactoryUtil.createOperator(
-				operatorConfig.getStreamOperatorFactory(userCodeClassloader),
-				containingTask,
-				operatorConfig,
-				output,
-				operatorEventDispatcher);
+		OneInputStreamOperator<IN, OUT> chainedOperator = operatorConfig.getStreamOperator(userCodeClassloader);
 
-		OP chainedOperator = chainedOperatorAndTimeService.f0;
-		allOperatorWrappers.add(createOperatorWrapper(chainedOperator, containingTask, operatorConfig, chainedOperatorAndTimeService.f1, isHead));
+		chainedOperator.setup(containingTask, operatorConfig, chainedOperatorOutput);
 
-		chainedOperator.getMetricGroup().gauge(MetricNames.IO_CURRENT_OUTPUT_WATERMARK, output.getWatermarkGauge()::getValue);
-		return chainedOperator;
-	}
-
-	private <IN, OUT> WatermarkGaugeExposingOutput<StreamRecord<IN>> wrapOperatorIntoOutput(
-			OneInputStreamOperator<IN, OUT> operator,
-			StreamTask<OUT, ?> containingTask,
-			StreamConfig operatorConfig,
-			ClassLoader userCodeClassloader,
-			OutputTag<IN> outputTag) {
+		allOperators.add(chainedOperator);
 
 		WatermarkGaugeExposingOutput<StreamRecord<IN>> currentOperatorOutput;
 		if (containingTask.getExecutionConfig().isObjectReuseEnabled()) {
-			currentOperatorOutput = new ChainingOutput<>(operator, this, outputTag);
+			currentOperatorOutput = new ChainingOutput<>(chainedOperator, this, outputTag);
 		}
 		else {
 			TypeSerializer<IN> inSerializer = operatorConfig.getTypeSerializerIn1(userCodeClassloader);
-			currentOperatorOutput = new CopyingChainingOutput<>(operator, inSerializer, outputTag, this);
+			currentOperatorOutput = new CopyingChainingOutput<>(chainedOperator, inSerializer, outputTag, this);
 		}
 
 		// wrap watermark gauges since registered metrics must be unique
-		operator.getMetricGroup().gauge(MetricNames.IO_CURRENT_INPUT_WATERMARK, currentOperatorOutput.getWatermarkGauge()::getValue);
+		chainedOperator.getMetricGroup().gauge(MetricNames.IO_CURRENT_INPUT_WATERMARK, currentOperatorOutput.getWatermarkGauge()::getValue);
+		chainedOperator.getMetricGroup().gauge(MetricNames.IO_CURRENT_OUTPUT_WATERMARK, chainedOperatorOutput.getWatermarkGauge()::getValue);
 
 		return currentOperatorOutput;
 	}
 
 	private RecordWriterOutput<OUT> createStreamOutput(
-			RecordWriter<SerializationDelegate<StreamRecord<OUT>>> recordWriter,
+			StreamRecordWriter<SerializationDelegate<StreamRecord<OUT>>> streamRecordWriter,
 			StreamEdge edge,
 			StreamConfig upStreamConfig,
 			Environment taskEnvironment) {
@@ -658,70 +394,311 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		if (edge.getOutputTag() != null) {
 			// side output
 			outSerializer = upStreamConfig.getTypeSerializerSideOut(
-					edge.getOutputTag(), taskEnvironment.getUserCodeClassLoader().asClassLoader());
+					edge.getOutputTag(), taskEnvironment.getUserClassLoader());
 		} else {
 			// main output
-			outSerializer = upStreamConfig.getTypeSerializerOut(taskEnvironment.getUserCodeClassLoader().asClassLoader());
+			outSerializer = upStreamConfig.getTypeSerializerOut(taskEnvironment.getUserClassLoader());
 		}
 
-		return new RecordWriterOutput<>(recordWriter, outSerializer, sideOutputTag, this);
+		return new RecordWriterOutput<>(streamRecordWriter, outSerializer, sideOutputTag, this);
 	}
 
+	// ------------------------------------------------------------------------
+	//  Collectors for output chaining
+	// ------------------------------------------------------------------------
+
 	/**
-	 * Links operator wrappers in forward topological order.
+	 * An {@link Output} that measures the last emitted watermark with a {@link WatermarkGauge}.
 	 *
-	 * @param allOperatorWrappers is an operator wrapper list of reverse topological order
+	 * @param <T> The type of the elements that can be emitted.
 	 */
-	private StreamOperatorWrapper<?, ?> linkOperatorWrappers(List<StreamOperatorWrapper<?, ?>> allOperatorWrappers) {
-		StreamOperatorWrapper<?, ?> previous = null;
-		for (StreamOperatorWrapper<?, ?> current : allOperatorWrappers) {
-			if (previous != null) {
-				previous.setPrevious(current);
+	public interface WatermarkGaugeExposingOutput<T> extends Output<T> {
+		Gauge<Long> getWatermarkGauge();
+	}
+
+	static class ChainingOutput<T> implements WatermarkGaugeExposingOutput<StreamRecord<T>> {
+
+		protected final OneInputStreamOperator<T, ?> operator;
+		protected final Counter numRecordsIn;
+		protected final WatermarkGauge watermarkGauge = new WatermarkGauge();
+
+		protected final StreamStatusProvider streamStatusProvider;
+
+		@Nullable
+		protected final OutputTag<T> outputTag;
+
+		public ChainingOutput(
+				OneInputStreamOperator<T, ?> operator,
+				StreamStatusProvider streamStatusProvider,
+				@Nullable OutputTag<T> outputTag) {
+			this.operator = operator;
+
+			{
+				Counter tmpNumRecordsIn;
+				try {
+					OperatorIOMetricGroup ioMetricGroup = ((OperatorMetricGroup) operator.getMetricGroup()).getIOMetricGroup();
+					tmpNumRecordsIn = ioMetricGroup.getNumRecordsInCounter();
+				} catch (Exception e) {
+					LOG.warn("An exception occurred during the metrics setup.", e);
+					tmpNumRecordsIn = new SimpleCounter();
+				}
+				numRecordsIn = tmpNumRecordsIn;
 			}
-			current.setNext(previous);
-			previous = current;
+
+			this.streamStatusProvider = streamStatusProvider;
+			this.outputTag = outputTag;
 		}
-		return previous;
+
+		@Override
+		public void collect(StreamRecord<T> record) {
+			if (this.outputTag != null) {
+				// we are only responsible for emitting to the main input
+				return;
+			}
+
+			pushToOperator(record);
+		}
+
+		@Override
+		public <X> void collect(OutputTag<X> outputTag, StreamRecord<X> record) {
+			if (this.outputTag == null || !this.outputTag.equals(outputTag)) {
+				// we are only responsible for emitting to the side-output specified by our
+				// OutputTag.
+				return;
+			}
+
+			pushToOperator(record);
+		}
+
+		protected <X> void pushToOperator(StreamRecord<X> record) {
+			try {
+				// we know that the given outputTag matches our OutputTag so the record
+				// must be of the type that our operator expects.
+				@SuppressWarnings("unchecked")
+				StreamRecord<T> castRecord = (StreamRecord<T>) record;
+
+				numRecordsIn.inc();
+				operator.setKeyContextElement1(castRecord);
+				operator.processElement(castRecord);
+			}
+			catch (Exception e) {
+				throw new ExceptionInChainedOperatorException(e);
+			}
+		}
+
+		@Override
+		public void emitWatermark(Watermark mark) {
+			try {
+				watermarkGauge.setCurrentWatermark(mark.getTimestamp());
+				if (streamStatusProvider.getStreamStatus().isActive()) {
+					operator.processWatermark(mark);
+				}
+			}
+			catch (Exception e) {
+				throw new ExceptionInChainedOperatorException(e);
+			}
+		}
+
+		@Override
+		public void emitLatencyMarker(LatencyMarker latencyMarker) {
+			try {
+				operator.processLatencyMarker(latencyMarker);
+			}
+			catch (Exception e) {
+				throw new ExceptionInChainedOperatorException(e);
+			}
+		}
+
+		@Override
+		public void close() {
+			try {
+				operator.close();
+			}
+			catch (Exception e) {
+				throw new ExceptionInChainedOperatorException(e);
+			}
+		}
+
+		@Override
+		public Gauge<Long> getWatermarkGauge() {
+			return watermarkGauge;
+		}
 	}
 
-	private <T, P extends StreamOperator<T>> StreamOperatorWrapper<T, P> createOperatorWrapper(
-			P operator,
-			StreamTask<?, ?> containingTask,
-			StreamConfig operatorConfig,
-			Optional<ProcessingTimeService> processingTimeService,
-			boolean isHead) {
-		return new StreamOperatorWrapper<>(
-			operator,
-			processingTimeService,
-			containingTask.getMailboxExecutorFactory().createExecutor(operatorConfig.getChainIndex()),
-			isHead);
+	static final class CopyingChainingOutput<T> extends ChainingOutput<T> {
+
+		private final TypeSerializer<T> serializer;
+
+		public CopyingChainingOutput(
+				OneInputStreamOperator<T, ?> operator,
+				TypeSerializer<T> serializer,
+				OutputTag<T> outputTag,
+				StreamStatusProvider streamStatusProvider) {
+			super(operator, streamStatusProvider, outputTag);
+			this.serializer = serializer;
+		}
+
+		@Override
+		public void collect(StreamRecord<T> record) {
+			if (this.outputTag != null) {
+				// we are only responsible for emitting to the main input
+				return;
+			}
+
+			pushToOperator(record);
+		}
+
+		@Override
+		public <X> void collect(OutputTag<X> outputTag, StreamRecord<X> record) {
+			if (this.outputTag == null || !this.outputTag.equals(outputTag)) {
+				// we are only responsible for emitting to the side-output specified by our
+				// OutputTag.
+				return;
+			}
+
+			pushToOperator(record);
+		}
+
+		@Override
+		protected <X> void pushToOperator(StreamRecord<X> record) {
+			try {
+				// we know that the given outputTag matches our OutputTag so the record
+				// must be of the type that our operator (and Serializer) expects.
+				@SuppressWarnings("unchecked")
+				StreamRecord<T> castRecord = (StreamRecord<T>) record;
+
+				numRecordsIn.inc();
+				StreamRecord<T> copy = castRecord.copy(serializer.copy(castRecord.getValue()));
+				operator.setKeyContextElement1(copy);
+				operator.processElement(copy);
+			} catch (ClassCastException e) {
+				if (outputTag != null) {
+					// Enrich error message
+					ClassCastException replace = new ClassCastException(
+						String.format(
+							"%s. Failed to push OutputTag with id '%s' to operator. " +
+								"This can occur when multiple OutputTags with different types " +
+								"but identical names are being used.",
+							e.getMessage(),
+							outputTag.getId()));
+
+					throw new ExceptionInChainedOperatorException(replace);
+				} else {
+					throw new ExceptionInChainedOperatorException(e);
+				}
+			} catch (Exception e) {
+				throw new ExceptionInChainedOperatorException(e);
+			}
+
+		}
 	}
 
-	@Nullable
-	StreamOperator<?> getTailOperator() {
-		return (tailOperatorWrapper == null) ? null : tailOperatorWrapper.getStreamOperator();
+	static class BroadcastingOutputCollector<T> implements WatermarkGaugeExposingOutput<StreamRecord<T>> {
+
+		protected final Output<StreamRecord<T>>[] outputs;
+
+		private final Random random = new XORShiftRandom();
+
+		private final StreamStatusProvider streamStatusProvider;
+
+		private final WatermarkGauge watermarkGauge = new WatermarkGauge();
+
+		public BroadcastingOutputCollector(
+				Output<StreamRecord<T>>[] outputs,
+				StreamStatusProvider streamStatusProvider) {
+			this.outputs = outputs;
+			this.streamStatusProvider = streamStatusProvider;
+		}
+
+		@Override
+		public void emitWatermark(Watermark mark) {
+			watermarkGauge.setCurrentWatermark(mark.getTimestamp());
+			if (streamStatusProvider.getStreamStatus().isActive()) {
+				for (Output<StreamRecord<T>> output : outputs) {
+					output.emitWatermark(mark);
+				}
+			}
+		}
+
+		@Override
+		public void emitLatencyMarker(LatencyMarker latencyMarker) {
+			if (outputs.length <= 0) {
+				// ignore
+			} else if (outputs.length == 1) {
+				outputs[0].emitLatencyMarker(latencyMarker);
+			} else {
+				// randomly select an output
+				outputs[random.nextInt(outputs.length)].emitLatencyMarker(latencyMarker);
+			}
+		}
+
+		@Override
+		public Gauge<Long> getWatermarkGauge() {
+			return watermarkGauge;
+		}
+
+		@Override
+		public void collect(StreamRecord<T> record) {
+			for (Output<StreamRecord<T>> output : outputs) {
+				output.collect(record);
+			}
+		}
+
+		@Override
+		public <X> void collect(OutputTag<X> outputTag, StreamRecord<X> record) {
+			for (Output<StreamRecord<T>> output : outputs) {
+				output.collect(outputTag, record);
+			}
+		}
+
+		@Override
+		public void close() {
+			for (Output<StreamRecord<T>> output : outputs) {
+				output.close();
+			}
+		}
 	}
 
 	/**
-	 * Wrapper class to access the chained sources and their's outputs.
+	 * Special version of {@link BroadcastingOutputCollector} that performs a shallow copy of the
+	 * {@link StreamRecord} to ensure that multi-chaining works correctly.
 	 */
-	public static class ChainedSource {
-		private final WatermarkGaugeExposingOutput<StreamRecord<?>> chainedSourceOutput;
-		private final StreamTaskSourceInput<?> sourceTaskInput;
+	static final class CopyingBroadcastingOutputCollector<T> extends BroadcastingOutputCollector<T> {
 
-		public ChainedSource(
-				WatermarkGaugeExposingOutput<StreamRecord<?>> chainedSourceOutput,
-				StreamTaskSourceInput<?> sourceTaskInput) {
-			this.chainedSourceOutput = chainedSourceOutput;
-			this.sourceTaskInput = sourceTaskInput;
+		public CopyingBroadcastingOutputCollector(
+				Output<StreamRecord<T>>[] outputs,
+				StreamStatusProvider streamStatusProvider) {
+			super(outputs, streamStatusProvider);
 		}
 
-		public Output<StreamRecord<?>> getSourceOutput() {
-			return chainedSourceOutput;
+		@Override
+		public void collect(StreamRecord<T> record) {
+
+			for (int i = 0; i < outputs.length - 1; i++) {
+				Output<StreamRecord<T>> output = outputs[i];
+				StreamRecord<T> shallowCopy = record.copy(record.getValue());
+				output.collect(shallowCopy);
+			}
+
+			if (outputs.length > 0) {
+				// don't copy for the last output
+				outputs[outputs.length - 1].collect(record);
+			}
 		}
 
-		public StreamTaskSourceInput<?> getSourceTaskInput() {
-			return sourceTaskInput;
+		@Override
+		public <X> void collect(OutputTag<X> outputTag, StreamRecord<X> record) {
+			for (int i = 0; i < outputs.length - 1; i++) {
+				Output<StreamRecord<T>> output = outputs[i];
+
+				StreamRecord<X> shallowCopy = record.copy(record.getValue());
+				output.collect(outputTag, shallowCopy);
+			}
+
+			if (outputs.length > 0) {
+				// don't copy for the last output
+				outputs[outputs.length - 1].collect(outputTag, record);
+			}
 		}
 	}
 }

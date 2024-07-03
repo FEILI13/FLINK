@@ -18,9 +18,8 @@
 
 package org.apache.flink.cep.nfa;
 
-import org.apache.flink.api.common.typeutils.SimpleTypeSerializerSnapshot;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
+import org.apache.flink.api.common.typeutils.base.IntSerializer;
 import org.apache.flink.api.common.typeutils.base.TypeSerializerSingleton;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
@@ -175,9 +174,9 @@ public class DeweyNumber implements Serializable {
 	public static DeweyNumber fromString(final String deweyNumberString) {
 		String[] splits = deweyNumberString.split("\\.");
 
-		if (splits.length == 1) {
+		if (splits.length == 0) {
 			return new DeweyNumber(Integer.parseInt(deweyNumberString));
-		} else if (splits.length > 0) {
+		} else {
 			int[] deweyNumber = new int[splits.length];
 
 			for (int i = 0; i < splits.length; i++) {
@@ -185,8 +184,6 @@ public class DeweyNumber implements Serializable {
 			}
 
 			return new DeweyNumber(deweyNumber);
-		} else {
-			throw new IllegalArgumentException("Failed to parse " + deweyNumberString + " as a Dewey number");
 		}
 	}
 
@@ -196,6 +193,8 @@ public class DeweyNumber implements Serializable {
 	public static class DeweyNumberSerializer extends TypeSerializerSingleton<DeweyNumber> {
 
 		private static final long serialVersionUID = -5086792497034943656L;
+
+		private final IntSerializer elemSerializer = IntSerializer.INSTANCE;
 
 		public static final DeweyNumberSerializer INSTANCE = new DeweyNumberSerializer();
 
@@ -231,7 +230,7 @@ public class DeweyNumber implements Serializable {
 			final int size = record.length();
 			target.writeInt(size);
 			for (int i = 0; i < size; i++) {
-				target.writeInt(record.deweyNumber[i]);
+				elemSerializer.serialize(record.deweyNumber[i], target);
 			}
 		}
 
@@ -240,7 +239,7 @@ public class DeweyNumber implements Serializable {
 			final int size = source.readInt();
 			int[] number = new int[size];
 			for (int i = 0; i < size; i++) {
-				number[i] = source.readInt();
+				number[i] = elemSerializer.deserialize(source);
 			}
 			return new DeweyNumber(number);
 		}
@@ -255,7 +254,7 @@ public class DeweyNumber implements Serializable {
 			final int size = source.readInt();
 			target.writeInt(size);
 			for (int i = 0; i < size; i++) {
-				target.writeInt(source.readInt());
+				elemSerializer.copy(source, target);
 			}
 		}
 
@@ -264,22 +263,14 @@ public class DeweyNumber implements Serializable {
 			return obj == this || obj.getClass().equals(getClass());
 		}
 
-		// -----------------------------------------------------------------------------------
-
 		@Override
-		public TypeSerializerSnapshot<DeweyNumber> snapshotConfiguration() {
-			return new DeweyNumberSerializerSnapshot();
+		public boolean canEqual(Object obj) {
+			return true;
 		}
 
-		/**
-		 * Serializer configuration snapshot for compatibility and format evolution.
-		 */
-		@SuppressWarnings("WeakerAccess")
-		public static final class DeweyNumberSerializerSnapshot extends SimpleTypeSerializerSnapshot<DeweyNumber> {
-
-			public DeweyNumberSerializerSnapshot() {
-				super(() -> INSTANCE);
-			}
+		@Override
+		public int hashCode() {
+			return elemSerializer.hashCode();
 		}
 	}
 }

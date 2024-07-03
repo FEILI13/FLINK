@@ -20,13 +20,11 @@ package org.apache.flink.formats.avro;
 
 import org.apache.flink.api.common.serialization.DeserializationSchema;
 import org.apache.flink.formats.avro.generated.Address;
-import org.apache.flink.formats.avro.generated.UnionLogicalType;
 import org.apache.flink.formats.avro.utils.TestDataGenerator;
 
 import org.apache.avro.generic.GenericRecord;
 import org.junit.Test;
 
-import java.time.Instant;
 import java.util.Random;
 
 import static org.apache.flink.formats.avro.utils.AvroTestUtils.writeRecord;
@@ -54,22 +52,11 @@ public class AvroDeserializationSchemaTest {
 	}
 
 	@Test
-	public void testSpecificRecord() throws Exception {
+	public void testSpecificRecordWithConfluentSchemaRegistry() throws Exception {
 		DeserializationSchema<Address> deserializer = AvroDeserializationSchema.forSpecific(Address.class);
 
-		byte[] encodedAddress = writeRecord(address);
+		byte[] encodedAddress = writeRecord(address, Address.getClassSchema());
 		Address deserializedAddress = deserializer.deserialize(encodedAddress);
 		assertEquals(address, deserializedAddress);
-	}
-
-	@Test
-	public void testSpecificRecordWithUnionLogicalType() throws Exception {
-		Random rnd = new Random();
-		UnionLogicalType data = new UnionLogicalType(Instant.ofEpochMilli(rnd.nextLong()));
-		DeserializationSchema<UnionLogicalType> deserializer = AvroDeserializationSchema.forSpecific(UnionLogicalType.class);
-
-		byte[] encodedData = writeRecord(data);
-		UnionLogicalType deserializedData = deserializer.deserialize(encodedData);
-		assertEquals(data, deserializedData);
 	}
 }

@@ -27,17 +27,16 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-parent</artifactId>
-		<version>1.12.0</version>
+		<version>1.7-CLONOS-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 
 	<artifactId>flink-state-backends</artifactId>
-	<name>Flink : State backends : </name>
+	<name>flink-state-backends</name>
 
 	<packaging>pom</packaging>
 
 	<modules>
 		<module>flink-statebackend-rocksdb</module>
-		<module>flink-statebackend-heap-spillable</module>
 	</modules>
 </project>

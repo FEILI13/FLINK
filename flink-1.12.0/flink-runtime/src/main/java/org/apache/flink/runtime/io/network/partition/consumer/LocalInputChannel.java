@@ -18,29 +18,24 @@
 
 package org.apache.flink.runtime.io.network.partition.consumer;
 
-import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.metrics.Counter;
-import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
+import org.apache.flink.runtime.event.InFlightLogRequestEvent;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.execution.CancelTaskException;
-import org.apache.flink.runtime.io.network.TaskEventPublisher;
-import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
-import org.apache.flink.runtime.io.network.buffer.Buffer;
-import org.apache.flink.runtime.io.network.buffer.FileRegionBuffer;
+import org.apache.flink.runtime.io.network.TaskEventDispatcher;
+import org.apache.flink.runtime.io.network.ConnectionManager;
+import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.partition.BufferAvailabilityListener;
 import org.apache.flink.runtime.io.network.partition.PartitionNotFoundException;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionManager;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartition.BufferAndBacklog;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartitionView;
+import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
-
 import java.io.IOException;
-import java.util.Collections;
 import java.util.Optional;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -63,25 +58,23 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 	private final ResultPartitionManager partitionManager;
 
 	/** Task event dispatcher for backwards events. */
-	private final TaskEventPublisher taskEventPublisher;
+	private final TaskEventDispatcher taskEventDispatcher;
 
 	/** The consumed subpartition. */
-	@Nullable private volatile ResultSubpartitionView subpartitionView;
+	private volatile ResultSubpartitionView subpartitionView;
 
 	private volatile boolean isReleased;
-
-	private final ChannelStatePersister channelStatePersister;
 
 	public LocalInputChannel(
 		SingleInputGate inputGate,
 		int channelIndex,
 		ResultPartitionID partitionId,
 		ResultPartitionManager partitionManager,
-		TaskEventPublisher taskEventPublisher,
-		Counter numBytesIn,
-		Counter numBuffersIn) {
+		TaskEventDispatcher taskEventDispatcher,
+		TaskIOMetricGroup metrics) {
 
-		this(inputGate, channelIndex, partitionId, partitionManager, taskEventPublisher, 0, 0, numBytesIn, numBuffersIn, ChannelStateWriter.NO_OP);
+		this(inputGate, channelIndex, partitionId, partitionManager, taskEventDispatcher,
+			0, 0, metrics);
 	}
 
 	public LocalInputChannel(
@@ -89,37 +82,25 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 		int channelIndex,
 		ResultPartitionID partitionId,
 		ResultPartitionManager partitionManager,
-		TaskEventPublisher taskEventPublisher,
+		TaskEventDispatcher taskEventDispatcher,
 		int initialBackoff,
 		int maxBackoff,
-		Counter numBytesIn,
-		Counter numBuffersIn,
-		ChannelStateWriter stateWriter) {
+		TaskIOMetricGroup metrics) {
 
-		super(inputGate, channelIndex, partitionId, initialBackoff, maxBackoff, numBytesIn, numBuffersIn);
+		super(inputGate, channelIndex, partitionId, initialBackoff, maxBackoff, metrics.getNumBytesInLocalCounter(), metrics.getNumBuffersInLocalCounter());
 
 		this.partitionManager = checkNotNull(partitionManager);
-		this.taskEventPublisher = checkNotNull(taskEventPublisher);
-		this.channelStatePersister = new ChannelStatePersister(stateWriter, getChannelInfo());
+		this.taskEventDispatcher = checkNotNull(taskEventDispatcher);
 	}
 
 	// ------------------------------------------------------------------------
 	// Consume
 	// ------------------------------------------------------------------------
 
-	public void checkpointStarted(CheckpointBarrier barrier) {
-		channelStatePersister.startPersisting(barrier.getId(), Collections.emptyList());
-	}
-
-	public void checkpointStopped(long checkpointId) {
-		channelStatePersister.stopPersisting(checkpointId);
-	}
-
 	@Override
-	protected void requestSubpartition(int subpartitionIndex) throws IOException {
+	void requestSubpartition(int subpartitionIndex) throws IOException, InterruptedException {
 
 		boolean retriggerRequest = false;
-		boolean notifyDataAvailable = false;
 
 		// The lock is required to request only once in the presence of retriggered requests.
 		synchronized (requestLock) {
@@ -144,8 +125,6 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 					if (isReleased) {
 						subpartitionView.releaseAllResources();
 						this.subpartitionView = null;
-					} else {
-						notifyDataAvailable = true;
 					}
 				} catch (PartitionNotFoundException notFound) {
 					if (increaseBackoff()) {
@@ -155,10 +134,6 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 					}
 				}
 			}
-		}
-
-		if (notifyDataAvailable) {
-			notifyDataAvailable();
 		}
 
 		// Do this outside of the lock scope as this might lead to a
@@ -190,7 +165,7 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 	}
 
 	@Override
-	Optional<BufferAndAvailability> getNextBuffer() throws IOException {
+	Optional<BufferAndAvailability> getNextBuffer() throws IOException, InterruptedException {
 		checkError();
 
 		ResultSubpartitionView subpartitionView = this.subpartitionView;
@@ -200,6 +175,7 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 			// they happen in that order (1 - 2 - 3 - 4), flush notification can re-enqueue LocalInputChannel after (or
 			// during) it was released during reading the EndOfPartitionEvent (2).
 			if (isReleased) {
+				LOG.debug("{} is released. getNextBuffer() returns empty.", this);
 				return Optional.empty();
 			}
 
@@ -217,28 +193,14 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 			if (subpartitionView.isReleased()) {
 				throw new CancelTaskException("Consumed partition " + subpartitionView + " has been released.");
 			} else {
+				LOG.debug("{} getNextBuffer() returns empty.", this);
 				return Optional.empty();
 			}
 		}
 
-		Buffer buffer = next.buffer();
-
-		if (buffer instanceof FileRegionBuffer) {
-			buffer = ((FileRegionBuffer) buffer).readInto(inputGate.getUnpooledSegment());
-		}
-
-		numBytesIn.inc(buffer.getSize());
+		numBytesIn.inc(next.buffer().getSizeUnsafe());
 		numBuffersIn.inc();
-		if (buffer.getDataType().hasPriority()) {
-			channelStatePersister.checkForBarrier(buffer);
-		} else {
-			channelStatePersister.maybePersist(buffer);
-		}
-		return Optional.of(new BufferAndAvailability(
-			buffer,
-			next.getNextDataType(),
-			next.buffersInBacklog(),
-			next.getSequenceNumber()));
+		return Optional.of(new BufferAndAvailability(next.buffer(), next.isMoreAvailable(), next.buffersInBacklog()));
 	}
 
 	@Override
@@ -257,27 +219,17 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 		}
 	}
 
-	@Override
-	public void resumeConsumption() {
-		checkState(!isReleased, "Channel released.");
-
-		subpartitionView.resumeConsumption();
-
-		if (subpartitionView.isAvailable(Integer.MAX_VALUE)) {
-			notifyChannelNonEmpty();
-		}
-	}
-
 	// ------------------------------------------------------------------------
 	// Task events
 	// ------------------------------------------------------------------------
 
 	@Override
-	void sendTaskEvent(TaskEvent event) throws IOException {
+	public void sendTaskEvent(TaskEvent event) throws IOException {
+		LOG.debug("Send task event {} from channel {}.", event, this);
 		checkError();
-		checkState(subpartitionView != null, "Tried to send task event to producer before requesting the subpartition.");
+		checkState(subpartitionView != null || event instanceof InFlightLogRequestEvent, "Tried to send task event to producer before requesting the subpartition.");
 
-		if (!taskEventPublisher.publish(partitionId, event)) {
+		if (!taskEventDispatcher.publish(partitionId, event)) {
 			throw new IOException("Error while publishing event " + event + " to producer. The producer could not be found.");
 		}
 	}
@@ -291,44 +243,62 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 		return isReleased;
 	}
 
+	@Override
+	void notifySubpartitionConsumed() throws IOException {
+		if (subpartitionView != null) {
+			subpartitionView.notifySubpartitionConsumed();
+		}
+	}
+
 	/**
 	 * Releases the partition reader.
 	 */
 	@Override
-	void releaseAllResources() throws IOException {
-		if (!isReleased) {
-			isReleased = true;
-
-			ResultSubpartitionView view = subpartitionView;
-			if (view != null) {
-				view.releaseAllResources();
-				subpartitionView = null;
-			}
-		}
-	}
-
-	@Override
-	public int unsynchronizedGetNumberOfQueuedBuffers() {
+	void releaseAllResources() throws CancelTaskException, IOException {
 		ResultSubpartitionView view = subpartitionView;
+		try {
+			if (!isReleased) {
+				isReleased = true;
 
-		if (view != null) {
-			return view.unsynchronizedGetNumberOfQueuedBuffers();
+				if (view != null) {
+					subpartitionView = null;
+					checkError();
+					// If releasing because of error don't release subpartition view.
+					view.releaseAllResources();
+				}
+			}
+		} catch (IOException e) {
+			// RunStandbyTaskStrategy
+			LOG.debug("Release (because of error) all resources of channel {} (but not {}).", this, view);
 		}
-
-		return 0;
 	}
 
 	@Override
 	public String toString() {
-		return "LocalInputChannel [" + partitionId + "]";
+		return "LocalInputChannel " + channelIndex + " [" + partitionId + "]";
 	}
 
 	// ------------------------------------------------------------------------
-	// Getter
+	// Reincarnation to a local input channel at runtime
 	// ------------------------------------------------------------------------
 
-	@VisibleForTesting
-	ResultSubpartitionView getSubpartitionView() {
-		return subpartitionView;
+	public LocalInputChannel toNewLocalInputChannel(ResultPartitionID newPartitionId,
+			ResultPartitionManager partitionManager, TaskEventDispatcher taskEventDispatcher,
+			int initialBackoff, int maxBackoff, TaskIOMetricGroup metrics) throws IOException {
+		return new LocalInputChannel(inputGate, channelIndex, newPartitionId,
+				partitionManager, taskEventDispatcher, initialBackoff, maxBackoff, metrics);
+	}
+
+	public RemoteInputChannel toNewRemoteInputChannel(ResultPartitionID newPartitionId,
+			ConnectionID newProducerAddress, ConnectionManager connectionManager,
+			int initialBackoff, int maxBackoff, TaskIOMetricGroup metrics) throws IOException {
+		releaseAllResources();
+		RemoteInputChannel newRemoteInputChannel = new RemoteInputChannel(inputGate, channelIndex, newPartitionId,
+				checkNotNull(newProducerAddress), connectionManager, initialBackoff,
+				maxBackoff, metrics);
+		if (inputGate.isCreditBased()) {
+			inputGate.assignExclusiveSegments((InputChannel) newRemoteInputChannel);
+		}
+		return newRemoteInputChannel;
 	}
 }

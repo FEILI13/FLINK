@@ -20,8 +20,7 @@ package org.apache.flink.streaming.api.functions.sink.filesystem;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.core.fs.Path;
-
-import javax.annotation.Nullable;
+import org.apache.flink.core.fs.RecoverableWriter;
 
 import java.io.IOException;
 
@@ -29,49 +28,45 @@ import java.io.IOException;
  * A factory returning {@link Bucket buckets}.
  */
 @Internal
-public class DefaultBucketFactoryImpl<IN, BucketID> implements BucketFactory<IN, BucketID> {
+class DefaultBucketFactoryImpl<IN, BucketID> implements BucketFactory<IN, BucketID> {
 
 	private static final long serialVersionUID = 1L;
 
 	@Override
 	public Bucket<IN, BucketID> getNewBucket(
+			final RecoverableWriter fsWriter,
 			final int subtaskIndex,
 			final BucketID bucketId,
 			final Path bucketPath,
 			final long initialPartCounter,
-			final BucketWriter<IN, BucketID> bucketWriter,
-			final RollingPolicy<IN, BucketID> rollingPolicy,
-			@Nullable final FileLifeCycleListener<BucketID> fileListener,
-			final OutputFileConfig outputFileConfig) {
+			final PartFileWriter.PartFileFactory<IN, BucketID> partFileWriterFactory,
+			final RollingPolicy<IN, BucketID> rollingPolicy) {
 
 		return Bucket.getNew(
+				fsWriter,
 				subtaskIndex,
 				bucketId,
 				bucketPath,
 				initialPartCounter,
-				bucketWriter,
-				rollingPolicy,
-				fileListener,
-				outputFileConfig);
+				partFileWriterFactory,
+				rollingPolicy);
 	}
 
 	@Override
 	public Bucket<IN, BucketID> restoreBucket(
+			final RecoverableWriter fsWriter,
 			final int subtaskIndex,
 			final long initialPartCounter,
-			final BucketWriter<IN, BucketID> bucketWriter,
+			final PartFileWriter.PartFileFactory<IN, BucketID> partFileWriterFactory,
 			final RollingPolicy<IN, BucketID> rollingPolicy,
-			final BucketState<BucketID> bucketState,
-			@Nullable final FileLifeCycleListener<BucketID> fileListener,
-			final OutputFileConfig outputFileConfig) throws IOException {
+			final BucketState<BucketID> bucketState) throws IOException {
 
 		return Bucket.restore(
+				fsWriter,
 				subtaskIndex,
 				initialPartCounter,
-				bucketWriter,
+				partFileWriterFactory,
 				rollingPolicy,
-				bucketState,
-				fileListener,
-				outputFileConfig);
+				bucketState);
 	}
 }

@@ -19,15 +19,13 @@
 package org.apache.flink.test.runtime;
 
 import org.apache.flink.api.common.ExecutionConfig;
-import org.apache.flink.api.common.JobID;
+import org.apache.flink.api.common.JobSubmissionResult;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.client.program.MiniClusterClient;
 import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.JobManagerOptions;
-import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.RestOptions;
-import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
@@ -99,12 +97,10 @@ public class SchedulingITCase extends TestLogger {
 	}
 
 	private void executeSchedulingTest(Configuration configuration) throws Exception {
-		configuration.setString(RestOptions.BIND_PORT, "0");
+		configuration.setInteger(RestOptions.PORT, 0);
 
 		final long slotIdleTimeout = 50L;
 		configuration.setLong(JobManagerOptions.SLOT_IDLE_TIMEOUT, slotIdleTimeout);
-
-		configuration.set(TaskManagerOptions.TOTAL_FLINK_MEMORY, MemorySize.parse("1g"));
 
 		final int parallelism = 4;
 		final MiniClusterConfiguration miniClusterConfiguration = new MiniClusterConfiguration.Builder()
@@ -119,11 +115,12 @@ public class SchedulingITCase extends TestLogger {
 			MiniClusterClient miniClusterClient = new MiniClusterClient(configuration, miniCluster);
 
 			JobGraph jobGraph = createJobGraph(slotIdleTimeout << 1, parallelism);
+			CompletableFuture<JobSubmissionResult> submissionFuture = miniClusterClient.submitJob(jobGraph);
 
 			// wait for the submission to succeed
-			JobID jobID = miniClusterClient.submitJob(jobGraph).get();
+			JobSubmissionResult jobSubmissionResult = submissionFuture.get();
 
-			CompletableFuture<JobResult> resultFuture = miniClusterClient.requestJobResult(jobID);
+			CompletableFuture<JobResult> resultFuture = miniClusterClient.requestJobResult(jobSubmissionResult.getJobID());
 
 			JobResult jobResult = resultFuture.get();
 

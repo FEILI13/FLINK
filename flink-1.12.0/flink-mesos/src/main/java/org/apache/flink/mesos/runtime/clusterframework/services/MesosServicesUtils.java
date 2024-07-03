@@ -22,7 +22,6 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.mesos.configuration.MesosOptions;
 import org.apache.flink.mesos.util.MesosArtifactServer;
-import org.apache.flink.mesos.util.MesosArtifactServerImpl;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.jobmanager.HighAvailabilityMode;
 import org.apache.flink.runtime.zookeeper.ZooKeeperUtilityFactory;
@@ -77,6 +76,6 @@ public class MesosServicesUtils {
 		// a random prefix is affixed to artifact URLs to ensure uniqueness in the Mesos fetcher cache
 		final String artifactServerPrefix = UUID.randomUUID().toString();
 
-		return new MesosArtifactServerImpl(artifactServerPrefix, hostname, artifactServerPort, configuration);
+		return new MesosArtifactServer(artifactServerPrefix, hostname, artifactServerPort, configuration);
 	}
 }

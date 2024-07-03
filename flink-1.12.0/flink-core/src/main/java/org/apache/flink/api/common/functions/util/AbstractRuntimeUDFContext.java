@@ -30,9 +30,12 @@ import org.apache.flink.api.common.accumulators.Histogram;
 import org.apache.flink.api.common.accumulators.IntCounter;
 import org.apache.flink.api.common.accumulators.LongCounter;
 import org.apache.flink.api.common.cache.DistributedCache;
+import org.apache.flink.api.common.services.*;
 import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.api.common.state.AggregatingState;
 import org.apache.flink.api.common.state.AggregatingStateDescriptor;
+import org.apache.flink.api.common.state.FoldingState;
+import org.apache.flink.api.common.state.FoldingStateDescriptor;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.state.MapState;
@@ -43,11 +46,12 @@ import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.metrics.MetricGroup;
-import org.apache.flink.util.UserCodeClassLoader;
 
 import java.io.Serializable;
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.Future;
+import java.util.function.Function;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -59,7 +63,7 @@ public abstract class AbstractRuntimeUDFContext implements RuntimeContext {
 
 	private final TaskInfo taskInfo;
 
-	private final UserCodeClassLoader userCodeClassLoader;
+	private final ClassLoader userCodeClassLoader;
 
 	private final ExecutionConfig executionConfig;
 
@@ -69,18 +73,36 @@ public abstract class AbstractRuntimeUDFContext implements RuntimeContext {
 
 	private final MetricGroup metrics;
 
+	private final RandomService randomService;
+	private final TimeService timeService;
+	private final SerializableServiceFactory serializableServiceFactory;
+
+
 	public AbstractRuntimeUDFContext(TaskInfo taskInfo,
-										UserCodeClassLoader userCodeClassLoader,
-										ExecutionConfig executionConfig,
-										Map<String, Accumulator<?, ?>> accumulators,
-										Map<String, Future<Path>> cpTasks,
-										MetricGroup metrics) {
+									 ClassLoader userCodeClassLoader,
+									 ExecutionConfig executionConfig,
+									 Map<String, Accumulator<?, ?>> accumulators,
+									 Map<String, Future<Path>> cpTasks,
+									 MetricGroup metrics) {
+		this(taskInfo, userCodeClassLoader, executionConfig, accumulators, cpTasks, metrics, new SimpleTimeService(),
+			new SimpleRandomService(), new SimpleSerializableServiceFactory());
+	}
+
+	public AbstractRuntimeUDFContext(TaskInfo taskInfo,
+									 ClassLoader userCodeClassLoader,
+									 ExecutionConfig executionConfig,
+									 Map<String, Accumulator<?, ?>> accumulators,
+									 Map<String, Future<Path>> cpTasks,
+									 MetricGroup metrics, TimeService timeService, RandomService randomService, SerializableServiceFactory factory) {
 		this.taskInfo = checkNotNull(taskInfo);
 		this.userCodeClassLoader = userCodeClassLoader;
 		this.executionConfig = executionConfig;
 		this.distributedCache = new DistributedCache(checkNotNull(cpTasks));
 		this.accumulators = checkNotNull(accumulators);
 		this.metrics = metrics;
+		this.randomService = randomService;
+		this.timeService = timeService;
+		this.serializableServiceFactory = factory;
 	}
 
 	@Override
@@ -147,7 +169,7 @@ public abstract class AbstractRuntimeUDFContext implements RuntimeContext {
 	public <V, A extends Serializable> void addAccumulator(String name, Accumulator<V, A> accumulator) {
 		if (accumulators.containsKey(name)) {
 			throw new UnsupportedOperationException("The accumulator '" + name
-					+ "' already exists and cannot be added.");
+				+ "' already exists and cannot be added.");
 		}
 		accumulators.put(name, accumulator);
 	}
@@ -159,13 +181,13 @@ public abstract class AbstractRuntimeUDFContext implements RuntimeContext {
 	}
 
 	@Override
-	public ClassLoader getUserCodeClassLoader() {
-		return this.userCodeClassLoader.asClassLoader();
+	public Map<String, Accumulator<?, ?>> getAllAccumulators() {
+		return Collections.unmodifiableMap(this.accumulators);
 	}
 
 	@Override
-	public void registerUserCodeClassLoaderReleaseHookIfAbsent(String releaseHookName, Runnable releaseHook) {
-		userCodeClassLoader.registerReleaseHookIfAbsent(releaseHookName, releaseHook);
+	public ClassLoader getUserCodeClassLoader() {
+		return this.userCodeClassLoader;
 	}
 
 	@Override
@@ -173,11 +195,25 @@ public abstract class AbstractRuntimeUDFContext implements RuntimeContext {
 		return this.distributedCache;
 	}
 
+	@Override
+	public TimeService getTimeService() {
+		return timeService;
+	}
+
+	@Override
+	public RandomService getRandomService() {
+		return randomService;
+	}
+
+	@Override
+	public <I,O extends Serializable> SerializableService<I,O> getSerializableService(Function<I,O> function){
+		return serializableServiceFactory.build(function);
+	}
 	// --------------------------------------------------------------------------------------------
 
 	@SuppressWarnings("unchecked")
 	private <V, A extends Serializable> Accumulator<V, A> getAccumulator(String name,
-			Class<? extends Accumulator<V, A>> accumulatorClass) {
+																		 Class<? extends Accumulator<V, A>> accumulatorClass) {
 
 		Accumulator<?, ?> accumulator = accumulators.get(name);
 
@@ -187,8 +223,7 @@ public abstract class AbstractRuntimeUDFContext implements RuntimeContext {
 			// Create new accumulator
 			try {
 				accumulator = accumulatorClass.newInstance();
-			}
-			catch (Exception e) {
+			} catch (Exception e) {
 				throw new RuntimeException("Cannot create accumulator " + accumulatorClass.getName());
 			}
 			accumulators.put(name, accumulator);
@@ -200,35 +235,43 @@ public abstract class AbstractRuntimeUDFContext implements RuntimeContext {
 	@PublicEvolving
 	public <T> ValueState<T> getState(ValueStateDescriptor<T> stateProperties) {
 		throw new UnsupportedOperationException(
-				"This state is only accessible by functions executed on a KeyedStream");
+			"This state is only accessible by functions executed on a KeyedStream");
 	}
 
 	@Override
 	@PublicEvolving
 	public <T> ListState<T> getListState(ListStateDescriptor<T> stateProperties) {
 		throw new UnsupportedOperationException(
-				"This state is only accessible by functions executed on a KeyedStream");
+			"This state is only accessible by functions executed on a KeyedStream");
 	}
 
 	@Override
 	@PublicEvolving
 	public <T> ReducingState<T> getReducingState(ReducingStateDescriptor<T> stateProperties) {
 		throw new UnsupportedOperationException(
-				"This state is only accessible by functions executed on a KeyedStream");
+			"This state is only accessible by functions executed on a KeyedStream");
 	}
 
 	@Override
 	@PublicEvolving
 	public <IN, ACC, OUT> AggregatingState<IN, OUT> getAggregatingState(AggregatingStateDescriptor<IN, ACC, OUT> stateProperties) {
 		throw new UnsupportedOperationException(
-				"This state is only accessible by functions executed on a KeyedStream");
+			"This state is only accessible by functions executed on a KeyedStream");
+	}
+
+	@Override
+	@PublicEvolving
+	@Deprecated
+	public <T, ACC> FoldingState<T, ACC> getFoldingState(FoldingStateDescriptor<T, ACC> stateProperties) {
+		throw new UnsupportedOperationException(
+			"This state is only accessible by functions executed on a KeyedStream");
 	}
 
 	@Override
 	@PublicEvolving
 	public <UK, UV> MapState<UK, UV> getMapState(MapStateDescriptor<UK, UV> stateProperties) {
 		throw new UnsupportedOperationException(
-				"This state is only accessible by functions executed on a KeyedStream");
+			"This state is only accessible by functions executed on a KeyedStream");
 	}
 
 	@Internal

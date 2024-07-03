@@ -32,9 +32,4 @@ public class HeapSyncSnapshotTtlStateTest extends TtlStateTestBase {
 			}
 		};
 	}
-
-	@Override
-	protected boolean incrementalCleanupSupported() {
-		return true;
-	}
 }

@@ -74,7 +74,7 @@ object WordCount {
       .filter(_.nonEmpty)
       .map((_, 1))
       // group by the tuple field "0" and sum up tuple field "1"
-      .keyBy(_._1)
+      .keyBy(0)
       .sum(1)
 
     // emit result

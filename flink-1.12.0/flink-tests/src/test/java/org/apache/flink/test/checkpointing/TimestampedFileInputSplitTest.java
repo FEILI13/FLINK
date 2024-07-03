@@ -20,7 +20,6 @@ package org.apache.flink.test.checkpointing;
 
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.streaming.api.functions.source.TimestampedFileInputSplit;
-import org.apache.flink.util.TestLogger;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -33,7 +32,7 @@ import java.util.Queue;
 /**
  * Test the {@link TimestampedFileInputSplit} for Continuous File Processing.
  */
-public class TimestampedFileInputSplitTest extends TestLogger {
+public class TimestampedFileInputSplitTest {
 
 	@Test
 	public void testSplitEquality() {

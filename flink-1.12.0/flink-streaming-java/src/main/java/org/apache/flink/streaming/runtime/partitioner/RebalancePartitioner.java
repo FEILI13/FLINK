@@ -18,7 +18,6 @@
 package org.apache.flink.streaming.runtime.partitioner;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.runtime.io.network.api.writer.SubtaskStateMapper;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
@@ -34,25 +33,20 @@ import java.util.concurrent.ThreadLocalRandom;
 public class RebalancePartitioner<T> extends StreamPartitioner<T> {
 	private static final long serialVersionUID = 1L;
 
-	private int nextChannelToSendTo;
+	private final int[] returnArray = {Integer.MAX_VALUE - 1};
 
 	@Override
-	public void setup(int numberOfChannels) {
-		super.setup(numberOfChannels);
-
-		nextChannelToSendTo = ThreadLocalRandom.current().nextInt(numberOfChannels);
+	public int[] selectChannels(
+			SerializationDelegate<StreamRecord<T>> record,
+			int numChannels) {
+		int newChannel = ++returnArray[0];
+		if (newChannel >= numChannels) {
+			returnArray[0] = 0;
+		}
+		return returnArray;
 	}
 
-	@Override
-	public int selectChannel(SerializationDelegate<StreamRecord<T>> record) {
-		nextChannelToSendTo = (nextChannelToSendTo + 1) % numberOfChannels;
-		return nextChannelToSendTo;
-	}
 
-	@Override
-	public SubtaskStateMapper getDownstreamSubtaskStateMapper() {
-		return SubtaskStateMapper.ROUND_ROBIN;
-	}
 
 	public StreamPartitioner<T> copy() {
 		return this;
@@ -61,5 +55,11 @@ public class RebalancePartitioner<T> extends StreamPartitioner<T> {
 	@Override
 	public String toString() {
 		return "REBALANCE";
+	}
+
+	@Override
+	public void notifyEpochStart(long epochID) {
+		this.returnArray[0] = -1;
+
 	}
 }

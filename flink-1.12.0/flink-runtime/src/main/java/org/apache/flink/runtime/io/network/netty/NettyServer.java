@@ -18,7 +18,6 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.runtime.util.FatalExitExceptionHandler;
 
 import org.apache.flink.shaded.guava18.com.google.common.util.concurrent.ThreadFactoryBuilder;
@@ -39,7 +38,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.concurrent.ThreadFactory;
-import java.util.function.Function;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -66,15 +64,7 @@ class NettyServer {
 		localAddress = null;
 	}
 
-	int init(final NettyProtocol protocol, NettyBufferPool nettyBufferPool) throws IOException {
-		return init(
-			nettyBufferPool,
-			sslHandlerFactory -> new ServerChannelInitializer(protocol, sslHandlerFactory));
-	}
-
-	int init(
-			NettyBufferPool nettyBufferPool,
-			Function<SSLHandlerFactory, ServerChannelInitializer> channelInitializer) throws IOException {
+	void init(final NettyProtocol protocol, NettyBufferPool nettyBufferPool) throws IOException {
 		checkState(bootstrap == null, "Netty server has already been initialized.");
 
 		final long start = System.nanoTime();
@@ -127,6 +117,20 @@ class NettyServer {
 			bootstrap.childOption(ChannelOption.SO_RCVBUF, receiveAndSendBufferSize);
 		}
 
+		// Low and high water marks for flow control
+		// hack around the impossibility (in the current netty version) to set both watermarks at
+		// the same time:
+		final int defaultHighWaterMark = 64 * 1024; // from DefaultChannelConfig (not exposed)
+		final int newLowWaterMark = config.getMemorySegmentSize() + 1;
+		final int newHighWaterMark = 2 * config.getMemorySegmentSize();
+		if (newLowWaterMark > defaultHighWaterMark) {
+			bootstrap.childOption(ChannelOption.WRITE_BUFFER_HIGH_WATER_MARK, newHighWaterMark);
+			bootstrap.childOption(ChannelOption.WRITE_BUFFER_LOW_WATER_MARK, newLowWaterMark);
+		} else { // including (newHighWaterMark < defaultLowWaterMark)
+			bootstrap.childOption(ChannelOption.WRITE_BUFFER_LOW_WATER_MARK, newLowWaterMark);
+			bootstrap.childOption(ChannelOption.WRITE_BUFFER_HIGH_WATER_MARK, newHighWaterMark);
+		}
+
 		// SSL related configuration
 		final SSLHandlerFactory sslHandlerFactory;
 		try {
@@ -139,7 +143,16 @@ class NettyServer {
 		// Child channel pipeline for accepted connections
 		// --------------------------------------------------------------------
 
-		bootstrap.childHandler(channelInitializer.apply(sslHandlerFactory));
+		bootstrap.childHandler(new ChannelInitializer<SocketChannel>() {
+			@Override
+			public void initChannel(SocketChannel channel) throws Exception {
+				if (sslHandlerFactory != null) {
+					channel.pipeline().addLast("ssl", sslHandlerFactory.createNettySSLHandler());
+				}
+
+				channel.pipeline().addLast(protocol.getServerChannelHandlers());
+			}
+		});
 
 		// --------------------------------------------------------------------
 		// Start Server
@@ -151,8 +164,6 @@ class NettyServer {
 
 		final long duration = (System.nanoTime() - start) / 1_000_000;
 		LOG.info("Successful initialization (took {} ms). Listening on SocketAddress {}.", duration, localAddress);
-
-		return localAddress.getPort();
 	}
 
 	NettyConfig getConfig() {
@@ -161,6 +172,10 @@ class NettyServer {
 
 	ServerBootstrap getBootstrap() {
 		return bootstrap;
+	}
+
+	public InetSocketAddress getLocalAddress() {
+		return localAddress;
 	}
 
 	void shutdown() {
@@ -200,27 +215,5 @@ class NettyServer {
 
 	public static ThreadFactory getNamedThreadFactory(String name) {
 		return THREAD_FACTORY_BUILDER.setNameFormat(name + " Thread %d").build();
-	}
-
-	@VisibleForTesting
-	static class ServerChannelInitializer extends ChannelInitializer<SocketChannel> {
-		private final NettyProtocol protocol;
-		private final SSLHandlerFactory sslHandlerFactory;
-
-		public ServerChannelInitializer(
-			NettyProtocol protocol, SSLHandlerFactory sslHandlerFactory) {
-			this.protocol = protocol;
-			this.sslHandlerFactory = sslHandlerFactory;
-		}
-
-		@Override
-		public void initChannel(SocketChannel channel) throws Exception {
-			if (sslHandlerFactory != null) {
-				channel.pipeline().addLast("ssl",
-					sslHandlerFactory.createNettySSLHandler(channel.alloc()));
-			}
-
-			channel.pipeline().addLast(protocol.getServerChannelHandlers());
-		}
 	}
 }

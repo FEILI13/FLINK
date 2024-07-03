@@ -24,11 +24,15 @@ import org.apache.flink.util.Preconditions;
 import java.io.Serializable;
 
 /**
- * A {@link FileInputSplit} with {@link TimestampedInputSplit}.
- */
-public class TimestampedFileInputSplit extends FileInputSplit implements TimestampedInputSplit {
-
-	private static final long serialVersionUID = -8153252402661556005L;
+ * An extended {@link FileInputSplit} that also includes information about:
+ * <ul>
+ *     <li>The modification time of the file this split belongs to.</li>
+ *     <li>When checkpointing, the state of the split at the moment of the checkpoint.</li>
+ * </ul>
+ * This class is used by the {@link ContinuousFileMonitoringFunction} and the
+ * {@link ContinuousFileReaderOperator} to perform continuous file processing.
+ * */
+public class TimestampedFileInputSplit extends FileInputSplit implements Comparable<TimestampedFileInputSplit>{
 
 	/** The modification time of the file this split belongs to. */
 	private final long modificationTime;
@@ -73,6 +77,13 @@ public class TimestampedFileInputSplit extends FileInputSplit implements Timesta
 		this.splitState = state;
 	}
 
+	/**
+	 * Sets the state of the split to {@code null}.
+	 */
+	public void resetSplitState() {
+		this.setSplitState(null);
+	}
+
 	/** @return the state of the split. */
 	public Serializable getSplitState() {
 		return this.splitState;
@@ -84,25 +95,24 @@ public class TimestampedFileInputSplit extends FileInputSplit implements Timesta
 	}
 
 	@Override
-	public int compareTo(TimestampedInputSplit o) {
-		TimestampedFileInputSplit other = (TimestampedFileInputSplit) o;
-		int modTimeComp = Long.compare(this.modificationTime, other.modificationTime);
+	public int compareTo(TimestampedFileInputSplit o) {
+		int modTimeComp = Long.compare(this.modificationTime, o.modificationTime);
 		if (modTimeComp != 0L) {
 			return modTimeComp;
 		}
 
 		// the file input split does not prevent null paths.
-		if (this.getPath() == null && other.getPath() != null) {
+		if (this.getPath() == null && o.getPath() != null) {
 			return 1;
-		} else if (this.getPath() != null && other.getPath() == null) {
+		} else if (this.getPath() != null && o.getPath() == null) {
 			return -1;
 		}
 
-		int pathComp = this.getPath() == other.getPath() ? 0 :
-			this.getPath().compareTo(other.getPath());
+		int pathComp = this.getPath() == o.getPath() ? 0 :
+			this.getPath().compareTo(o.getPath());
 
 		return pathComp != 0 ? pathComp :
-			this.getSplitNumber() - other.getSplitNumber();
+			this.getSplitNumber() - o.getSplitNumber();
 	}
 
 	@Override

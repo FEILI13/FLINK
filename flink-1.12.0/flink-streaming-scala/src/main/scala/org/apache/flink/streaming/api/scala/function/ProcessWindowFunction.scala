@@ -51,8 +51,7 @@ abstract class ProcessWindowFunction[IN, OUT, KEY, W <: Window]
   def process(key: KEY, context: Context, elements: Iterable[IN], out: Collector[OUT])
 
   /**
-    * Deletes any state in the [[Context]] when the Window expires
-    * (the watermark passes its `maxTimestamp` + `allowedLateness`).
+    * Deletes any state in the [[Context]] when the Window is purged.
     *
     * @param context The context to which the window is being evaluated
     * @throws Exception The function may throw exceptions to fail the program and trigger recovery.

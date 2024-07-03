@@ -20,7 +20,7 @@ package org.apache.flink.streaming.runtime.partitioner;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.functions.Partitioner;
 import org.apache.flink.api.java.functions.KeySelector;
-import org.apache.flink.runtime.io.network.api.writer.SubtaskStateMapper;
+import org.apache.flink.api.common.services.RandomService;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
@@ -36,6 +36,7 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 public class CustomPartitionerWrapper<K, T> extends StreamPartitioner<T> {
 	private static final long serialVersionUID = 1L;
 
+	private final int[] returnArray = new int[1];
 	Partitioner<K> partitioner;
 	KeySelector<T, K> keySelector;
 
@@ -45,23 +46,24 @@ public class CustomPartitionerWrapper<K, T> extends StreamPartitioner<T> {
 	}
 
 	@Override
-	public int selectChannel(SerializationDelegate<StreamRecord<T>> record) {
-		K key;
+	public int[] selectChannels(SerializationDelegate<StreamRecord<T>> record, int numberOfOutputChannels) {
+
+		K key = null;
 		try {
 			key = keySelector.getKey(record.getInstance().getValue());
 		} catch (Exception e) {
 			throw new RuntimeException("Could not extract key from " + record.getInstance(), e);
 		}
 
-		return partitioner.partition(key, numberOfChannels);
+		returnArray[0] = partitioner.partition(key,
+				numberOfOutputChannels);
+
+		return returnArray;
 	}
 
 	@Override
-	public SubtaskStateMapper getDownstreamSubtaskStateMapper() {
-		// fully rely on filtering downstream
-		// note that custom partitioners are not officially supported - the user has to force rescaling
-		// in that case, we assume that the custom partitioner is deterministic
-		return SubtaskStateMapper.FULL;
+	public void setRandomService(RandomService randomService) {
+
 	}
 
 	@Override
@@ -72,5 +74,10 @@ public class CustomPartitionerWrapper<K, T> extends StreamPartitioner<T> {
 	@Override
 	public String toString() {
 		return "CUSTOM";
+	}
+
+	@Override
+	public void notifyEpochStart(long epochID) {
+		//TODO partitioner.notifyCheckpointBarrier(long checkpointID);
 	}
 }

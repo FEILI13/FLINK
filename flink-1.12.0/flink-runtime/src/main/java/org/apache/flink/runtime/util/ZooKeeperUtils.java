@@ -25,40 +25,25 @@ import org.apache.flink.configuration.IllegalConfigurationException;
 import org.apache.flink.configuration.SecurityOptions;
 import org.apache.flink.runtime.checkpoint.CompletedCheckpoint;
 import org.apache.flink.runtime.checkpoint.CompletedCheckpointStore;
-import org.apache.flink.runtime.checkpoint.DefaultCompletedCheckpointStore;
-import org.apache.flink.runtime.checkpoint.DefaultLastStateConnectionStateListener;
 import org.apache.flink.runtime.checkpoint.ZooKeeperCheckpointIDCounter;
-import org.apache.flink.runtime.checkpoint.ZooKeeperCheckpointStoreUtil;
-import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
-import org.apache.flink.runtime.jobgraph.JobGraph;
-import org.apache.flink.runtime.jobmanager.DefaultJobGraphStore;
+import org.apache.flink.runtime.checkpoint.ZooKeeperCompletedCheckpointStore;
 import org.apache.flink.runtime.jobmanager.HighAvailabilityMode;
-import org.apache.flink.runtime.jobmanager.JobGraphStore;
-import org.apache.flink.runtime.jobmanager.ZooKeeperJobGraphStoreUtil;
-import org.apache.flink.runtime.jobmanager.ZooKeeperJobGraphStoreWatcher;
-import org.apache.flink.runtime.leaderelection.DefaultLeaderElectionService;
-import org.apache.flink.runtime.leaderelection.LeaderElectionDriverFactory;
-import org.apache.flink.runtime.leaderelection.ZooKeeperLeaderElectionDriver;
-import org.apache.flink.runtime.leaderelection.ZooKeeperLeaderElectionDriverFactory;
-import org.apache.flink.runtime.leaderretrieval.DefaultLeaderRetrievalService;
-import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalDriverFactory;
-import org.apache.flink.runtime.leaderretrieval.ZooKeeperLeaderRetrievalDriver;
-import org.apache.flink.runtime.leaderretrieval.ZooKeeperLeaderRetrievalDriverFactory;
-import org.apache.flink.runtime.persistence.RetrievableStateStorageHelper;
-import org.apache.flink.runtime.persistence.filesystem.FileSystemStateStorageHelper;
-import org.apache.flink.runtime.zookeeper.ZooKeeperStateHandleStore;
+import org.apache.flink.runtime.jobmanager.SubmittedJobGraph;
+import org.apache.flink.runtime.jobmanager.ZooKeeperSubmittedJobGraphStore;
+import org.apache.flink.runtime.leaderelection.ZooKeeperLeaderElectionService;
+import org.apache.flink.runtime.leaderretrieval.ZooKeeperLeaderRetrievalService;
+import org.apache.flink.runtime.zookeeper.RetrievableStateStorageHelper;
+import org.apache.flink.runtime.zookeeper.filesystem.FileSystemStateStorageHelper;
 import org.apache.flink.util.Preconditions;
 
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.CuratorFramework;
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.CuratorFrameworkFactory;
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.api.ACLProvider;
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.imps.DefaultACLProvider;
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.recipes.cache.PathChildrenCache;
-import org.apache.flink.shaded.curator4.org.apache.curator.retry.ExponentialBackoffRetry;
-import org.apache.flink.shaded.zookeeper3.org.apache.zookeeper.ZooDefs;
-import org.apache.flink.shaded.zookeeper3.org.apache.zookeeper.data.ACL;
-
 import org.apache.commons.lang3.StringUtils;
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.framework.api.ACLProvider;
+import org.apache.curator.framework.imps.DefaultACLProvider;
+import org.apache.curator.retry.ExponentialBackoffRetry;
+import org.apache.zookeeper.ZooDefs;
+import org.apache.zookeeper.data.ACL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -75,12 +60,6 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 public class ZooKeeperUtils {
 
 	private static final Logger LOG = LoggerFactory.getLogger(ZooKeeperUtils.class);
-
-	/**  The prefix of the submitted job graph file. */
-	public static final String HA_STORAGE_SUBMITTED_JOBGRAPH_PREFIX = "submittedJobGraph";
-
-	/** The prefix of the completed checkpoint file. */
-	public static final String HA_STORAGE_COMPLETED_CHECKPOINT = "completedCheckpoint";
 
 	/**
 	 * Starts a {@link CuratorFramework} instance and connects it to the given ZooKeeper
@@ -179,113 +158,62 @@ public class ZooKeeperUtils {
 	}
 
 	/**
-	 * Creates a {@link DefaultLeaderRetrievalService} instance with {@link ZooKeeperLeaderRetrievalDriver}.
+	 * Creates a {@link ZooKeeperLeaderRetrievalService} instance.
 	 *
 	 * @param client        The {@link CuratorFramework} ZooKeeper client to use
 	 * @param configuration {@link Configuration} object containing the configuration values
-	 * @return {@link DefaultLeaderRetrievalService} instance.
+	 * @return {@link ZooKeeperLeaderRetrievalService} instance.
+	 * @throws Exception
 	 */
-	public static DefaultLeaderRetrievalService createLeaderRetrievalService(
-			final CuratorFramework client,
-			final Configuration configuration) {
+	public static ZooKeeperLeaderRetrievalService createLeaderRetrievalService(
+		final CuratorFramework client,
+		final Configuration configuration) throws Exception
+	{
 		return createLeaderRetrievalService(client, configuration, "");
 	}
 
 	/**
-	 * Creates a {@link DefaultLeaderRetrievalService} instance with {@link ZooKeeperLeaderRetrievalDriver}.
+	 * Creates a {@link ZooKeeperLeaderRetrievalService} instance.
 	 *
 	 * @param client        The {@link CuratorFramework} ZooKeeper client to use
 	 * @param configuration {@link Configuration} object containing the configuration values
 	 * @param pathSuffix    The path suffix which we want to append
-	 * @return {@link DefaultLeaderRetrievalService} instance.
+	 * @return {@link ZooKeeperLeaderRetrievalService} instance.
+	 * @throws Exception
 	 */
-	public static DefaultLeaderRetrievalService createLeaderRetrievalService(
-			final CuratorFramework client,
-			final Configuration configuration,
-			final String pathSuffix) {
-		return new DefaultLeaderRetrievalService(createLeaderRetrievalDriverFactory(client, configuration, pathSuffix));
-	}
-
-	/**
-	 * Creates a {@link LeaderRetrievalDriverFactory} implemented by ZooKeeper.
-	 * @param client        The {@link CuratorFramework} ZooKeeper client to use
-	 * @param configuration {@link Configuration} object containing the configuration values
-	 * @return {@link LeaderRetrievalDriverFactory} instance.
-	 */
-	public static ZooKeeperLeaderRetrievalDriverFactory createLeaderRetrievalDriverFactory(
-			final CuratorFramework client,
-			final Configuration configuration) {
-		return createLeaderRetrievalDriverFactory(client, configuration, "");
-	}
-
-	/**
-	 * Creates a {@link LeaderRetrievalDriverFactory} implemented by ZooKeeper.
-	 * @param client        The {@link CuratorFramework} ZooKeeper client to use
-	 * @param configuration {@link Configuration} object containing the configuration values
-	 * @param pathSuffix    The path suffix which we want to append
-	 * @return {@link LeaderRetrievalDriverFactory} instance.
-	 */
-	public static ZooKeeperLeaderRetrievalDriverFactory createLeaderRetrievalDriverFactory(
-			final CuratorFramework client,
-			final Configuration configuration,
-			final String pathSuffix) {
-		final String leaderPath = configuration.getString(
+	public static ZooKeeperLeaderRetrievalService createLeaderRetrievalService(
+		final CuratorFramework client,
+		final Configuration configuration,
+		final String pathSuffix) {
+		String leaderPath = configuration.getString(
 			HighAvailabilityOptions.HA_ZOOKEEPER_LEADER_PATH) + pathSuffix;
-		return new ZooKeeperLeaderRetrievalDriverFactory(client, leaderPath);
+
+		return new ZooKeeperLeaderRetrievalService(client, leaderPath);
 	}
 
 	/**
-	 * Creates a {@link DefaultLeaderElectionService} instance with {@link ZooKeeperLeaderElectionDriver}.
+	 * Creates a {@link ZooKeeperLeaderElectionService} instance.
 	 *
 	 * @param client        The {@link CuratorFramework} ZooKeeper client to use
 	 * @param configuration {@link Configuration} object containing the configuration values
-	 * @return {@link DefaultLeaderElectionService} instance.
+	 * @return {@link ZooKeeperLeaderElectionService} instance.
 	 */
-	public static DefaultLeaderElectionService createLeaderElectionService(
+	public static ZooKeeperLeaderElectionService createLeaderElectionService(
 			CuratorFramework client,
-			Configuration configuration) {
+			Configuration configuration) throws Exception {
 
 		return createLeaderElectionService(client, configuration, "");
 	}
 
 	/**
-	 * Creates a {@link DefaultLeaderElectionService} instance with {@link ZooKeeperLeaderElectionDriver}.
+	 * Creates a {@link ZooKeeperLeaderElectionService} instance.
 	 *
 	 * @param client        The {@link CuratorFramework} ZooKeeper client to use
 	 * @param configuration {@link Configuration} object containing the configuration values
 	 * @param pathSuffix    The path suffix which we want to append
-	 * @return {@link DefaultLeaderElectionService} instance.
+	 * @return {@link ZooKeeperLeaderElectionService} instance.
 	 */
-	public static DefaultLeaderElectionService createLeaderElectionService(
-			final CuratorFramework client,
-			final Configuration configuration,
-			final String pathSuffix) {
-		return new DefaultLeaderElectionService(
-			createLeaderElectionDriverFactory(client, configuration, pathSuffix));
-	}
-
-	/**
-	 * Creates a {@link LeaderElectionDriverFactory} implemented by ZooKeeper.
-	 *
-	 * @param client        The {@link CuratorFramework} ZooKeeper client to use
-	 * @param configuration {@link Configuration} object containing the configuration values
-	 * @return {@link LeaderElectionDriverFactory} instance.
-	 */
-	public static ZooKeeperLeaderElectionDriverFactory createLeaderElectionDriverFactory(
-			final CuratorFramework client,
-			final Configuration configuration) {
-		return createLeaderElectionDriverFactory(client, configuration, "");
-	}
-
-	/**
-	 * Creates a {@link LeaderElectionDriverFactory} implemented by ZooKeeper.
-	 *
-	 * @param client        The {@link CuratorFramework} ZooKeeper client to use
-	 * @param configuration {@link Configuration} object containing the configuration values
-	 * @param pathSuffix    The path suffix which we want to append
-	 * @return {@link LeaderElectionDriverFactory} instance.
-	 */
-	public static ZooKeeperLeaderElectionDriverFactory createLeaderElectionDriverFactory(
+	public static ZooKeeperLeaderElectionService createLeaderElectionService(
 			final CuratorFramework client,
 			final Configuration configuration,
 			final String pathSuffix) {
@@ -294,58 +222,43 @@ public class ZooKeeperUtils {
 		final String leaderPath = configuration.getString(
 			HighAvailabilityOptions.HA_ZOOKEEPER_LEADER_PATH) + pathSuffix;
 
-		return new ZooKeeperLeaderElectionDriverFactory(client, latchPath, leaderPath);
+		return new ZooKeeperLeaderElectionService(client, latchPath, leaderPath);
 	}
 
 	/**
-	 * Creates a {@link DefaultJobGraphStore} instance with {@link ZooKeeperStateHandleStore},
-	 * {@link ZooKeeperJobGraphStoreWatcher} and {@link ZooKeeperJobGraphStoreUtil}.
+	 * Creates a {@link ZooKeeperSubmittedJobGraphStore} instance.
 	 *
 	 * @param client        The {@link CuratorFramework} ZooKeeper client to use
 	 * @param configuration {@link Configuration} object
-	 * @return {@link DefaultJobGraphStore} instance
+	 * @return {@link ZooKeeperSubmittedJobGraphStore} instance
 	 * @throws Exception if the submitted job graph store cannot be created
 	 */
-	public static JobGraphStore createJobGraphs(
+	public static ZooKeeperSubmittedJobGraphStore createSubmittedJobGraphs(
 			CuratorFramework client,
 			Configuration configuration) throws Exception {
 
 		checkNotNull(configuration, "Configuration");
 
-		RetrievableStateStorageHelper<JobGraph> stateStorage = createFileSystemStateStorage(
-			configuration, HA_STORAGE_SUBMITTED_JOBGRAPH_PREFIX);
+		RetrievableStateStorageHelper<SubmittedJobGraph> stateStorage = createFileSystemStateStorage(configuration, "submittedJobGraph");
 
 		// ZooKeeper submitted jobs root dir
-		String zooKeeperJobsPath = configuration.getString(HighAvailabilityOptions.HA_ZOOKEEPER_JOBGRAPHS_PATH);
+		String zooKeeperSubmittedJobsPath = configuration.getString(HighAvailabilityOptions.HA_ZOOKEEPER_JOBGRAPHS_PATH);
 
-		// Ensure that the job graphs path exists
-		client.newNamespaceAwareEnsurePath(zooKeeperJobsPath)
-			.ensure(client.getZookeeperClient());
-
-		// All operations will have the path as root
-		CuratorFramework facade = client.usingNamespace(client.getNamespace() + zooKeeperJobsPath);
-
-		final String zooKeeperFullJobsPath = client.getNamespace() + zooKeeperJobsPath;
-
-		final ZooKeeperStateHandleStore<JobGraph> zooKeeperStateHandleStore = new ZooKeeperStateHandleStore<>(facade, stateStorage);
-
-		final PathChildrenCache pathCache = new PathChildrenCache(facade, "/", false);
-
-		return new DefaultJobGraphStore<>(
-			zooKeeperStateHandleStore,
-			new ZooKeeperJobGraphStoreWatcher(pathCache),
-			ZooKeeperJobGraphStoreUtil.INSTANCE);
+		return new ZooKeeperSubmittedJobGraphStore(
+			client,
+			zooKeeperSubmittedJobsPath,
+			stateStorage);
 	}
 
 	/**
-	 * Creates a {@link DefaultCompletedCheckpointStore} instance with {@link ZooKeeperStateHandleStore}.
+	 * Creates a {@link ZooKeeperCompletedCheckpointStore} instance.
 	 *
 	 * @param client                         The {@link CuratorFramework} ZooKeeper client to use
 	 * @param configuration                  {@link Configuration} object
 	 * @param jobId                          ID of job to create the instance for
 	 * @param maxNumberOfCheckpointsToRetain The maximum number of checkpoints to retain
 	 * @param executor to run ZooKeeper callbacks
-	 * @return {@link DefaultCompletedCheckpointStore} instance
+	 * @return {@link ZooKeeperCompletedCheckpointStore} instance
 	 * @throws Exception if the completed checkpoint store cannot be created
 	 */
 	public static CompletedCheckpointStore createCompletedCheckpoints(
@@ -362,51 +275,16 @@ public class ZooKeeperUtils {
 
 		RetrievableStateStorageHelper<CompletedCheckpoint> stateStorage = createFileSystemStateStorage(
 			configuration,
-			HA_STORAGE_COMPLETED_CHECKPOINT);
+			"completedCheckpoint");
 
-		checkpointsPath += getPathForJob(jobId);
+		checkpointsPath += ZooKeeperSubmittedJobGraphStore.getPathForJob(jobId);
 
-		final ZooKeeperStateHandleStore<CompletedCheckpoint> completedCheckpointStateHandleStore =
-			createZooKeeperStateHandleStore(client, checkpointsPath, stateStorage);
-		final CompletedCheckpointStore zooKeeperCompletedCheckpointStore = new DefaultCompletedCheckpointStore<>(
+		return new ZooKeeperCompletedCheckpointStore(
 			maxNumberOfCheckpointsToRetain,
-			completedCheckpointStateHandleStore,
-			ZooKeeperCheckpointStoreUtil.INSTANCE,
+			client,
+			checkpointsPath,
+			stateStorage,
 			executor);
-
-		LOG.info(
-			"Initialized {} in '{}' with {}.",
-			DefaultCompletedCheckpointStore.class.getSimpleName(),
-			completedCheckpointStateHandleStore,
-			checkpointsPath);
-		return zooKeeperCompletedCheckpointStore;
-	}
-
-
-	/**
-	 * Returns the JobID as a String (with leading slash).
-	 */
-	public static String getPathForJob(JobID jobId) {
-		checkNotNull(jobId, "Job ID");
-		return String.format("/%s", jobId);
-	}
-
-	/**
-	 * Creates an instance of {@link ZooKeeperStateHandleStore}.
-	 *
-	 * @param client       ZK client
-	 * @param path         Path to use for the client namespace
-	 * @param stateStorage RetrievableStateStorageHelper that persist the actual state and whose
-	 *                     returned state handle is then written to ZooKeeper
-	 * @param <T>          Type of state
-	 * @return {@link ZooKeeperStateHandleStore} instance
-	 * @throws Exception ZK errors
-	 */
-	public static <T extends Serializable> ZooKeeperStateHandleStore<T> createZooKeeperStateHandleStore(
-			final CuratorFramework client,
-			final String path,
-			final RetrievableStateStorageHelper<T> stateStorage) throws Exception {
-		return new ZooKeeperStateHandleStore<>(useNamespaceAndEnsurePath(client, path), stateStorage);
 	}
 
 	/**
@@ -425,9 +303,9 @@ public class ZooKeeperUtils {
 		String checkpointIdCounterPath = configuration.getString(
 				HighAvailabilityOptions.HA_ZOOKEEPER_CHECKPOINT_COUNTER_PATH);
 
-		checkpointIdCounterPath += getPathForJob(jobId);
+		checkpointIdCounterPath += ZooKeeperSubmittedJobGraphStore.getPathForJob(jobId);
 
-		return new ZooKeeperCheckpointIDCounter(client, checkpointIdCounterPath, new DefaultLastStateConnectionStateListener());
+		return new ZooKeeperCheckpointIDCounter(client, checkpointIdCounterPath);
 	}
 
 	/**
@@ -443,7 +321,14 @@ public class ZooKeeperUtils {
 			Configuration configuration,
 			String prefix) throws IOException {
 
-		return new FileSystemStateStorageHelper<>(HighAvailabilityServicesUtils.getClusterHighAvailableStoragePath(configuration), prefix);
+		String rootPath = configuration.getValue(HighAvailabilityOptions.HA_STORAGE_PATH);
+
+		if (rootPath == null || StringUtils.isBlank(rootPath)) {
+			throw new IllegalConfigurationException("Missing high-availability storage path for metadata." +
+					" Specify via configuration key '" + HighAvailabilityOptions.HA_STORAGE_PATH + "'.");
+		} else {
+			return new FileSystemStateStorageHelper<T>(rootPath, prefix);
+		}
 	}
 
 	public static String generateZookeeperPath(String root, String namespace) {
@@ -460,27 +345,6 @@ public class ZooKeeperUtils {
 		}
 
 		return root + namespace;
-	}
-
-	/**
-	 * Returns a facade of the client that uses the specified namespace, and ensures that all nodes
-	 * in the path exist.
-	 *
-	 * @param client ZK client
-	 * @param path the new namespace
-	 * @return ZK Client that uses the new namespace
-	 * @throws Exception ZK errors
-	 */
-	public static CuratorFramework useNamespaceAndEnsurePath(final CuratorFramework client, final String path) throws Exception {
-		Preconditions.checkNotNull(client, "client must not be null");
-		Preconditions.checkNotNull(path, "path must not be null");
-
-		// Ensure that the checkpoints path exists
-		client.newNamespaceAwareEnsurePath(path)
-			.ensure(client.getZookeeperClient());
-
-		// All operations will have the path as root
-		return client.usingNamespace(generateZookeeperPath(client.getNamespace(), path));
 	}
 
 	/**

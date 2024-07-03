@@ -20,6 +20,7 @@ package org.apache.flink.runtime.operators.sort;
 
 import org.apache.flink.api.common.typeutils.TypeComparator;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.api.common.typeutils.TypeSerializerFactory;
 import org.apache.flink.core.memory.MemorySegment;
 
 import javax.annotation.Nonnull;
@@ -32,19 +33,21 @@ import java.util.List;
 public class DefaultInMemorySorterFactory<T> implements InMemorySorterFactory<T> {
 
 	@Nonnull
-	private final TypeSerializer<T> typeSerializer;
+	private final TypeSerializerFactory<T> typeSerializerFactory;
 
 	@Nonnull
 	private final TypeComparator<T> typeComparator;
 
 	private final boolean useFixedLengthRecordSorter;
 
-	public DefaultInMemorySorterFactory(
-			@Nonnull TypeSerializer<T> typeSerializer,
+	DefaultInMemorySorterFactory(
+			@Nonnull TypeSerializerFactory<T> typeSerializerFactory,
 			@Nonnull TypeComparator<T> typeComparator,
 			int thresholdForInPlaceSorting) {
-		this.typeSerializer = typeSerializer;
+		this.typeSerializerFactory = typeSerializerFactory;
 		this.typeComparator = typeComparator;
+
+		TypeSerializer<T> typeSerializer = typeSerializerFactory.getSerializer();
 
 		this.useFixedLengthRecordSorter = typeComparator.supportsSerializationWithKeyNormalization() &&
 			typeSerializer.getLength() > 0 && typeSerializer.getLength() <= thresholdForInPlaceSorting;
@@ -52,13 +55,13 @@ public class DefaultInMemorySorterFactory<T> implements InMemorySorterFactory<T>
 
 	@Override
 	public InMemorySorter<T> create(List<MemorySegment> sortSegments) {
-		final TypeSerializer<T> duplicatedTypeSerializer = typeSerializer.duplicate();
+		final TypeSerializer<T> typeSerializer = typeSerializerFactory.getSerializer();
 		final TypeComparator<T> duplicateTypeComparator = typeComparator.duplicate();
 
 		if (useFixedLengthRecordSorter) {
-			return new FixedLengthRecordSorter<>(duplicatedTypeSerializer, duplicateTypeComparator, sortSegments);
+			return new FixedLengthRecordSorter<>(typeSerializer, duplicateTypeComparator, sortSegments);
 		} else {
-			return new NormalizedKeySorter<>(duplicatedTypeSerializer, duplicateTypeComparator, sortSegments);
+			return new NormalizedKeySorter<>(typeSerializer, duplicateTypeComparator, sortSegments);
 		}
 	}
 }

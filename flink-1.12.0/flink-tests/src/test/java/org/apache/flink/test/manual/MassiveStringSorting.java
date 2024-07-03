@@ -26,12 +26,11 @@ import org.apache.flink.api.common.typeutils.base.StringComparator;
 import org.apache.flink.api.common.typeutils.base.StringSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.typeutils.TupleTypeInfo;
+import org.apache.flink.api.java.typeutils.runtime.RuntimeSerializerFactory;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
 import org.apache.flink.runtime.memory.MemoryManager;
-import org.apache.flink.runtime.memory.MemoryManagerBuilder;
-import org.apache.flink.runtime.operators.sort.ExternalSorter;
-import org.apache.flink.runtime.operators.sort.Sorter;
+import org.apache.flink.runtime.operators.sort.UnilateralSortMerger;
 import org.apache.flink.runtime.operators.testutils.DummyInvokable;
 import org.apache.flink.util.MutableObjectIterator;
 
@@ -46,7 +45,7 @@ import java.io.IOException;
 import java.util.Random;
 
 /**
- * Test {@link ExternalSorter} on a large set of {@code String}.
+ * Test {@link UnilateralSortMerger} on a large set of {@code String}.
  */
 public class MassiveStringSorting {
 
@@ -80,13 +79,15 @@ public class MassiveStringSorting {
 			}
 
 			// sort the data
-			Sorter<String> sorter = null;
+			UnilateralSortMerger<String> sorter = null;
 			BufferedReader reader = null;
 			BufferedReader verifyReader = null;
 			MemoryManager mm = null;
+			IOManager ioMan = null;
 
-			try (IOManager ioMan = new IOManagerAsync()) {
-				mm = MemoryManagerBuilder.newBuilder().setMemorySize(1024 * 1024).build();
+			try {
+				mm = new MemoryManager(1024 * 1024, 1);
+				ioMan = new IOManagerAsync();
 
 				TypeSerializer<String> serializer = StringSerializer.INSTANCE;
 				TypeComparator<String> comparator = new StringComparator(true);
@@ -94,18 +95,9 @@ public class MassiveStringSorting {
 				reader = new BufferedReader(new FileReader(input));
 				MutableObjectIterator<String> inputIterator = new StringReaderMutableObjectIterator(reader);
 
-				sorter =
-					ExternalSorter.newBuilder(
-							mm,
-							new DummyInvokable(),
-							serializer,
-							comparator)
-						.maxNumFileHandles(4)
-						.enableSpilling(ioMan, 0.8f)
-						.memoryFraction(1.0)
-						.objectReuse(false)
-						.largeRecords(true)
-						.build(inputIterator);
+				sorter = new UnilateralSortMerger<String>(mm, ioMan, inputIterator, new DummyInvokable(),
+						new RuntimeSerializerFactory<String>(serializer, String.class), comparator, 1.0, 4, 0.8f,
+						true /* use large record handler */, false);
 
 				MutableObjectIterator<String> sortedData = sorter.getIterator();
 
@@ -134,6 +126,9 @@ public class MassiveStringSorting {
 				}
 				if (mm != null) {
 					mm.shutdown();
+				}
+				if (ioMan != null) {
+					ioMan.shutdown();
 				}
 			}
 		}
@@ -183,13 +178,15 @@ public class MassiveStringSorting {
 			}
 
 			// sort the data
-			Sorter<Tuple2<String, String[]>> sorter = null;
+			UnilateralSortMerger<Tuple2<String, String[]>> sorter = null;
 			BufferedReader reader = null;
 			BufferedReader verifyReader = null;
 			MemoryManager mm = null;
+			IOManager ioMan = null;
 
-			try (IOManager ioMan = new IOManagerAsync()) {
-				mm = MemoryManagerBuilder.newBuilder().setMemorySize(1024 * 1024).build();
+			try {
+				mm = new MemoryManager(1024 * 1024, 1);
+				ioMan = new IOManagerAsync();
 
 				TupleTypeInfo<Tuple2<String, String[]>> typeInfo = (TupleTypeInfo<Tuple2<String, String[]>>)
 						new TypeHint<Tuple2<String, String[]>>(){}.getTypeInfo();
@@ -200,18 +197,9 @@ public class MassiveStringSorting {
 				reader = new BufferedReader(new FileReader(input));
 				MutableObjectIterator<Tuple2<String, String[]>> inputIterator = new StringTupleReaderMutableObjectIterator(reader);
 
-				sorter =
-					ExternalSorter.newBuilder(
-							mm,
-							new DummyInvokable(),
-							serializer,
-							comparator)
-						.maxNumFileHandles(4)
-						.enableSpilling(ioMan, 0.8f)
-						.memoryFraction(1.0)
-						.objectReuse(false)
-						.largeRecords(true)
-						.build(inputIterator);
+				sorter = new UnilateralSortMerger<Tuple2<String, String[]>>(mm, ioMan, inputIterator, new DummyInvokable(),
+						new RuntimeSerializerFactory<Tuple2<String, String[]>>(serializer, (Class<Tuple2<String, String[]>>) (Class<?>) Tuple2.class), comparator, 1.0, 4, 0.8f,
+						true /* use large record handler */, false);
 
 				// use this part to verify that all if good when sorting in memory
 
@@ -267,6 +255,9 @@ public class MassiveStringSorting {
 				}
 				if (mm != null) {
 					mm.shutdown();
+				}
+				if (ioMan != null) {
+					ioMan.shutdown();
 				}
 			}
 		}

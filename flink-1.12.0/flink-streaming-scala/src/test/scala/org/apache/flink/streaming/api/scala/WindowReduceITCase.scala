@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit
 
 import org.apache.flink.api.common.functions.ReduceFunction
 import org.apache.flink.api.java.tuple.Tuple
+import org.apache.flink.streaming.api.TimeCharacteristic
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks
 import org.apache.flink.streaming.api.functions.sink.SinkFunction
 import org.apache.flink.streaming.api.functions.source.SourceFunction
@@ -47,6 +48,7 @@ class WindowReduceITCase extends AbstractTestBase {
     WindowReduceITCase.testResults = mutable.MutableList()
 
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     env.setParallelism(1)
 
     val source1 = env.addSource(new SourceFunction[(String, Int)]() {
@@ -100,6 +102,7 @@ class WindowReduceITCase extends AbstractTestBase {
     }
     
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     env.setParallelism(1)
 
     val source1 = env.addSource(new SourceFunction[(String, Int)]() {
@@ -157,6 +160,7 @@ class WindowReduceITCase extends AbstractTestBase {
     }
 
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     env.setParallelism(1)
 
     val source1 = env.addSource(new SourceFunction[(String, Int)]() {
@@ -207,6 +211,7 @@ class WindowReduceITCase extends AbstractTestBase {
     WindowReduceITCase.testResults = mutable.MutableList()
     
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     env.setParallelism(1)
 
     val source1 = env.addSource(new SourceFunction[(String, Int)]() {
@@ -258,6 +263,7 @@ class WindowReduceITCase extends AbstractTestBase {
     }
     
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     env.setParallelism(1)
 
     val source1 = env.addSource(new SourceFunction[(String, Int)]() {
@@ -313,6 +319,7 @@ class WindowReduceITCase extends AbstractTestBase {
     }
 
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
     env.setParallelism(1)
 
     val source1 = env.addSource(new SourceFunction[(String, Int)]() {

@@ -26,12 +26,12 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-connectors</artifactId>
-		<version>1.12.0</version>
+		<version>1.7-CLONOS-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 
 	<artifactId>flink-connector-twitter_${scala.binary.version}</artifactId>
-	<name>Flink : Connectors : Twitter</name>
+	<name>flink-connector-twitter</name>
 
 	<packaging>jar</packaging>
 

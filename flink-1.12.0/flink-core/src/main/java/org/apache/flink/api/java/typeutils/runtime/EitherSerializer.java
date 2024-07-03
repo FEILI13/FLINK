@@ -182,11 +182,17 @@ public class EitherSerializer<L, R> extends TypeSerializer<Either<L, R>> {
 		if (obj instanceof EitherSerializer) {
 			EitherSerializer<L, R> other = (EitherSerializer<L, R>) obj;
 
-			return leftSerializer.equals(other.leftSerializer) &&
+			return other.canEqual(this) &&
+				leftSerializer.equals(other.leftSerializer) &&
 				rightSerializer.equals(other.rightSerializer);
 		} else {
 			return false;
 		}
+	}
+
+	@Override
+	public boolean canEqual(Object obj) {
+		return obj instanceof EitherSerializer;
 	}
 
 	@Override
@@ -199,7 +205,7 @@ public class EitherSerializer<L, R> extends TypeSerializer<Either<L, R>> {
 	// ------------------------------------------------------------------------
 
 	@Override
-	public JavaEitherSerializerSnapshot<L, R> snapshotConfiguration() {
-		return new JavaEitherSerializerSnapshot<>(this);
+	public EitherSerializerSnapshot<L, R> snapshotConfiguration() {
+		return new EitherSerializerSnapshot<>(leftSerializer, rightSerializer);
 	}
 }

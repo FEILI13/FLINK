@@ -42,6 +42,7 @@ object Elasticsearch5SinkExample {
       return
     }
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.getConfig.disableSysoutLogging
     env.enableCheckpointing(5000)
 
     val source: DataStream[(String)] = env.generateSequence(0, 20 - 1)

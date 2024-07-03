@@ -29,7 +29,7 @@ import java.util.Optional;
 public interface BackPressureStatsTracker {
 
 	/**
-	 * Returns back pressure statistics for an operator. Automatically triggers back pressure request
+	 * Returns back pressure statistics for a operator. Automatically triggers stack trace sampling
 	 * if statistics are not available or outdated.
 	 *
 	 * @param vertex Operator to get the stats for.

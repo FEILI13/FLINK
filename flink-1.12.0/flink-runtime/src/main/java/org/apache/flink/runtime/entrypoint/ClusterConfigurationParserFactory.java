@@ -36,17 +36,13 @@ import static org.apache.flink.runtime.entrypoint.parser.CommandLineOptions.DYNA
  */
 public class ClusterConfigurationParserFactory implements ParserResultFactory<ClusterConfiguration> {
 
-	public static Options options() {
+	@Override
+	public Options getOptions() {
 		final Options options = new Options();
 		options.addOption(CONFIG_DIR_OPTION);
 		options.addOption(DYNAMIC_PROPERTY_OPTION);
 
 		return options;
-	}
-
-	@Override
-	public Options getOptions() {
-		return options();
 	}
 
 	@Override

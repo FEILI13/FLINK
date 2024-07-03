@@ -35,10 +35,6 @@ import java.io.StringWriter;
 public class TestLogger {
 	protected final Logger log = LoggerFactory.getLogger(getClass());
 
-	static {
-		TestSignalHandler.register();
-	}
-
 	@Rule
 	public TestRule watchman = new TestWatcher() {
 

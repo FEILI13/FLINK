@@ -20,10 +20,8 @@ package org.apache.flink.streaming.connectors.kinesis.manualtests;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.TaskManagerOptions;
-import org.apache.flink.runtime.testutils.MiniClusterResource;
-import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
+import org.apache.flink.runtime.minicluster.LocalFlinkMiniCluster;
 import org.apache.flink.streaming.connectors.kinesis.config.AWSConfigConstants;
 import org.apache.flink.streaming.connectors.kinesis.testutils.ExactlyOnceValidatingConsumerThread;
 import org.apache.flink.streaming.connectors.kinesis.testutils.KinesisEventsGeneratorProducerThread;
@@ -79,17 +77,15 @@ public class ManualExactlyOnceTest {
 		}
 
 		final Configuration flinkConfig = new Configuration();
-		flinkConfig.set(TaskManagerOptions.MANAGED_MEMORY_SIZE, MemorySize.parse("16m"));
+		flinkConfig.setInteger(ConfigConstants.LOCAL_NUMBER_TASK_MANAGER, 1);
+		flinkConfig.setInteger(TaskManagerOptions.NUM_TASK_SLOTS, 8);
+		flinkConfig.setString(TaskManagerOptions.MANAGED_MEMORY_SIZE, "16m");
 		flinkConfig.setString(ConfigConstants.RESTART_STRATEGY_FIXED_DELAY_DELAY, "0 s");
 
-		MiniClusterResource flink = new MiniClusterResource(new MiniClusterResourceConfiguration.Builder()
-			.setNumberTaskManagers(1)
-			.setNumberSlotsPerTaskManager(8)
-			.setConfiguration(flinkConfig)
-			.build());
-		flink.before();
+		LocalFlinkMiniCluster flink = new LocalFlinkMiniCluster(flinkConfig, false);
+		flink.start();
 
-		final int flinkPort = flink.getRestAddres().getPort();
+		final int flinkPort = flink.getLeaderRPCPort();
 
 		try {
 			final AtomicReference<Throwable> producerError = new AtomicReference<>();
@@ -147,7 +143,7 @@ public class ManualExactlyOnceTest {
 			client.shutdown();
 
 			// stopping flink
-			flink.after();
+			flink.stop();
 		}
 	}
 }

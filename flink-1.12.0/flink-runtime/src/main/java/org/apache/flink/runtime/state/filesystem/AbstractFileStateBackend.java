@@ -21,8 +21,8 @@ package org.apache.flink.runtime.state.filesystem;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.configuration.ConfigOption;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.IllegalConfigurationException;
-import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.state.AbstractStateBackend;
 import org.apache.flink.runtime.state.CompletedCheckpointStorageLocation;
@@ -63,7 +63,7 @@ import java.net.URI;
  * <h1>Metadata File</h1>
  *
  * <p>A completed checkpoint writes its metadata into a file
- * '{@value AbstractFsCheckpointStorageAccess#METADATA_FILE_NAME}'.
+ * '{@value AbstractFsCheckpointStorage#METADATA_FILE_NAME}'.
  */
 @PublicEvolving
 public abstract class AbstractFileStateBackend extends AbstractStateBackend {
@@ -126,7 +126,7 @@ public abstract class AbstractFileStateBackend extends AbstractStateBackend {
 	protected AbstractFileStateBackend(
 			@Nullable Path baseCheckpointPath,
 			@Nullable Path baseSavepointPath,
-			ReadableConfig configuration) {
+			Configuration configuration) {
 
 		this(parameterOrConfigured(baseCheckpointPath, configuration, CheckpointingOptions.CHECKPOINTS_DIRECTORY),
 				parameterOrConfigured(baseSavepointPath, configuration, CheckpointingOptions.SAVEPOINT_DIRECTORY));
@@ -162,7 +162,7 @@ public abstract class AbstractFileStateBackend extends AbstractStateBackend {
 
 	@Override
 	public CompletedCheckpointStorageLocation resolveCheckpoint(String pointer) throws IOException {
-		return AbstractFsCheckpointStorageAccess.resolveCheckpointPointer(pointer);
+		return AbstractFsCheckpointStorage.resolveCheckpointPointer(pointer);
 	}
 
 	// ------------------------------------------------------------------------
@@ -199,12 +199,12 @@ public abstract class AbstractFileStateBackend extends AbstractStateBackend {
 	}
 
 	@Nullable
-	private static Path parameterOrConfigured(@Nullable Path path, ReadableConfig config, ConfigOption<String> option) {
+	private static Path parameterOrConfigured(@Nullable Path path, Configuration config, ConfigOption<String> option) {
 		if (path != null) {
 			return path;
 		}
 		else {
-			String configValue = config.get(option);
+			String configValue = config.getString(option);
 			try {
 				return configValue == null ? null : new Path(configValue);
 			}

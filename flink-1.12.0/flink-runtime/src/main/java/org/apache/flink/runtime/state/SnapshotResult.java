@@ -64,12 +64,10 @@ public class SnapshotResult<T extends StateObject> implements StateObject {
 		this.taskLocalSnapshot = taskLocalSnapshot;
 	}
 
-	@Nullable
 	public T getJobManagerOwnedSnapshot() {
 		return jobManagerOwnedSnapshot;
 	}
 
-	@Nullable
 	public T getTaskLocalSnapshot() {
 		return taskLocalSnapshot;
 	}

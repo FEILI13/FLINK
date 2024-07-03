@@ -29,17 +29,16 @@ public class FileSystemTestUtils {
 
 	/**
 	 * Verifies that the given path eventually appears on / disappears from <tt>fs</tt> within
-	 * <tt>consistencyToleranceNS</tt> nanoseconds.
+	 * <tt>deadline</tt> nanoseconds.
 	 */
 	public static void checkPathEventualExistence(
 			FileSystem fs,
 			Path path,
 			boolean expectedExists,
-			long consistencyToleranceNS) throws IOException, InterruptedException {
+			long deadline) throws IOException, InterruptedException {
 		boolean dirExists;
-		long deadline = System.nanoTime() + consistencyToleranceNS;
 		while ((dirExists = fs.exists(path)) != expectedExists &&
-				System.nanoTime() - deadline < 0) {
+				System.nanoTime() < deadline) {
 			Thread.sleep(10);
 		}
 		assertEquals(expectedExists, dirExists);

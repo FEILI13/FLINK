@@ -1,9 +1,8 @@
 ---
 title: "Libraries"
 nav-id: libs
-nav-title: '<i class="fa fa-book title maindish" aria-hidden="true"></i> Libraries'
-nav-parent_id: root
-nav-pos: 6
+nav-parent_id: dev
+nav-pos: 80
 ---
 <!--
 Licensed to the Apache Software Foundation (ASF) under one

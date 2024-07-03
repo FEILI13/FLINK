@@ -25,8 +25,6 @@ import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
 import org.apache.flink.runtime.checkpoint.PrioritizedOperatorSubtaskState;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
-import org.apache.flink.runtime.checkpoint.channel.SequentialChannelStateReader;
-import org.apache.flink.runtime.checkpoint.channel.SequentialChannelStateReaderImpl;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.taskmanager.CheckpointResponder;
@@ -60,9 +58,12 @@ public class TaskStateManagerImpl implements TaskStateManager {
 	/** The execution attempt id that this manager reports for. */
 	private final ExecutionAttemptID executionAttemptID;
 
-	/** The data given by the job manager to restore the job. This is null for a new job without previous state. */
+	/** The data given by the job manager to restore the job.
+	 *  This is null for a new job without previous state.
+	 *  A standby task receives the state snapshot of its counterpart running task after each checkpoint.
+	 * */
 	@Nullable
-	private final JobManagerTaskRestore jobManagerTaskRestore;
+	private JobManagerTaskRestore jobManagerTaskRestore;
 
 	/** The local state store to which this manager reports local state snapshots. */
 	private final TaskLocalStateStore localStateStore;
@@ -70,36 +71,18 @@ public class TaskStateManagerImpl implements TaskStateManager {
 	/** The checkpoint responder through which this manager can report to the job manager. */
 	private final CheckpointResponder checkpointResponder;
 
-	private final SequentialChannelStateReader sequentialChannelStateReader;
-
 	public TaskStateManagerImpl(
-			@Nonnull JobID jobId,
-			@Nonnull ExecutionAttemptID executionAttemptID,
-			@Nonnull TaskLocalStateStore localStateStore,
-			@Nullable JobManagerTaskRestore jobManagerTaskRestore,
-			@Nonnull CheckpointResponder checkpointResponder) {
-		this(
-			jobId,
-			executionAttemptID,
-			localStateStore,
-			jobManagerTaskRestore,
-			checkpointResponder,
-			new SequentialChannelStateReaderImpl(jobManagerTaskRestore == null ? new TaskStateSnapshot() : jobManagerTaskRestore.getTaskStateSnapshot()));
-	}
+		@Nonnull JobID jobId,
+		@Nonnull ExecutionAttemptID executionAttemptID,
+		@Nonnull TaskLocalStateStore localStateStore,
+		@Nullable JobManagerTaskRestore jobManagerTaskRestore,
+		@Nonnull CheckpointResponder checkpointResponder) {
 
-	public TaskStateManagerImpl(
-			@Nonnull JobID jobId,
-			@Nonnull ExecutionAttemptID executionAttemptID,
-			@Nonnull TaskLocalStateStore localStateStore,
-			@Nullable JobManagerTaskRestore jobManagerTaskRestore,
-			@Nonnull CheckpointResponder checkpointResponder,
-			@Nonnull SequentialChannelStateReaderImpl sequentialChannelStateReader) {
 		this.jobId = jobId;
 		this.localStateStore = localStateStore;
 		this.jobManagerTaskRestore = jobManagerTaskRestore;
 		this.executionAttemptID = executionAttemptID;
 		this.checkpointResponder = checkpointResponder;
-		this.sequentialChannelStateReader = sequentialChannelStateReader;
 	}
 
 	@Override
@@ -173,13 +156,8 @@ public class TaskStateManagerImpl implements TaskStateManager {
 		return localStateStore.getLocalRecoveryConfig();
 	}
 
-	@Override
-	public SequentialChannelStateReader getSequentialChannelStateReader() {
-		return sequentialChannelStateReader;
-	}
-
 	/**
-	 * Tracking when local state can be confirmed and disposed.
+	 * Tracking when local state can be disposed.
 	 */
 	@Override
 	public void notifyCheckpointComplete(long checkpointId) throws Exception {
@@ -187,15 +165,16 @@ public class TaskStateManagerImpl implements TaskStateManager {
 	}
 
 	/**
-	 * Tracking when some local state can be disposed.
+	 * Receive the latest checkpointed state of running task.
+	 * Only applies to a standby task in STANDBY state.
 	 */
 	@Override
-	public void notifyCheckpointAborted(long checkpointId) {
-		localStateStore.abortCheckpoint(checkpointId);
+	public void setTaskRestore(JobManagerTaskRestore taskRestore) {
+		this.jobManagerTaskRestore = taskRestore;
 	}
 
 	@Override
-	public void close() throws Exception {
-		sequentialChannelStateReader.close();
+	public long getCurrentCheckpointRestoreID() {
+		return (jobManagerTaskRestore == null ? 0 : jobManagerTaskRestore.getRestoreCheckpointId());
 	}
 }

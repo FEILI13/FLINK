@@ -20,13 +20,9 @@ package org.apache.flink.api.common.typeutils.base;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.CompositeTypeSerializerConfigSnapshot;
-import org.apache.flink.api.common.typeutils.CompositeTypeSerializerUtil;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.TypeSerializerSchemaCompatibility;
-import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
-import org.apache.flink.api.java.tuple.Tuple2;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -51,14 +47,12 @@ public final class MapSerializerConfigSnapshot<K, V> extends CompositeTypeSerial
 	@Override
 	public TypeSerializerSchemaCompatibility<Map<K, V>> resolveSchemaCompatibility(TypeSerializer<Map<K, V>> newSerializer) {
 		if (newSerializer instanceof MapSerializer) {
-			List<Tuple2<TypeSerializer<?>, TypeSerializerSnapshot<?>>> nestedSerializersAndConfigs = getNestedSerializersAndConfigs();
+			// redirect the compatibility check to the new MapSerializerConfigSnapshot
+			MapSerializer<K, V> mapSerializer = (MapSerializer<K, V>) newSerializer;
 
-			// redirect the compatibility check to the new MapSerializerSnapshot
-			return CompositeTypeSerializerUtil.delegateCompatibilityCheckToNewSnapshot(
-				newSerializer,
-				new MapSerializerSnapshot<>(),
-				nestedSerializersAndConfigs.get(0).f1,
-				nestedSerializersAndConfigs.get(1).f1);
+			MapSerializerSnapshot<K, V> mapSerializerSnapshot =
+				new MapSerializerSnapshot<>(mapSerializer.getKeySerializer(), mapSerializer.getValueSerializer());
+			return mapSerializerSnapshot.resolveSchemaCompatibility(newSerializer);
 		}
 		else {
 			return super.resolveSchemaCompatibility(newSerializer);

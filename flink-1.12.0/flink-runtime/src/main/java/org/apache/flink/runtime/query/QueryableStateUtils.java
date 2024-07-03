@@ -26,6 +26,7 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
+import java.net.InetAddress;
 import java.util.Iterator;
 
 /**
@@ -53,7 +54,7 @@ public final class QueryableStateUtils {
 	 * @return the {@link KvStateClientProxy client proxy}.
 	 */
 	public static KvStateClientProxy createKvStateClientProxy(
-			final String address,
+			final InetAddress address,
 			final Iterator<Integer> ports,
 			final int eventLoopThreads,
 			final int queryThreads,
@@ -69,7 +70,7 @@ public final class QueryableStateUtils {
 			String classname = "org.apache.flink.queryablestate.client.proxy.KvStateClientProxyImpl";
 			Class<? extends KvStateClientProxy> clazz = Class.forName(classname).asSubclass(KvStateClientProxy.class);
 			Constructor<? extends KvStateClientProxy> constructor = clazz.getConstructor(
-					String.class,
+					InetAddress.class,
 					Iterator.class,
 					Integer.class,
 					Integer.class,
@@ -107,7 +108,7 @@ public final class QueryableStateUtils {
 	 * @return the {@link KvStateServer state server}.
 	 */
 	public static KvStateServer createKvStateServer(
-			final String address,
+			final InetAddress address,
 			final Iterator<Integer> ports,
 			final int eventLoopThreads,
 			final int queryThreads,
@@ -125,7 +126,7 @@ public final class QueryableStateUtils {
 			String classname = "org.apache.flink.queryablestate.server.KvStateServerImpl";
 			Class<? extends KvStateServer> clazz = Class.forName(classname).asSubclass(KvStateServer.class);
 			Constructor<? extends KvStateServer> constructor = clazz.getConstructor(
-					String.class,
+					InetAddress.class,
 					Iterator.class,
 					Integer.class,
 					Integer.class,

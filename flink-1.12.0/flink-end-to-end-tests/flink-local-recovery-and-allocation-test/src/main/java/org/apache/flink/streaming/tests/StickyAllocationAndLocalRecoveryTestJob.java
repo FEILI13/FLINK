@@ -21,7 +21,6 @@ package org.apache.flink.streaming.tests;
 import org.apache.flink.api.common.functions.RichFlatMapFunction;
 import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
-import org.apache.flink.api.common.state.CheckpointListener;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.state.ValueState;
@@ -29,6 +28,7 @@ import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.contrib.streaming.state.RocksDBStateBackend;
+import org.apache.flink.runtime.state.CheckpointListener;
 import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.runtime.state.filesystem.FsStateBackend;
@@ -314,8 +314,6 @@ public class StickyAllocationAndLocalRecoveryTestJob {
 
 			StreamingRuntimeContext runtimeContext = (StreamingRuntimeContext) getRuntimeContext();
 			String allocationID = runtimeContext.getAllocationIDAsString();
-			// Pattern of the name: "Flat Map -> Sink: Unnamed (4/4)#0". Remove "#0" part:
-			String taskNameWithSubtasks = runtimeContext.getTaskNameWithSubtasks().split("#")[0];
 
 			final int thisJvmPid = getJvmPid();
 			final Set<Integer> killedJvmPids = new HashSet<>();
@@ -323,6 +321,7 @@ public class StickyAllocationAndLocalRecoveryTestJob {
 			// here we check if the sticky scheduling worked as expected
 			if (functionInitializationContext.isRestored()) {
 				Iterable<MapperSchedulingAndFailureInfo> iterable = schedulingAndFailureState.get();
+				String taskNameWithSubtasks = runtimeContext.getTaskNameWithSubtasks();
 
 				MapperSchedulingAndFailureInfo infoForThisTask = null;
 				List<MapperSchedulingAndFailureInfo> completeInfo = new ArrayList<>();
@@ -348,7 +347,7 @@ public class StickyAllocationAndLocalRecoveryTestJob {
 						"Sticky allocation test failed: Subtask %s in attempt %d was rescheduled from allocation %s " +
 							"on JVM with PID %d to unexpected allocation %s on JVM with PID %d.\n" +
 							"Complete information from before the crash: %s.",
-						taskNameWithSubtasks,
+						runtimeContext.getTaskNameWithSubtasks(),
 						runtimeContext.getAttemptNumber(),
 						infoForThisTask.allocationId,
 						infoForThisTask.jvmPid,
@@ -366,7 +365,7 @@ public class StickyAllocationAndLocalRecoveryTestJob {
 				failingTask,
 				failingTask && killTaskOnFailure,
 				thisJvmPid,
-				taskNameWithSubtasks,
+				runtimeContext.getTaskNameWithSubtasks(),
 				allocationID);
 
 			schedulingAndFailureState.clear();
@@ -377,10 +376,6 @@ public class StickyAllocationAndLocalRecoveryTestJob {
 		public void notifyCheckpointComplete(long checkpointId) {
 			// we can only fail the task after at least one checkpoint is completed to record progress.
 			failTask = currentSchedulingAndFailureInfo.failingTask;
-		}
-
-		@Override
-		public void notifyCheckpointAborted(long checkpointId) {
 		}
 
 		private boolean shouldTaskFailForThisAttempt() {

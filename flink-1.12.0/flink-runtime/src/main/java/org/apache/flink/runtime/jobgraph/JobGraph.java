@@ -26,15 +26,11 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
-import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroupDesc;
-import org.apache.flink.runtime.jobmanager.scheduler.SlotSharingGroup;
 import org.apache.flink.util.InstantiationUtil;
-import org.apache.flink.util.IterableUtils;
 import org.apache.flink.util.SerializedValue;
 
 import java.io.IOException;
 import java.io.Serializable;
-import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -44,9 +40,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -74,23 +68,27 @@ public class JobGraph implements Serializable {
 	private final Configuration jobConfiguration = new Configuration();
 
 	/** ID of this job. May be set if specific job id is desired (e.g. session management) */
-	private JobID jobID;
+	private final JobID jobID;
 
 	/** Name of this job. */
 	private final String jobName;
 
-	/** The mode in which the job is scheduled. */
-	private ScheduleMode scheduleMode = ScheduleMode.LAZY_FROM_SOURCES;
+	/** The number of seconds after which the corresponding ExecutionGraph is removed at the
+	 * job manager after it has been executed. */
+	private long sessionTimeout = 0;
 
-	/** Whether approximate local recovery is enabled. This flag will be removed together with legacy scheduling strategies. */
-	private boolean approximateLocalRecovery = false;
+	/** flag to enable queued scheduling */
+	private boolean allowQueuedScheduling;
+
+	/** The mode in which the job is scheduled */
+	private ScheduleMode scheduleMode = ScheduleMode.LAZY_FROM_SOURCES;
 
 	// --- checkpointing ---
 
-	/** Job specific execution config. */
+	/** Job specific execution config */
 	private SerializedValue<ExecutionConfig> serializedExecutionConfig;
 
-	/** The settings for the job checkpoints. */
+	/** The settings for the job checkpoints */
 	private JobCheckpointingSettings snapshotSettings;
 
 	/** Savepoint restore settings. */
@@ -192,13 +190,6 @@ public class JobGraph implements Serializable {
 	}
 
 	/**
-	 * Sets the ID of the job.
-	 */
-	public void setJobID(JobID jobID) {
-		this.jobID = jobID;
-	}
-
-	/**
 	 * Returns the name assigned to the job graph.
 	 *
 	 * @return the name assigned to the job graph
@@ -218,12 +209,38 @@ public class JobGraph implements Serializable {
 	}
 
 	/**
-	 * Returns the {@link ExecutionConfig}.
+	 * Returns the {@link ExecutionConfig}
 	 *
 	 * @return ExecutionConfig
 	 */
 	public SerializedValue<ExecutionConfig> getSerializedExecutionConfig() {
 		return serializedExecutionConfig;
+	}
+
+	/**
+	 * Gets the timeout after which the corresponding ExecutionGraph is removed at the
+	 * job manager after it has been executed.
+	 * @return a timeout as a long in seconds.
+	 */
+	public long getSessionTimeout() {
+		return sessionTimeout;
+	}
+
+	/**
+	 * Sets the timeout of the session in seconds. The timeout specifies how long a job will be kept
+	 * in the job manager after it finishes.
+	 * @param sessionTimeout The timeout in seconds
+	 */
+	public void setSessionTimeout(long sessionTimeout) {
+		this.sessionTimeout = sessionTimeout;
+	}
+
+	public void setAllowQueuedScheduling(boolean allowQueuedScheduling) {
+		this.allowQueuedScheduling = allowQueuedScheduling;
+	}
+
+	public boolean getAllowQueuedScheduling() {
+		return allowQueuedScheduling;
 	}
 
 	public void setScheduleMode(ScheduleMode scheduleMode) {
@@ -232,14 +249,6 @@ public class JobGraph implements Serializable {
 
 	public ScheduleMode getScheduleMode() {
 		return scheduleMode;
-	}
-
-	public void enableApproximateLocalRecovery(boolean enabled) {
-		this.approximateLocalRecovery = enabled;
-	}
-
-	public boolean isApproximateLocalRecoveryEnabled() {
-		return approximateLocalRecovery;
 	}
 
 	/**
@@ -316,27 +325,6 @@ public class JobGraph implements Serializable {
 		return this.taskVertices.size();
 	}
 
-	public Set<SlotSharingGroup> getSlotSharingGroups() {
-		final Set<SlotSharingGroup> slotSharingGroups = IterableUtils
-			.toStream(getVertices())
-			.map(JobVertex::getSlotSharingGroup)
-			.collect(Collectors.toSet());
-		return Collections.unmodifiableSet(slotSharingGroups);
-	}
-
-	public Set<CoLocationGroupDesc> getCoLocationGroupDescriptors() {
-		// invoke distinct() on CoLocationGroup first to avoid creating
-		// multiple CoLocationGroupDec from one CoLocationGroup
-		final Set<CoLocationGroupDesc> coLocationGroups = IterableUtils
-			.toStream(getVertices())
-			.map(JobVertex::getCoLocationGroup)
-			.filter(Objects::nonNull)
-			.distinct()
-			.map(CoLocationGroupDesc::from)
-			.collect(Collectors.toSet());
-		return Collections.unmodifiableSet(coLocationGroups);
-	}
-
 	/**
 	 * Sets the settings for asynchronous snapshots. A value of {@code null} means that
 	 * snapshotting is not enabled.
@@ -358,7 +346,7 @@ public class JobGraph implements Serializable {
 	}
 
 	/**
-	 * Checks if the checkpointing was enabled for this job graph.
+	 * Checks if the checkpointing was enabled for this job graph
 	 *
 	 * @return true if checkpointing enabled
 	 */
@@ -512,22 +500,6 @@ public class JobGraph implements Serializable {
 	}
 
 	/**
-	 * Adds the given jar files to the {@link JobGraph} via {@link JobGraph#addJar}.
-	 *
-	 * @param jarFilesToAttach a list of the {@link URL URLs} of the jar files to attach to the jobgraph.
-	 * @throws RuntimeException if a jar URL is not valid.
-	 */
-	public void addJars(final List<URL> jarFilesToAttach) {
-		for (URL jar : jarFilesToAttach) {
-			try {
-				addJar(new Path(jar.toURI()));
-			} catch (URISyntaxException e) {
-				throw new RuntimeException("URL is invalid. This should not happen.", e);
-			}
-		}
-	}
-
-	/**
 	 * Gets the list of assigned user jar paths.
 	 *
 	 * @return The list of assigned user jar paths
@@ -606,15 +578,6 @@ public class JobGraph implements Serializable {
 			originalEntry.filePath,
 			originalEntry.isExecutable,
 			serializedBlobKey,
-			originalEntry.isZipped
-		));
-	}
-
-	public void setUserArtifactRemotePath(String entryName, String remotePath) {
-		userArtifacts.computeIfPresent(entryName, (key, originalEntry) -> new DistributedCache.DistributedCacheEntry(
-			remotePath,
-			originalEntry.isExecutable,
-			null,
 			originalEntry.isZipped
 		));
 	}

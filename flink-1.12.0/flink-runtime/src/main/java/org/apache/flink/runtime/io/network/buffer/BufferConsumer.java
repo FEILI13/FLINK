@@ -25,8 +25,9 @@ import javax.annotation.concurrent.NotThreadSafe;
 
 import java.io.Closeable;
 
-import static org.apache.flink.runtime.io.network.buffer.Buffer.DataType.DATA_BUFFER;
-import static org.apache.flink.util.Preconditions.checkArgument;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -34,67 +35,79 @@ import static org.apache.flink.util.Preconditions.checkState;
  * Not thread safe class for producing {@link Buffer}.
  *
  * <p>It reads data written by {@link BufferBuilder}.
- * Although it is not thread safe and can be used only by one single thread, this thread can be different than the
+ * Although it is not thread safe and can be used only by one single thread, this thread can be different then the
  * thread using/writing to {@link BufferBuilder}. Pattern here is simple: one thread writes data to
  * {@link BufferBuilder} and there can be a different thread reading from it using {@link BufferConsumer}.
  */
 @NotThreadSafe
 public class BufferConsumer implements Closeable {
+	private static final Logger LOG = LoggerFactory.getLogger(BufferConsumer.class);
 	private final Buffer buffer;
 
 	private final CachedPositionMarker writerPosition;
 
+	private final long epochID;
+
 	private int currentReaderPosition;
 
+	public BufferConsumer(
+		MemorySegment memorySegment,
+		BufferRecycler recycler,
+		PositionMarker currentWriterPosition) {
+		this(memorySegment, recycler, currentWriterPosition, 0L);
+	}
 	/**
-	 * Constructs {@link BufferConsumer} instance with the initial reader position.
+	 * Constructs {@link BufferConsumer} instance with content that can be changed by {@link BufferBuilder}.
 	 */
 	public BufferConsumer(
 			MemorySegment memorySegment,
 			BufferRecycler recycler,
-			PositionMarker currentWriterPosition,
-			int currentReaderPosition) {
+			PositionMarker currentWriterPosition, long epochID) {
 		this(
-			new NetworkBuffer(checkNotNull(memorySegment), checkNotNull(recycler)),
+			new NetworkBuffer(checkNotNull(memorySegment), checkNotNull(recycler), true),
 			currentWriterPosition,
-			currentReaderPosition);
+			0, epochID);
 	}
 
+	public BufferConsumer(MemorySegment memorySegment, BufferRecycler recycler, boolean isBuffer) {
+		this(memorySegment, recycler, isBuffer,0L);
+	}
 	/**
 	 * Constructs {@link BufferConsumer} instance with static content.
 	 */
-	public BufferConsumer(MemorySegment memorySegment, BufferRecycler recycler, Buffer.DataType dataType) {
-		this(memorySegment, recycler, memorySegment.size(), dataType);
-	}
-
-	/**
-	 * Constructs {@link BufferConsumer} instance with static content of a certain size.
-	 */
-	public BufferConsumer(MemorySegment memorySegment, BufferRecycler recycler, int size, Buffer.DataType dataType) {
-		this(new NetworkBuffer(checkNotNull(memorySegment), checkNotNull(recycler), dataType),
-				() -> -size,
-				0);
+	public BufferConsumer(MemorySegment memorySegment, BufferRecycler recycler, boolean isBuffer, long epochID) {
+		this(new NetworkBuffer(checkNotNull(memorySegment), checkNotNull(recycler), isBuffer),
+			() -> -memorySegment.size(),
+			0, epochID);
 		checkState(memorySegment.size() > 0);
 		checkState(isFinished(), "BufferConsumer with static size must be finished after construction!");
 	}
 
-	private BufferConsumer(Buffer buffer, BufferBuilder.PositionMarker currentWriterPosition, int currentReaderPosition) {
+	private BufferConsumer(Buffer buffer, BufferBuilder.PositionMarker currentWriterPosition, int currentReaderPosition, long epochID) {
 		this.buffer = checkNotNull(buffer);
 		this.writerPosition = new CachedPositionMarker(checkNotNull(currentWriterPosition));
-		checkArgument(currentReaderPosition <= writerPosition.getCached(), "Reader position larger than writer position");
 		this.currentReaderPosition = currentReaderPosition;
+		this.epochID = epochID;
+	}
+
+	public long getEpochID() {
+		return epochID;
 	}
 
 	/**
 	 * Checks whether the {@link BufferBuilder} has already been finished.
 	 *
 	 * <p>BEWARE: this method accesses the cached value of the position marker which is only updated
-	 * after calls to {@link #build()} and {@link #skip(int)}!
+	 * after calls to {@link #build()}!
 	 *
 	 * @return <tt>true</tt> if the buffer was finished, <tt>false</tt> otherwise
 	 */
 	public boolean isFinished() {
 		return writerPosition.isFinished();
+	}
+
+	public Buffer getBackingBuffer(){
+		return buffer;
 	}
 
 	/**
@@ -108,16 +121,19 @@ public class BufferConsumer implements Closeable {
 		currentReaderPosition = cachedWriterPosition;
 		return slice.retainBuffer();
 	}
-
 	/**
-	 * @param bytesToSkip number of bytes to skip from currentReaderPosition
+	 * @return sliced {@link Buffer} containing the not yet consumed data of the provided size. Returned {@link Buffer} shares the reference
+	 * counter with the parent {@link BufferConsumer} - in order to recycle memory both of them must be recycled/closed.
 	 */
-	void skip(int bytesToSkip) {
+	public Buffer build(int size) {
 		writerPosition.update();
-		int cachedWriterPosition = writerPosition.getCached();
-		int bytesReadable = cachedWriterPosition - currentReaderPosition;
-		checkState(bytesToSkip <= bytesReadable, "bytes to skip beyond readable range");
-		currentReaderPosition += bytesToSkip;
+		checkState(writerPosition.getCached() - currentReaderPosition >= size);
+		LOG.debug("Build buffer of size {} with writerPosition: {}, readerPosition: {}", size, writerPosition.getCached(), currentReaderPosition);
+
+		Buffer slice = buffer.readOnlySlice(currentReaderPosition, size);
+
+		currentReaderPosition += size;
+		return slice.retainBuffer();
 	}
 
 	/**
@@ -129,27 +145,12 @@ public class BufferConsumer implements Closeable {
 	 * @return a retained copy of self with separate indexes
 	 */
 	public BufferConsumer copy() {
-		return new BufferConsumer(buffer.retainBuffer(), writerPosition.positionMarker, currentReaderPosition);
-	}
-
-	/**
-	 * Returns a retained copy with separate indexes and sets the reader position to the given value. This allows to
-	 * read from the same {@link MemorySegment} twice starting from the supplied position.
-	 *
-	 * @param readerPosition the new reader position. Can be less than the {@link #currentReaderPosition}, but may not
-	 * 						 exceed the current writer's position.
-	 * @return a retained copy of self with separate indexes
-	 */
-	public BufferConsumer copyWithReaderPosition(int readerPosition) {
-		return new BufferConsumer(buffer.retainBuffer(), writerPosition.positionMarker, readerPosition);
+		LOG.debug("Copy buffer {} (memorySegment hash: {}): writerPosition after: {}, readerPosition after: {}", buffer, System.identityHashCode(buffer.getMemorySegment()), writerPosition.getCached(), currentReaderPosition);
+		return new BufferConsumer(buffer.retainBuffer(), writerPosition.positionMarker, currentReaderPosition, epochID);
 	}
 
 	public boolean isBuffer() {
 		return buffer.isBuffer();
-	}
-
-	public Buffer.DataType getDataType() {
-		return buffer.getDataType();
 	}
 
 	@Override
@@ -167,23 +168,9 @@ public class BufferConsumer implements Closeable {
 		return writerPosition.getCached();
 	}
 
-	int getCurrentReaderPosition() {
-		return currentReaderPosition;
-	}
-
-	boolean isStartOfDataBuffer() {
-		return buffer.getDataType() == DATA_BUFFER && currentReaderPosition == 0;
-	}
-
-	int getBufferSize() {
-		return buffer.getMaxCapacity();
-	}
-
-	/**
-	 * Returns true if there is new data available for reading.
-	 */
-	public boolean isDataAvailable() {
-		return currentReaderPosition < writerPosition.getLatest();
+	public int getUnreadBytes() {
+		writerPosition.update();
+		return writerPosition.getCached() - currentReaderPosition;
 	}
 
 	/**
@@ -211,10 +198,6 @@ public class BufferConsumer implements Closeable {
 
 		public int getCached() {
 			return PositionMarker.getAbsolute(cachedPosition);
-		}
-
-		private int getLatest() {
-			return PositionMarker.getAbsolute(positionMarker.get());
 		}
 
 		private void update() {

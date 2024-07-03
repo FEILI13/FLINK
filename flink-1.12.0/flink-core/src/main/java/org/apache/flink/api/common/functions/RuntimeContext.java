@@ -27,9 +27,13 @@ import org.apache.flink.api.common.accumulators.Histogram;
 import org.apache.flink.api.common.accumulators.IntCounter;
 import org.apache.flink.api.common.accumulators.LongCounter;
 import org.apache.flink.api.common.cache.DistributedCache;
-import org.apache.flink.api.common.externalresource.ExternalResourceInfo;
+import org.apache.flink.api.common.services.RandomService;
+import org.apache.flink.api.common.services.SerializableService;
+import org.apache.flink.api.common.services.TimeService;
 import org.apache.flink.api.common.state.AggregatingState;
 import org.apache.flink.api.common.state.AggregatingStateDescriptor;
+import org.apache.flink.api.common.state.FoldingState;
+import org.apache.flink.api.common.state.FoldingStateDescriptor;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.state.MapState;
@@ -42,7 +46,8 @@ import org.apache.flink.metrics.MetricGroup;
 
 import java.io.Serializable;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
+import java.util.function.Function;
 
 /**
  * A RuntimeContext contains information about the context in which functions are executed. Each parallel instance
@@ -101,9 +106,9 @@ public interface RuntimeContext {
 	int getAttemptNumber();
 
 	/**
-	 * Returns the name of the task, appended with the subtask indicator, such as "MyTask (3/6)#1",
+	 * Returns the name of the task, appended with the subtask indicator, such as "MyTask (3/6)",
 	 * where 3 would be ({@link #getIndexOfThisSubtask()} + 1), and 6 would be
-	 * {@link #getNumberOfParallelSubtasks()}, and 1 would be {@link #getAttemptNumber()}.
+	 * {@link #getNumberOfParallelSubtasks()}.
 	 *
 	 * @return The name of the task, with subtask indicator.
 	 */
@@ -116,24 +121,12 @@ public interface RuntimeContext {
 	ExecutionConfig getExecutionConfig();
 
 	/**
-	 * Gets the ClassLoader to load classes that are not in system's classpath, but are part of the
+	 * Gets the ClassLoader to load classes that were are not in system's classpath, but are part of the
 	 * jar file of a user job.
 	 *
 	 * @return The ClassLoader for user code classes.
 	 */
 	ClassLoader getUserCodeClassLoader();
-
-	/**
-	 * Registers a custom hook for the user code class loader release.
-	 *
-	 * <p>The release hook is executed just before the user code class loader is being released.
-	 * Registration only happens if no hook has been registered under this name already.
-	 *
-	 * @param releaseHookName name of the release hook.
-	 * @param releaseHook release hook which is executed just before the user code class loader is being released
-	 */
-	@PublicEvolving
-	void registerUserCodeClassLoaderReleaseHookIfAbsent(String releaseHookName, Runnable releaseHook);
 
 	// --------------------------------------------------------------------------------------------
 
@@ -153,6 +146,15 @@ public interface RuntimeContext {
 	 * accumulator exists, but with different type.
 	 */
 	<V, A extends Serializable> Accumulator<V, A> getAccumulator(String name);
+
+	/**
+	 * Returns a map of all registered accumulators for this task.
+	 * The returned map must not be modified.
+	 * @deprecated Use getAccumulator(..) to obtain the value of an accumulator.
+	 */
+	@Deprecated
+	@PublicEvolving
+	Map<String, Accumulator<?, ?>> getAllAccumulators();
 
 	/**
 	 * Convenience function to create a counter object for integers.
@@ -177,15 +179,6 @@ public interface RuntimeContext {
 	 */
 	@PublicEvolving
 	Histogram getHistogram(String name);
-
-	/**
-	 * Get the specific external resource information by the resourceName.
-	 *
-	 * @param resourceName of the required external resource
-	 * @return information set of the external resource identified by the resourceName
-	 */
-	@PublicEvolving
-	Set<ExternalResourceInfo> getExternalResourceInfos(String resourceName);
 
 	// --------------------------------------------------------------------------------------------
 
@@ -269,7 +262,7 @@ public interface RuntimeContext {
 	 *
 	 *     public Tuple2<MyType, Long> map(MyType value) {
 	 *         long count = state.value() + 1;
-	 *         state.update(count);
+	 *         state.update(value);
 	 *         return new Tuple2<>(value, count);
 	 *     }
 	 * });
@@ -415,6 +408,50 @@ public interface RuntimeContext {
 	<IN, ACC, OUT> AggregatingState<IN, OUT> getAggregatingState(AggregatingStateDescriptor<IN, ACC, OUT> stateProperties);
 
 	/**
+	 * Gets a handle to the system's key/value folding state. This state is similar to the state
+	 * accessed via {@link #getState(ValueStateDescriptor)}, but is optimized for state that
+	 * aggregates values with different types.
+	 *
+	 * <p>This state is only accessible if the function is executed on a KeyedStream.
+	 *
+	 * <pre>{@code
+	 * DataStream<MyType> stream = ...;
+	 * KeyedStream<MyType> keyedStream = stream.keyBy("id");
+	 *
+	 * keyedStream.map(new RichMapFunction<MyType, List<MyType>>() {
+	 *
+	 *     private FoldingState<MyType, Long> state;
+	 *
+	 *     public void open(Configuration cfg) {
+	 *         state = getRuntimeContext().getFoldingState(
+	 *                 new FoldingStateDescriptor<>("sum", 0L, (a, b) -> a.count() + b, Long.class));
+	 *     }
+	 *
+	 *     public Tuple2<MyType, Long> map(MyType value) {
+	 *         state.add(value);
+	 *         return new Tuple2<>(value, state.get());
+	 *     }
+	 * });
+	 *
+	 * }</pre>
+	 *
+	 * @param stateProperties The descriptor defining the properties of the stats.
+	 *
+	 * @param <T> Type of the values folded in the other state
+	 * @param <ACC> Type of the value in the state
+	 *
+	 * @return The partitioned state object.
+	 *
+	 * @throws UnsupportedOperationException Thrown, if no partitioned state is available for the
+	 *                                       function (function is not part of a KeyedStream).
+	 *
+	 * @deprecated will be removed in a future version in favor of {@link AggregatingState}
+	 */
+	@PublicEvolving
+	@Deprecated
+	<T, ACC> FoldingState<T, ACC> getFoldingState(FoldingStateDescriptor<T, ACC> stateProperties);
+
+	/**
 	 * Gets a handle to the system's key/value map state. This state is similar to the state
 	 * accessed via {@link #getState(ValueStateDescriptor)}, but is optimized for state that
 	 * is composed of user-defined key-value pairs
@@ -453,4 +490,13 @@ public interface RuntimeContext {
 	 */
 	@PublicEvolving
 	<UK, UV> MapState<UK, UV> getMapState(MapStateDescriptor<UK, UV> stateProperties);
+
+	@PublicEvolving
+	TimeService getTimeService();
+
+	@PublicEvolving
+	RandomService getRandomService();
+
+	@PublicEvolving
+	<I,O extends Serializable> SerializableService<I,O> getSerializableService(Function<I,O> function);
 }

@@ -68,12 +68,6 @@ public class RocksIteratorWrapper implements RocksIteratorInterface, Closeable {
 	}
 
 	@Override
-	public void seekForPrev(byte[] target) {
-		iterator.seekForPrev(target);
-		status();
-	}
-
-	@Override
 	public void next() {
 		iterator.next();
 		status();

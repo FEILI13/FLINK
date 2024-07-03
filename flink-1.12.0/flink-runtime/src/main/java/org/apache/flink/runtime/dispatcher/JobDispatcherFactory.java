@@ -19,41 +19,68 @@
 package org.apache.flink.runtime.dispatcher;
 
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.entrypoint.ClusterEntrypoint;
+import org.apache.flink.runtime.entrypoint.component.JobGraphRetriever;
+import org.apache.flink.runtime.heartbeat.HeartbeatServices;
+import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
+import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
+import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
 
-import org.apache.flink.shaded.guava18.com.google.common.collect.Iterables;
-
-import java.util.Collection;
+import javax.annotation.Nullable;
 
 import static org.apache.flink.runtime.entrypoint.ClusterEntrypoint.EXECUTION_MODE;
 
 /**
  * {@link DispatcherFactory} which creates a {@link MiniDispatcher}.
  */
-public enum JobDispatcherFactory implements DispatcherFactory {
-	INSTANCE;
+public class JobDispatcherFactory implements DispatcherFactory<MiniDispatcher> {
+
+	private final JobGraphRetriever jobGraphRetriever;
+
+	public JobDispatcherFactory(JobGraphRetriever jobGraphRetriever) {
+		this.jobGraphRetriever = jobGraphRetriever;
+	}
 
 	@Override
 	public MiniDispatcher createDispatcher(
+			Configuration configuration,
 			RpcService rpcService,
-			DispatcherId fencingToken,
-			Collection<JobGraph> recoveredJobs,
-			DispatcherBootstrapFactory dispatcherBootstrapFactory,
-			PartialDispatcherServicesWithJobGraphStore partialDispatcherServicesWithJobGraphStore) throws Exception {
-		final JobGraph jobGraph = Iterables.getOnlyElement(recoveredJobs);
+			HighAvailabilityServices highAvailabilityServices,
+			ResourceManagerGateway resourceManagerGateway,
+			BlobServer blobServer,
+			HeartbeatServices heartbeatServices,
+			JobManagerMetricGroup jobManagerMetricGroup,
+			@Nullable String metricQueryServicePath,
+			ArchivedExecutionGraphStore archivedExecutionGraphStore,
+			FatalErrorHandler fatalErrorHandler,
+			@Nullable String restAddress,
+			HistoryServerArchivist historyServerArchivist) throws Exception {
+		final JobGraph jobGraph = jobGraphRetriever.retrieveJobGraph(configuration);
 
-		final Configuration configuration = partialDispatcherServicesWithJobGraphStore.getConfiguration();
 		final String executionModeValue = configuration.getString(EXECUTION_MODE);
+
 		final ClusterEntrypoint.ExecutionMode executionMode = ClusterEntrypoint.ExecutionMode.valueOf(executionModeValue);
 
 		return new MiniDispatcher(
 			rpcService,
-			fencingToken,
-			DispatcherServices.from(partialDispatcherServicesWithJobGraphStore, DefaultJobManagerRunnerFactory.INSTANCE),
+			Dispatcher.DISPATCHER_NAME,
+			configuration,
+			highAvailabilityServices,
+			resourceManagerGateway,
+			blobServer,
+			heartbeatServices,
+			jobManagerMetricGroup,
+			metricQueryServicePath,
+			archivedExecutionGraphStore,
+			Dispatcher.DefaultJobManagerRunnerFactory.INSTANCE,
+			fatalErrorHandler,
+			restAddress,
+			historyServerArchivist,
 			jobGraph,
-			dispatcherBootstrapFactory,
 			executionMode);
 	}
 }

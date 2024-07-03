@@ -22,39 +22,28 @@ import org.apache.flink.api.common.state.State;
 import org.apache.flink.api.common.state.StateDescriptor;
 import org.apache.flink.runtime.state.internal.InternalKvState;
 
-import java.util.Objects;
+abstract class TtlStateTestContextBase<S extends InternalKvState<?, String, ?>, UV, GV> {
+	S ttlState;
 
-/** Base class for state TTL test context. */
-public abstract class TtlStateTestContextBase<S extends InternalKvState<?, String, ?>, UV, GV> {
-	public S ttlState;
+	UV updateEmpty;
+	UV updateUnexpired;
+	UV updateExpired;
 
-	public UV updateEmpty;
-	public UV updateUnexpired;
-	public UV updateExpired;
-
-	public GV getUpdateEmpty;
-	public GV getUnexpired;
+	GV getUpdateEmpty;
+	GV getUnexpired;
 	GV getUpdateExpired;
 
-	public GV emptyValue = null;
+	GV emptyValue = null;
 
 	abstract void initTestValues();
 
-	public abstract <US extends State, SV> StateDescriptor<US, SV> createStateDescriptor();
+	abstract <US extends State, SV> StateDescriptor<US, SV> createStateDescriptor();
 
-	public abstract void update(UV value) throws Exception;
+	abstract void update(UV value) throws Exception;
 
-	public abstract GV get() throws Exception;
+	abstract GV get() throws Exception;
 
-	public abstract Object getOriginal() throws Exception;
-
-	public boolean isOriginalEmptyValue() throws Exception {
-		return Objects.equals(emptyValue, getOriginal());
-	}
-
-	public String getName() {
-		return this.getClass().getSimpleName();
-	}
+	abstract Object getOriginal() throws Exception;
 
 	@Override
 	public String toString() {

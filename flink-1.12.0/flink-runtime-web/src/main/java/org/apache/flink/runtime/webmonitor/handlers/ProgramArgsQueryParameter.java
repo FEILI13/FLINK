@@ -18,10 +18,12 @@
 
 package org.apache.flink.runtime.webmonitor.handlers;
 
+import java.io.File;
+
 /**
  * Query parameter specifying the arguments for the program.
  * @deprecated please, use {@link JarRequestBody#FIELD_NAME_PROGRAM_ARGUMENTS_LIST}
- * @see org.apache.flink.client.program.PackagedProgram.Builder#setArguments(String...)
+ * @see org.apache.flink.client.program.PackagedProgram#PackagedProgram(File, String, String...)
  */
 @Deprecated
 public class ProgramArgsQueryParameter extends StringQueryParameter {

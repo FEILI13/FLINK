@@ -85,9 +85,4 @@ abstract class MockInternalKvState<K, N, T> implements InternalKvState<K, N, T> 
 	private Map<Object, Object> getCurrentKeyValues() {
 		return values.get();
 	}
-
-	@Override
-	public StateIncrementalVisitor<K, N, T> getStateIncrementalVisitor(int recommendedMaxNumberOfReturnedRecords) {
-		throw new UnsupportedOperationException();
-	}
 }

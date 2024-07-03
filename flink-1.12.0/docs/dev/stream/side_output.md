@@ -57,11 +57,9 @@ contains.
 
 Emitting data to a side output is possible from the following functions:
 
-- [ProcessFunction]({% link dev/stream/operators/process_function.md %})
-- [KeyedProcessFunction]({% link dev/stream/operators/process_function.md %}#the-keyedprocessfunction)
+- [ProcessFunction]({{ site.baseurl }}/dev/stream/operators/process_function.html)
 - CoProcessFunction
-- KeyedCoProcessFunction
-- [ProcessWindowFunction]({% link dev/stream/operators/windows.md %}#processwindowfunction)
+- [ProcessWindowFunction]({{ site.baseurl }}/dev/stream/operators/windows.html#processwindowfunction)
 - ProcessAllWindowFunction
 
 You can use the `Context` parameter, which is exposed to users in the above functions, to emit

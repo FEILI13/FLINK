@@ -20,31 +20,83 @@ package org.apache.flink.runtime.jobmaster.slotpool;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
-import org.apache.flink.util.clock.Clock;
+import org.apache.flink.configuration.CheckpointingOptions;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.JobManagerOptions;
+import org.apache.flink.runtime.akka.AkkaUtils;
+import org.apache.flink.runtime.rpc.RpcService;
+import org.apache.flink.runtime.util.clock.Clock;
+import org.apache.flink.runtime.util.clock.SystemClock;
 
 import javax.annotation.Nonnull;
 
 /**
  * Default slot pool factory.
  */
-public class DefaultSlotPoolFactory extends AbstractSlotPoolFactory {
+public class DefaultSlotPoolFactory implements SlotPoolFactory {
+
+	@Nonnull
+	private final RpcService rpcService;
+
+	@Nonnull
+	private final SchedulingStrategy schedulingStrategy;
+
+	@Nonnull
+	private final Clock clock;
+
+	@Nonnull
+	private final Time rpcTimeout;
+
+	@Nonnull
+	private final Time slotIdleTimeout;
 
 	public DefaultSlotPoolFactory(
+			@Nonnull RpcService rpcService,
+			@Nonnull SchedulingStrategy schedulingStrategy,
 			@Nonnull Clock clock,
 			@Nonnull Time rpcTimeout,
-			@Nonnull Time slotIdleTimeout,
-			@Nonnull Time batchSlotTimeout) {
-		super(clock, rpcTimeout, slotIdleTimeout, batchSlotTimeout);
+			@Nonnull Time slotIdleTimeout) {
+		this.rpcService = rpcService;
+		this.schedulingStrategy = schedulingStrategy;
+		this.clock = clock;
+		this.rpcTimeout = rpcTimeout;
+		this.slotIdleTimeout = slotIdleTimeout;
 	}
 
 	@Override
 	@Nonnull
 	public SlotPool createSlotPool(@Nonnull JobID jobId) {
-		return new SlotPoolImpl(
+		return new SlotPool(
+			rpcService,
 			jobId,
+			schedulingStrategy,
 			clock,
 			rpcTimeout,
-			slotIdleTimeout,
-			batchSlotTimeout);
+			slotIdleTimeout);
+	}
+
+	public static DefaultSlotPoolFactory fromConfiguration(
+			@Nonnull Configuration configuration,
+			@Nonnull RpcService rpcService) {
+
+		final Time rpcTimeout = AkkaUtils.getTimeoutAsTime(configuration);
+		final Time slotIdleTimeout = Time.milliseconds(configuration.getLong(JobManagerOptions.SLOT_IDLE_TIMEOUT));
+
+		final SchedulingStrategy schedulingStrategy = selectSchedulingStrategy(configuration);
+
+		return new DefaultSlotPoolFactory(
+			rpcService,
+			schedulingStrategy,
+			SystemClock.getInstance(),
+			rpcTimeout,
+			slotIdleTimeout);
+	}
+
+	private static SchedulingStrategy selectSchedulingStrategy(Configuration configuration) {
+		if (configuration.getBoolean(CheckpointingOptions.LOCAL_RECOVERY)) {
+			return PreviousAllocationSchedulingStrategy.getInstance();
+		} else {
+			return LocationPreferenceSchedulingStrategy.getInstance();
+		}
 	}
 }

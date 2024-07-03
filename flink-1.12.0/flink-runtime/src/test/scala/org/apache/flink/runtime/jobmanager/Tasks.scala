@@ -20,11 +20,27 @@ package org.apache.flink.runtime.jobmanager
 
 import org.apache.flink.runtime.execution.Environment
 import org.apache.flink.runtime.io.network.api.reader.RecordReader
-import org.apache.flink.runtime.io.network.api.writer.RecordWriterBuilder
+import org.apache.flink.runtime.io.network.api.writer.RecordWriter
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable
 import org.apache.flink.types.IntValue
 
 object Tasks {
+
+  class Sender(environment: Environment)
+    extends AbstractInvokable(environment) {
+
+    override def invoke(): Unit = {
+      val writer = new RecordWriter[IntValue](getEnvironment.getWriter(0))
+
+      try{
+        writer.emit(new IntValue(42))
+        writer.emit(new IntValue(1337))
+        writer.flushAll()
+      }finally{
+        writer.clearBuffers()
+      }
+    }
+  }
 
   class Forwarder(environment: Environment)
     extends AbstractInvokable(environment) {
@@ -35,8 +51,7 @@ object Tasks {
         classOf[IntValue],
         getEnvironment.getTaskManagerInfo.getTmpDirectories)
       
-      val writer = new RecordWriterBuilder[IntValue]().build(
-        getEnvironment.getWriter(0))
+      val writer = new RecordWriter[IntValue](getEnvironment.getWriter(0))
 
       try {
         while (true) {
@@ -51,9 +66,67 @@ object Tasks {
 
         writer.flushAll()
       } finally {
-        writer.close()
+        writer.clearBuffers()
       }
     }
+  }
+
+  class Receiver(environment: Environment)
+    extends AbstractInvokable(environment) {
+
+    override def invoke(): Unit = {
+      val reader = new RecordReader[IntValue](
+        getEnvironment.getInputGate(0),
+        classOf[IntValue],
+        getEnvironment.getTaskManagerInfo.getTmpDirectories)
+
+      val i1 = reader.next()
+      val i2 = reader.next()
+      val i3 = reader.next()
+
+      if(i1.getValue != 42 || i2.getValue != 1337 || i3 != null){
+        throw new Exception("Wrong data received.")
+      }
+    }
+  }
+
+  class FailingOnceReceiver(environment: Environment)
+    extends Receiver(environment) {
+    import FailingOnceReceiver.failed
+
+    override def invoke(): Unit = {
+      if(!failed && getEnvironment.getTaskInfo.getIndexOfThisSubtask == 0){
+        failed = true
+        throw new Exception("Test exception.")
+      }else{
+        super.invoke()
+      }
+    }
+  }
+
+  object FailingOnceReceiver{
+    var failed = false
+  }
+
+  class BlockingOnceReceiver(environment: Environment)
+    extends Receiver(environment) {
+    import BlockingOnceReceiver.blocking
+
+    override def invoke(): Unit = {
+      if(blocking) {
+        val o = new Object
+        o.synchronized{
+          o.wait()
+        }
+      } else {
+        super.invoke()
+      }
+    }
+
+  }
+
+  object BlockingOnceReceiver{
+    var blocking = true
   }
 
   class AgnosticReceiver(environment: Environment)

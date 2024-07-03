@@ -36,8 +36,6 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 
-import static org.apache.flink.util.Preconditions.checkArgument;
-
 /**
  * This implementation of {@link InternalPriorityQueue} is internally partitioned into sub-queues per key-group and
  * essentially works as a heap-of-heaps. Instances will have set semantics for elements if the sub-queues have set
@@ -183,11 +181,7 @@ public class KeyGroupPartitionedPriorityQueue<T, PQ extends InternalPriorityQueu
 	}
 
 	private int globalKeyGroupToLocalIndex(int keyGroupId) {
-		int keyGroupIndex = keyGroupId - firstKeyGroup;
-		checkArgument((keyGroupIndex >= 0 && keyGroupIndex < keyGroupedHeaps.length),
-			"key group from %s to %s does not contain %s", firstKeyGroup,
-			(firstKeyGroup + keyGroupedHeaps.length), keyGroupId);
-		return keyGroupIndex;
+		return keyGroupId - firstKeyGroup;
 	}
 
 	@Nonnull

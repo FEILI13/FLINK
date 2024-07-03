@@ -86,6 +86,11 @@ public final class StringSerializer extends TypeSerializerSingleton<String> {
 	}
 
 	@Override
+	public boolean canEqual(Object obj) {
+		return obj instanceof StringSerializer;
+	}
+
+	@Override
 	public TypeSerializerSnapshot<String> snapshotConfiguration() {
 		return new StringSerializerSnapshot();
 	}
@@ -95,11 +100,10 @@ public final class StringSerializer extends TypeSerializerSingleton<String> {
 	/**
 	 * Serializer configuration snapshot for compatibility and format evolution.
 	 */
-	@SuppressWarnings("WeakerAccess")
 	public static final class StringSerializerSnapshot extends SimpleTypeSerializerSnapshot<String> {
 
 		public StringSerializerSnapshot() {
-			super(() -> INSTANCE);
+			super(StringSerializer.class);
 		}
 	}
 }

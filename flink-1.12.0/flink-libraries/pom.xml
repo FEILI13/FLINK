@@ -25,21 +25,26 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-parent</artifactId>
-		<version>1.12.0</version>
+		<version>1.7-CLONOS-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 
 	<artifactId>flink-libraries</artifactId>
-	<name>Flink : Libraries : </name>
+	<name>flink-libraries</name>
 	<packaging>pom</packaging>
 
 	<modules>
 		<module>flink-gelly</module>
 		<module>flink-gelly-scala</module>
 		<module>flink-gelly-examples</module>
+		<module>flink-python</module>
+		<module>flink-table</module>
+		<module>flink-table-common</module>
+		<module>flink-sql-client</module>
+		<module>flink-ml</module>
 		<module>flink-cep</module>
 		<module>flink-cep-scala</module>
-		<module>flink-state-processing-api</module>
+		<module>flink-streaming-python</module>
 	</modules>
 
 	<!-- override these root dependencies as 'provided', so they don't end up

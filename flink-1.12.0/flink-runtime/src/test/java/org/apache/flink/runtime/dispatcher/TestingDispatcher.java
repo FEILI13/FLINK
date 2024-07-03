@@ -20,13 +20,19 @@ package org.apache.flink.runtime.dispatcher;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.executiongraph.ArchivedExecutionGraph;
-import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.runtime.heartbeat.HeartbeatServices;
+import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
+import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
+import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
+import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
-import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
@@ -35,34 +41,35 @@ import java.util.function.Function;
  */
 class TestingDispatcher extends Dispatcher {
 
-	private final CompletableFuture<Void> startFuture;
-
 	TestingDispatcher(
-			RpcService rpcService,
-			DispatcherId fencingToken,
-			Collection<JobGraph> recoveredJobs,
-			DispatcherBootstrapFactory dispatcherBootstrapFactory,
-			DispatcherServices dispatcherServices) throws Exception {
+		RpcService rpcService,
+		String endpointId,
+		Configuration configuration,
+		HighAvailabilityServices highAvailabilityServices,
+		ResourceManagerGateway resourceManagerGateway,
+		BlobServer blobServer,
+		HeartbeatServices heartbeatServices,
+		JobManagerMetricGroup jobManagerMetricGroup,
+		@Nullable String metricQueryServicePath,
+		ArchivedExecutionGraphStore archivedExecutionGraphStore,
+		JobManagerRunnerFactory jobManagerRunnerFactory,
+		FatalErrorHandler fatalErrorHandler) throws Exception {
 		super(
 			rpcService,
-			fencingToken,
-			recoveredJobs,
-			dispatcherBootstrapFactory,
-			dispatcherServices);
-
-		this.startFuture = new CompletableFuture<>();
-	}
-
-	@Override
-	public void onStart() throws Exception {
-		try {
-			super.onStart();
-		} catch (Exception e) {
-			startFuture.completeExceptionally(e);
-			throw e;
-		}
-
-		startFuture.complete(null);
+			endpointId,
+			configuration,
+			highAvailabilityServices,
+			highAvailabilityServices.getSubmittedJobGraphStore(),
+			resourceManagerGateway,
+			blobServer,
+			heartbeatServices,
+			jobManagerMetricGroup,
+			metricQueryServicePath,
+			archivedExecutionGraphStore,
+			jobManagerRunnerFactory,
+			fatalErrorHandler,
+			null,
+			VoidHistoryServerArchivist.INSTANCE);
 	}
 
 	void completeJobExecution(ArchivedExecutionGraph archivedExecutionGraph) {
@@ -76,13 +83,9 @@ class TestingDispatcher extends Dispatcher {
 			timeout).thenCompose(Function.identity());
 	}
 
-	CompletableFuture<Integer> getNumberJobs(Time timeout) {
+	CompletableFuture<Void> getRecoverOperationFuture(@Nonnull Time timeout) {
 		return callAsyncWithoutFencing(
-			() -> listJobs(timeout).get().size(),
-			timeout);
-	}
-
-	void waitUntilStarted() {
-		startFuture.join();
+			this::getRecoveryOperation,
+			timeout).thenCompose(Function.identity());
 	}
 }

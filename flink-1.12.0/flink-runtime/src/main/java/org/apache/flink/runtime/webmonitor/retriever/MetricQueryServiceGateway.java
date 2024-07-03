@@ -20,15 +20,19 @@ package org.apache.flink.runtime.webmonitor.retriever;
 
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.metrics.dump.MetricDumpSerialization;
-import org.apache.flink.runtime.metrics.dump.MetricQueryService;
-import org.apache.flink.runtime.rpc.RpcGateway;
+import org.apache.flink.runtime.webmonitor.retriever.impl.AkkaQueryServiceGateway;
 
 import java.util.concurrent.CompletableFuture;
 
 /**
- * {@link MetricQueryService} rpc gateway interface.
+ * Gateway to communicate with a QueryService.
+ *
+ * <p>Currently there is only one implementation working with a Akka based
+ * MetricQueryService {@link AkkaQueryServiceGateway}.
  */
-public interface MetricQueryServiceGateway extends RpcGateway {
+public interface MetricQueryServiceGateway {
 
 	CompletableFuture<MetricDumpSerialization.MetricSerializationResult> queryMetrics(Time timeout);
+
+	String getAddress();
 }

@@ -19,7 +19,6 @@
 package org.apache.flink.runtime.rest.handler.taskmanager;
 
 import org.apache.flink.api.common.time.Time;
-import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.blob.TransientBlobKey;
 import org.apache.flink.runtime.blob.TransientBlobService;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
@@ -29,7 +28,6 @@ import org.apache.flink.runtime.rest.NotFoundException;
 import org.apache.flink.runtime.rest.handler.AbstractHandler;
 import org.apache.flink.runtime.rest.handler.HandlerRequest;
 import org.apache.flink.runtime.rest.handler.RestHandlerException;
-import org.apache.flink.runtime.rest.handler.util.HandlerUtils;
 import org.apache.flink.runtime.rest.messages.EmptyRequestBody;
 import org.apache.flink.runtime.rest.messages.UntypedResponseMessageHeaders;
 import org.apache.flink.runtime.rest.messages.taskmanager.TaskManagerIdPathParameter;
@@ -45,19 +43,39 @@ import org.apache.flink.shaded.guava18.com.google.common.cache.CacheBuilder;
 import org.apache.flink.shaded.guava18.com.google.common.cache.CacheLoader;
 import org.apache.flink.shaded.guava18.com.google.common.cache.LoadingCache;
 import org.apache.flink.shaded.guava18.com.google.common.cache.RemovalNotification;
+import org.apache.flink.shaded.netty4.io.netty.channel.ChannelFuture;
+import org.apache.flink.shaded.netty4.io.netty.channel.ChannelFutureListener;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
+import org.apache.flink.shaded.netty4.io.netty.channel.DefaultFileRegion;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.DefaultHttpResponse;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpChunkedInput;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpHeaders;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpRequest;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponse;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus;
+import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.LastHttpContent;
+import org.apache.flink.shaded.netty4.io.netty.handler.ssl.SslHandler;
+import org.apache.flink.shaded.netty4.io.netty.handler.stream.ChunkedFile;
+import org.apache.flink.shaded.netty4.io.netty.util.concurrent.Future;
+import org.apache.flink.shaded.netty4.io.netty.util.concurrent.GenericFutureListener;
 
 import javax.annotation.Nonnull;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.channels.FileChannel;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+
+import static org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpHeaders.Names.CONNECTION;
+import static org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
+import static org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus.OK;
+import static org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
 /**
  * Base class for serving files from the {@link TaskExecutor}.
@@ -67,9 +85,10 @@ public abstract class AbstractTaskManagerFileHandler<M extends TaskManagerMessag
 	private final GatewayRetriever<ResourceManagerGateway> resourceManagerGatewayRetriever;
 	private final TransientBlobService transientBlobService;
 
-	private final LoadingCache<Tuple2<ResourceID, String>, CompletableFuture<TransientBlobKey>> fileBlobKeys;
+	private final LoadingCache<ResourceID, CompletableFuture<TransientBlobKey>> fileBlobKeys;
 
 	protected AbstractTaskManagerFileHandler(
+			@Nonnull CompletableFuture<String> localAddressFuture,
 			@Nonnull GatewayRetriever<? extends RestfulGateway> leaderRetriever,
 			@Nonnull Time timeout,
 			@Nonnull Map<String, String> responseHeaders,
@@ -77,7 +96,7 @@ public abstract class AbstractTaskManagerFileHandler<M extends TaskManagerMessag
 			@Nonnull GatewayRetriever<ResourceManagerGateway> resourceManagerGatewayRetriever,
 			@Nonnull TransientBlobService transientBlobService,
 			@Nonnull Time cacheEntryDuration) {
-		super(leaderRetriever, timeout, responseHeaders, untypedResponseMessageHeaders);
+		super(localAddressFuture, leaderRetriever, timeout, responseHeaders, untypedResponseMessageHeaders);
 
 		this.resourceManagerGatewayRetriever = Preconditions.checkNotNull(resourceManagerGatewayRetriever);
 
@@ -88,10 +107,10 @@ public abstract class AbstractTaskManagerFileHandler<M extends TaskManagerMessag
 			.expireAfterWrite(cacheEntryDuration.toMilliseconds(), TimeUnit.MILLISECONDS)
 			.removalListener(this::removeBlob)
 			.build(
-				new CacheLoader<Tuple2<ResourceID, String>, CompletableFuture<TransientBlobKey>>() {
+				new CacheLoader<ResourceID, CompletableFuture<TransientBlobKey>>() {
 					@Override
-					public CompletableFuture<TransientBlobKey> load(Tuple2<ResourceID, String> taskManagerIdAndFileName) throws Exception {
-						return loadTaskManagerFile(taskManagerIdAndFileName);
+					public CompletableFuture<TransientBlobKey> load(ResourceID resourceId) throws Exception {
+						return loadTaskManagerFile(resourceId);
 					}
 			});
 	}
@@ -100,11 +119,9 @@ public abstract class AbstractTaskManagerFileHandler<M extends TaskManagerMessag
 	protected CompletableFuture<Void> respondToRequest(ChannelHandlerContext ctx, HttpRequest httpRequest, HandlerRequest<EmptyRequestBody, M> handlerRequest, RestfulGateway gateway) throws RestHandlerException {
 		final ResourceID taskManagerId = handlerRequest.getPathParameter(TaskManagerIdPathParameter.class);
 
-		String filename = getFileName(handlerRequest);
-		final Tuple2<ResourceID, String> taskManagerIdAndFileName = new Tuple2<>(taskManagerId, filename);
 		final CompletableFuture<TransientBlobKey> blobKeyFuture;
 		try {
-			blobKeyFuture = fileBlobKeys.get(taskManagerIdAndFileName);
+			blobKeyFuture = fileBlobKeys.get(taskManagerId);
 		} catch (ExecutionException e) {
 			final Throwable cause = ExceptionUtils.stripExecutionException(e);
 			throw new RestHandlerException("Could not retrieve file blob key future.", HttpResponseStatus.INTERNAL_SERVER_ERROR, cause);
@@ -120,7 +137,7 @@ public abstract class AbstractTaskManagerFileHandler<M extends TaskManagerMessag
 				}
 
 				try {
-					HandlerUtils.transferFile(
+					transferFile(
 						ctx,
 						file,
 						httpRequest);
@@ -153,8 +170,10 @@ public abstract class AbstractTaskManagerFileHandler<M extends TaskManagerMessag
 			});
 	}
 
-	private CompletableFuture<TransientBlobKey> loadTaskManagerFile(Tuple2<ResourceID, String> taskManagerIdAndFileName) throws RestHandlerException {
-		log.debug("Load file from TaskManager {}.", taskManagerIdAndFileName.f0);
+	protected abstract CompletableFuture<TransientBlobKey> requestFileUpload(ResourceManagerGateway resourceManagerGateway, ResourceID taskManagerResourceId);
+
+	private CompletableFuture<TransientBlobKey> loadTaskManagerFile(ResourceID taskManagerResourceId) throws RestHandlerException {
+		log.debug("Load file from TaskManager {}.", taskManagerResourceId);
 
 		final ResourceManagerGateway resourceManagerGateway = resourceManagerGatewayRetriever
 			.getNow()
@@ -165,12 +184,10 @@ public abstract class AbstractTaskManagerFileHandler<M extends TaskManagerMessag
 					HttpResponseStatus.NOT_FOUND);
 			});
 
-		return requestFileUpload(resourceManagerGateway, taskManagerIdAndFileName);
+		return requestFileUpload(resourceManagerGateway, taskManagerResourceId);
 	}
 
-	protected abstract CompletableFuture<TransientBlobKey> requestFileUpload(ResourceManagerGateway resourceManagerGateway, Tuple2<ResourceID, String> taskManagerIdAndFileName);
-
-	private void removeBlob(RemovalNotification<Tuple2<ResourceID, String>, CompletableFuture<TransientBlobKey>> removalNotification) {
+	private void removeBlob(RemovalNotification<ResourceID, CompletableFuture<TransientBlobKey>> removalNotification) {
 		log.debug("Remove cached file for TaskExecutor {}.", removalNotification.getKey());
 
 		final CompletableFuture<TransientBlobKey> value = removalNotification.getValue();
@@ -180,7 +197,71 @@ public abstract class AbstractTaskManagerFileHandler<M extends TaskManagerMessag
 		}
 	}
 
-	protected String getFileName(HandlerRequest<EmptyRequestBody, M> handlerRequest) {
-		return null;
+	private void transferFile(ChannelHandlerContext ctx, File file, HttpRequest httpRequest) throws FlinkException {
+		final RandomAccessFile randomAccessFile;
+
+		try {
+			randomAccessFile = new RandomAccessFile(file, "r");
+		} catch (FileNotFoundException e) {
+			throw new FlinkException("Can not find file " + file + ".", e);
+		}
+
+		try {
+
+			final long fileLength = randomAccessFile.length();
+			final FileChannel fileChannel = randomAccessFile.getChannel();
+
+			try {
+				HttpResponse response = new DefaultHttpResponse(HTTP_1_1, OK);
+				response.headers().set(CONTENT_TYPE, "text/plain");
+
+				if (HttpHeaders.isKeepAlive(httpRequest)) {
+					response.headers().set(CONNECTION, HttpHeaders.Values.KEEP_ALIVE);
+				}
+				HttpHeaders.setContentLength(response, fileLength);
+
+				// write the initial line and the header.
+				ctx.write(response);
+
+				// write the content.
+				final ChannelFuture lastContentFuture;
+				final GenericFutureListener<Future<? super Void>> completionListener = future -> {
+					fileChannel.close();
+					randomAccessFile.close();
+				};
+
+				if (ctx.pipeline().get(SslHandler.class) == null) {
+					ctx.write(
+						new DefaultFileRegion(fileChannel, 0, fileLength), ctx.newProgressivePromise())
+						.addListener(completionListener);
+					lastContentFuture = ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT);
+
+				} else {
+					lastContentFuture = ctx
+						.writeAndFlush(
+							new HttpChunkedInput(new ChunkedFile(randomAccessFile, 0, fileLength, 8192)),
+							ctx.newProgressivePromise())
+						.addListener(completionListener);
+
+					// HttpChunkedInput will write the end marker (LastHttpContent) for us.
+				}
+
+				// close the connection, if no keep-alive is needed
+				if (!HttpHeaders.isKeepAlive(httpRequest)) {
+					lastContentFuture.addListener(ChannelFutureListener.CLOSE);
+				}
+			} catch (IOException ex) {
+				fileChannel.close();
+				throw ex;
+			}
+		} catch (IOException ioe) {
+			try {
+				randomAccessFile.close();
+			} catch (IOException e) {
+				throw new FlinkException("Close file or channel error.", e);
+			}
+
+			throw new FlinkException("Could not transfer file " + file + " to the client.", ioe);
+		}
 	}
 }

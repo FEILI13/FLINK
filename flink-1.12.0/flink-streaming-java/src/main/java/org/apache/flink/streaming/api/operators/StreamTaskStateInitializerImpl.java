@@ -18,7 +18,6 @@
 
 package org.apache.flink.streaming.api.operators;
 
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.TaskInfo;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
@@ -29,13 +28,12 @@ import org.apache.flink.runtime.checkpoint.PrioritizedOperatorSubtaskState;
 import org.apache.flink.runtime.checkpoint.StateObjectCollection;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.jobgraph.OperatorID;
-import org.apache.flink.runtime.state.CheckpointableKeyedStateBackend;
+import org.apache.flink.runtime.state.AbstractKeyedStateBackend;
 import org.apache.flink.runtime.state.DefaultOperatorStateBackend;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.runtime.state.KeyGroupStatePartitionStreamProvider;
 import org.apache.flink.runtime.state.KeyGroupsStateHandle;
-import org.apache.flink.runtime.state.KeyedStateCheckpointOutputStream;
 import org.apache.flink.runtime.state.KeyedStateHandle;
 import org.apache.flink.runtime.state.OperatorStateBackend;
 import org.apache.flink.runtime.state.OperatorStateHandle;
@@ -59,13 +57,9 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
-import java.util.stream.StreamSupport;
-
-import static org.apache.flink.runtime.state.StateUtil.unexpectedStateHandleException;
 
 /**
  * This class is the main implementation of a {@link StreamTaskStateInitializer}. This class obtains the state to create
@@ -85,35 +79,24 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
 	 */
 	private final Environment environment;
 
+	/** This processing time service is required to construct an internal timer service manager. */
+	private final ProcessingTimeService processingTimeService;
+
 	/** The state manager of the tasks provides the information used to restore potential previous state. */
 	private final TaskStateManager taskStateManager;
 
 	/** This object is the factory for everything related to state backends and checkpointing. */
 	private final StateBackend stateBackend;
 
-	private final TtlTimeProvider ttlTimeProvider;
-
-	private final InternalTimeServiceManager.Provider timeServiceManagerProvider;
-
-	public StreamTaskStateInitializerImpl(
-		Environment environment,
-		StateBackend stateBackend) {
-
-		this(environment, stateBackend, TtlTimeProvider.DEFAULT, InternalTimeServiceManagerImpl::create);
-	}
-
-	@VisibleForTesting
 	public StreamTaskStateInitializerImpl(
 		Environment environment,
 		StateBackend stateBackend,
-		TtlTimeProvider ttlTimeProvider,
-		InternalTimeServiceManager.Provider timeServiceManagerProvider) {
+		ProcessingTimeService processingTimeService) {
 
 		this.environment = environment;
 		this.taskStateManager = Preconditions.checkNotNull(environment.getTaskStateManager());
 		this.stateBackend = Preconditions.checkNotNull(stateBackend);
-		this.ttlTimeProvider = ttlTimeProvider;
-		this.timeServiceManagerProvider = Preconditions.checkNotNull(timeServiceManagerProvider);
+		this.processingTimeService = processingTimeService;
 	}
 
 	// -----------------------------------------------------------------------------------------------------------------
@@ -122,13 +105,10 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
 	public StreamOperatorStateContext streamOperatorStateContext(
 		@Nonnull OperatorID operatorID,
 		@Nonnull String operatorClassName,
-		@Nonnull ProcessingTimeService processingTimeService,
 		@Nonnull KeyContext keyContext,
 		@Nullable TypeSerializer<?> keySerializer,
 		@Nonnull CloseableRegistry streamTaskCloseableRegistry,
-		@Nonnull MetricGroup metricGroup,
-		double managedMemoryFraction,
-		boolean isUsingCustomRawKeyedState) throws Exception {
+		@Nonnull MetricGroup metricGroup) throws Exception {
 
 		TaskInfo taskInfo = environment.getTaskInfo();
 		OperatorSubtaskDescriptionText operatorSubtaskDescription =
@@ -143,7 +123,7 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
 		final PrioritizedOperatorSubtaskState prioritizedOperatorSubtaskStates =
 			taskStateManager.prioritizedOperatorState(operatorID);
 
-		CheckpointableKeyedStateBackend<?> keyedStatedBackend = null;
+		AbstractKeyedStateBackend<?> keyedStatedBackend = null;
 		OperatorStateBackend operatorStateBackend = null;
 		CloseableIterable<KeyGroupStatePartitionStreamProvider> rawKeyedStateInputs = null;
 		CloseableIterable<StatePartitionStreamProvider> rawOperatorStateInputs = null;
@@ -157,8 +137,7 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
 				operatorIdentifierText,
 				prioritizedOperatorSubtaskStates,
 				streamTaskCloseableRegistry,
-				metricGroup,
-				managedMemoryFraction);
+				metricGroup);
 
 			// -------------- Operator State Backend --------------
 			operatorStateBackend = operatorStateBackend(
@@ -176,26 +155,7 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
 			streamTaskCloseableRegistry.registerCloseable(rawOperatorStateInputs);
 
 			// -------------- Internal Timer Service Manager --------------
-			if (keyedStatedBackend != null) {
-
-				// if the operator indicates that it is using custom raw keyed state,
-				// then whatever was written in the raw keyed state snapshot was NOT written
-				// by the internal timer services (because there is only ever one user of raw keyed state);
-				// in this case, timers should not attempt to restore timers from the raw keyed state.
-				final Iterable<KeyGroupStatePartitionStreamProvider> restoredRawKeyedStateTimers =
-					(prioritizedOperatorSubtaskStates.isRestored() && !isUsingCustomRawKeyedState)
-						? rawKeyedStateInputs
-						: Collections.emptyList();
-
-				timeServiceManager = timeServiceManagerProvider.create(
-					keyedStatedBackend,
-					environment.getUserCodeClassLoader().asClassLoader(),
-					keyContext,
-					processingTimeService,
-					restoredRawKeyedStateTimers);
-			} else {
-				timeServiceManager = null;
-			}
+			timeServiceManager = internalTimeServiceManager(keyedStatedBackend, keyContext, rawKeyedStateInputs);
 
 			// -------------- Preparing return value --------------
 
@@ -236,6 +196,39 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
 		}
 	}
 
+	protected <K> InternalTimeServiceManager<K> internalTimeServiceManager(
+		AbstractKeyedStateBackend<K> keyedStatedBackend,
+		KeyContext keyContext, //the operator
+		Iterable<KeyGroupStatePartitionStreamProvider> rawKeyedStates) throws Exception {
+
+		if (keyedStatedBackend == null) {
+			return null;
+		}
+
+		final KeyGroupRange keyGroupRange = keyedStatedBackend.getKeyGroupRange();
+
+		final InternalTimeServiceManager<K> timeServiceManager = new InternalTimeServiceManager<>(
+			keyGroupRange,
+			keyContext,
+			keyedStatedBackend,
+			processingTimeService,
+			keyedStatedBackend.requiresLegacySynchronousTimerSnapshots());
+
+		// and then initialize the timer services
+		for (KeyGroupStatePartitionStreamProvider streamProvider : rawKeyedStates) {
+			int keyGroupIdx = streamProvider.getKeyGroupId();
+
+			Preconditions.checkArgument(keyGroupRange.contains(keyGroupIdx),
+				"Key Group " + keyGroupIdx + " does not belong to the local range.");
+
+			timeServiceManager.restoreStateForKeyGroup(
+				streamProvider.getStream(),
+				keyGroupIdx, environment.getUserClassLoader());
+		}
+
+		return timeServiceManager;
+	}
+
 	protected OperatorStateBackend operatorStateBackend(
 		String operatorIdentifierText,
 		PrioritizedOperatorSubtaskState prioritizedOperatorSubtaskStates,
@@ -243,38 +236,22 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
 
 		String logDescription = "operator state backend for " + operatorIdentifierText;
 
-		// Now restore processing is included in backend building/constructing process, so we need to make sure
-		// each stream constructed in restore could also be closed in case of task cancel, for example the data
-		// input stream opened for serDe during restore.
-		CloseableRegistry cancelStreamRegistryForRestore = new CloseableRegistry();
-		backendCloseableRegistry.registerCloseable(cancelStreamRegistryForRestore);
 		BackendRestorerProcedure<OperatorStateBackend, OperatorStateHandle> backendRestorer =
 			new BackendRestorerProcedure<>(
-				(stateHandles) -> stateBackend.createOperatorStateBackend(
-					environment,
-					operatorIdentifierText,
-					stateHandles,
-					cancelStreamRegistryForRestore),
+				() -> stateBackend.createOperatorStateBackend(environment, operatorIdentifierText),
 				backendCloseableRegistry,
 				logDescription);
 
-		try {
-			return backendRestorer.createAndRestore(
-				prioritizedOperatorSubtaskStates.getPrioritizedManagedOperatorState());
-		} finally {
-			if (backendCloseableRegistry.unregisterCloseable(cancelStreamRegistryForRestore)) {
-				IOUtils.closeQuietly(cancelStreamRegistryForRestore);
-			}
-		}
+		return backendRestorer.createAndRestore(
+			prioritizedOperatorSubtaskStates.getPrioritizedManagedOperatorState());
 	}
 
-	protected <K> CheckpointableKeyedStateBackend<K> keyedStatedBackend(
+	protected <K> AbstractKeyedStateBackend<K> keyedStatedBackend(
 		TypeSerializer<K> keySerializer,
 		String operatorIdentifierText,
 		PrioritizedOperatorSubtaskState prioritizedOperatorSubtaskStates,
 		CloseableRegistry backendCloseableRegistry,
-		MetricGroup metricGroup,
-		double managedMemoryFraction) throws Exception {
+		MetricGroup metricGroup) throws Exception {
 
 		if (keySerializer == null) {
 			return null;
@@ -289,14 +266,9 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
 			taskInfo.getNumberOfParallelSubtasks(),
 			taskInfo.getIndexOfThisSubtask());
 
-		// Now restore processing is included in backend building/constructing process, so we need to make sure
-		// each stream constructed in restore could also be closed in case of task cancel, for example the data
-		// input stream opened for serDe during restore.
-		CloseableRegistry cancelStreamRegistryForRestore = new CloseableRegistry();
-		backendCloseableRegistry.registerCloseable(cancelStreamRegistryForRestore);
-		BackendRestorerProcedure<CheckpointableKeyedStateBackend<K>, KeyedStateHandle> backendRestorer =
+		BackendRestorerProcedure<AbstractKeyedStateBackend<K>, KeyedStateHandle> backendRestorer =
 			new BackendRestorerProcedure<>(
-				(stateHandles) -> stateBackend.createKeyedStateBackend(
+				() -> stateBackend.createKeyedStateBackend(
 					environment,
 					environment.getJobID(),
 					operatorIdentifierText,
@@ -304,22 +276,13 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
 					taskInfo.getMaxNumberOfParallelSubtasks(),
 					keyGroupRange,
 					environment.getTaskKvStateRegistry(),
-					ttlTimeProvider,
-					metricGroup,
-					stateHandles,
-					cancelStreamRegistryForRestore,
-					managedMemoryFraction),
+					TtlTimeProvider.DEFAULT,
+					metricGroup),
 				backendCloseableRegistry,
 				logDescription);
 
-		try {
-			return backendRestorer.createAndRestore(
-				prioritizedOperatorSubtaskStates.getPrioritizedManagedKeyedState());
-		} finally {
-			if (backendCloseableRegistry.unregisterCloseable(cancelStreamRegistryForRestore)) {
-				IOUtils.closeQuietly(cancelStreamRegistryForRestore);
-			}
-		}
+		return backendRestorer.createAndRestore(
+			prioritizedOperatorSubtaskStates.getPrioritizedManagedKeyedState());
 	}
 
 	protected CloseableIterable<StatePartitionStreamProvider> rawOperatorStateInputs(
@@ -415,21 +378,13 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
 			while (stateHandleIterator.hasNext()) {
 				currentStateHandle = stateHandleIterator.next();
 				if (currentStateHandle.getKeyGroupRange().getNumberOfKeyGroups() > 0) {
-					currentOffsetsIterator = unsetOffsetsSkippingIterator(currentStateHandle);
+					currentOffsetsIterator = currentStateHandle.getGroupRangeOffsets().iterator();
 
-					if (currentOffsetsIterator.hasNext()) {
-						return true;
-					}
+					return true;
 				}
 			}
 
 			return false;
-		}
-
-		private static Iterator<Tuple2<Integer, Long>> unsetOffsetsSkippingIterator(KeyGroupsStateHandle keyGroupsStateHandle) {
-			return StreamSupport.stream(keyGroupsStateHandle.getGroupRangeOffsets().spliterator(), false)
-				.filter(keyGroupIdAndOffset -> keyGroupIdAndOffset.f1 != KeyedStateCheckpointOutputStream.NO_OFFSET_SET)
-				.iterator();
 		}
 
 		@Override
@@ -582,7 +537,9 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
 			if (keyedStateHandle instanceof KeyGroupsStateHandle) {
 				keyGroupsStateHandles.add((KeyGroupsStateHandle) keyedStateHandle);
 			} else if (keyedStateHandle != null) {
-				throw unexpectedStateHandleException(KeyGroupsStateHandle.class, keyedStateHandle.getClass());
+				throw new IllegalStateException("Unexpected state handle type, " +
+					"expected: " + KeyGroupsStateHandle.class +
+					", but found: " + keyedStateHandle.getClass() + ".");
 			}
 		}
 
@@ -594,7 +551,7 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
 		private final boolean restored;
 
 		private final OperatorStateBackend operatorStateBackend;
-		private final CheckpointableKeyedStateBackend<?> keyedStateBackend;
+		private final AbstractKeyedStateBackend<?> keyedStateBackend;
 		private final InternalTimeServiceManager<?> internalTimeServiceManager;
 
 		private final CloseableIterable<StatePartitionStreamProvider> rawOperatorStateInputs;
@@ -603,7 +560,7 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
 		StreamOperatorStateContextImpl(
 			boolean restored,
 			OperatorStateBackend operatorStateBackend,
-			CheckpointableKeyedStateBackend<?> keyedStateBackend,
+			AbstractKeyedStateBackend<?> keyedStateBackend,
 			InternalTimeServiceManager<?> internalTimeServiceManager,
 			CloseableIterable<StatePartitionStreamProvider> rawOperatorStateInputs,
 			CloseableIterable<KeyGroupStatePartitionStreamProvider> rawKeyedStateInputs) {
@@ -622,7 +579,7 @@ public class StreamTaskStateInitializerImpl implements StreamTaskStateInitialize
 		}
 
 		@Override
-		public CheckpointableKeyedStateBackend<?> keyedStateBackend() {
+		public AbstractKeyedStateBackend<?> keyedStateBackend() {
 			return keyedStateBackend;
 		}
 

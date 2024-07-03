@@ -20,11 +20,10 @@ package org.apache.flink.yarn.entrypoint;
 
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.entrypoint.ClusterEntrypoint;
-import org.apache.flink.runtime.entrypoint.ClusterEntrypointUtils;
-import org.apache.flink.runtime.entrypoint.DynamicParametersConfigurationParserFactory;
 import org.apache.flink.runtime.entrypoint.SessionClusterEntrypoint;
-import org.apache.flink.runtime.entrypoint.component.DefaultDispatcherResourceManagerComponentFactory;
 import org.apache.flink.runtime.entrypoint.component.DispatcherResourceManagerComponentFactory;
+import org.apache.flink.runtime.entrypoint.component.SessionDispatcherResourceManagerComponentFactory;
+import org.apache.flink.runtime.security.SecurityContext;
 import org.apache.flink.runtime.util.EnvironmentInformation;
 import org.apache.flink.runtime.util.JvmShutdownSafeguard;
 import org.apache.flink.runtime.util.SignalHandler;
@@ -41,8 +40,18 @@ import java.util.Map;
  */
 public class YarnSessionClusterEntrypoint extends SessionClusterEntrypoint {
 
-	public YarnSessionClusterEntrypoint(Configuration configuration) {
+	private final String workingDirectory;
+
+	public YarnSessionClusterEntrypoint(
+			Configuration configuration,
+			String workingDirectory) {
 		super(configuration);
+		this.workingDirectory = Preconditions.checkNotNull(workingDirectory);
+	}
+
+	@Override
+	protected SecurityContext installSecurityContext(Configuration configuration) throws Exception {
+		return YarnEntrypointUtils.installSecurityContext(configuration, workingDirectory);
 	}
 
 	@Override
@@ -51,8 +60,8 @@ public class YarnSessionClusterEntrypoint extends SessionClusterEntrypoint {
 	}
 
 	@Override
-	protected DispatcherResourceManagerComponentFactory createDispatcherResourceManagerComponentFactory(Configuration configuration) {
-		return DefaultDispatcherResourceManagerComponentFactory.createSessionComponentFactory(YarnResourceManagerFactory.getInstance());
+	protected DispatcherResourceManagerComponentFactory<?> createDispatcherResourceManagerComponentFactory(Configuration configuration) {
+		return new SessionDispatcherResourceManagerComponentFactory(YarnResourceManagerFactory.INSTANCE);
 	}
 
 	public static void main(String[] args) {
@@ -75,13 +84,11 @@ public class YarnSessionClusterEntrypoint extends SessionClusterEntrypoint {
 			LOG.warn("Could not log YARN environment information.", e);
 		}
 
-		final Configuration dynamicParameters = ClusterEntrypointUtils.parseParametersOrExit(
-			args,
-			new DynamicParametersConfigurationParserFactory(),
-			YarnSessionClusterEntrypoint.class);
-		final Configuration configuration = YarnEntrypointUtils.loadConfiguration(workingDirectory, dynamicParameters, env);
+		Configuration configuration = YarnEntrypointUtils.loadConfiguration(workingDirectory, env, LOG);
 
-		YarnSessionClusterEntrypoint yarnSessionClusterEntrypoint = new YarnSessionClusterEntrypoint(configuration);
+		YarnSessionClusterEntrypoint yarnSessionClusterEntrypoint = new YarnSessionClusterEntrypoint(
+			configuration,
+			workingDirectory);
 
 		ClusterEntrypoint.runClusterEntrypoint(yarnSessionClusterEntrypoint);
 	}

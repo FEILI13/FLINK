@@ -25,6 +25,10 @@ import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBufAllocator;
 import org.apache.flink.shaded.netty4.io.netty.buffer.Unpooled;
 
+import org.apache.flink.shaded.netty4.io.netty.util.IllegalReferenceCountException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -36,7 +40,6 @@ import java.nio.channels.GatheringByteChannel;
 import java.nio.channels.ScatteringByteChannel;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
-import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * Wrapper for pooled {@link MemorySegment} instances.
@@ -46,14 +49,16 @@ import static org.apache.flink.util.Preconditions.checkState;
  */
 public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Buffer {
 
+	private static final Logger LOG = LoggerFactory.getLogger(NetworkBuffer.class);
+
 	/** The backing {@link MemorySegment} instance. */
 	private final MemorySegment memorySegment;
 
 	/** The recycler for the backing {@link MemorySegment}. */
-	private final BufferRecycler recycler;
+	private BufferRecycler recycler;
 
-	/** The {@link DataType} this buffer represents. */
-	private DataType dataType;
+	/** Whether this buffer represents a buffer or an event. */
+	private boolean isBuffer;
 
 	/** Allocator for further byte buffers (needed by netty). */
 	private ByteBufAllocator allocator;
@@ -64,8 +69,6 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 	 */
 	private int currentSize;
 
-	/** Whether the buffer is compressed or not. */
-	private boolean isCompressed = false;
 
 	/**
 	 * Creates a new buffer instance backed by the given <tt>memorySegment</tt> with <tt>0</tt> for
@@ -77,7 +80,7 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 	 * 		will be called to recycle this buffer once the reference count is <tt>0</tt>
 	 */
 	public NetworkBuffer(MemorySegment memorySegment, BufferRecycler recycler) {
-		this(memorySegment, recycler, DataType.DATA_BUFFER);
+		this(memorySegment, recycler, true);
 	}
 
 	/**
@@ -88,11 +91,11 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 	 * 		backing memory segment (defines {@link #maxCapacity})
 	 * @param recycler
 	 * 		will be called to recycle this buffer once the reference count is <tt>0</tt>
-	 * @param dataType
-	 * 		the {@link DataType} this buffer represents
+	 * @param isBuffer
+	 * 		whether this buffer represents a buffer (<tt>true</tt>) or an event (<tt>false</tt>)
 	 */
-	public NetworkBuffer(MemorySegment memorySegment, BufferRecycler recycler, DataType dataType) {
-		this(memorySegment, recycler, dataType, 0);
+	public NetworkBuffer(MemorySegment memorySegment, BufferRecycler recycler, boolean isBuffer) {
+		this(memorySegment, recycler, isBuffer, 0);
 	}
 
 	/**
@@ -103,43 +106,30 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 	 * 		backing memory segment (defines {@link #maxCapacity})
 	 * @param recycler
 	 * 		will be called to recycle this buffer once the reference count is <tt>0</tt>
-	 * @param dataType
-	 * 		the {@link DataType} this buffer represents
+	 * @param isBuffer
+	 * 		whether this buffer represents a buffer (<tt>true</tt>) or an event (<tt>false</tt>)
 	 * @param size
 	 * 		current size of data in the buffer, i.e. the writer index to set
 	 */
-	public NetworkBuffer(MemorySegment memorySegment, BufferRecycler recycler, DataType dataType, int size) {
-		this(memorySegment, recycler, dataType, false, size);
-	}
-
-	/**
-	 * Creates a new buffer instance backed by the given <tt>memorySegment</tt> with <tt>0</tt> for
-	 * the <tt>readerIndex</tt> and <tt>size</tt> as <tt>writerIndex</tt>.
-	 *
-	 * @param memorySegment
-	 * 		backing memory segment (defines {@link #maxCapacity})
-	 * @param recycler
-	 * 		will be called to recycle this buffer once the reference count is <tt>0</tt>
-	 * @param dataType
-	 * 		the {@link DataType} this buffer represents
-	 * @param size
-	 * 		current size of data in the buffer, i.e. the writer index to set
-	 * @param isCompressed
-	 * 		whether the buffer is compressed or not
-	 */
-	public NetworkBuffer(MemorySegment memorySegment, BufferRecycler recycler, DataType dataType, boolean isCompressed, int size) {
+	public NetworkBuffer(MemorySegment memorySegment, BufferRecycler recycler, boolean isBuffer, int size) {
 		super(memorySegment.size());
 		this.memorySegment = checkNotNull(memorySegment);
 		this.recycler = checkNotNull(recycler);
-		this.dataType = dataType;
-		this.isCompressed = isCompressed;
+		this.isBuffer = isBuffer;
 		this.currentSize = memorySegment.size();
 		setSize(size);
 	}
 
 	@Override
 	public boolean isBuffer() {
-		return dataType.isBuffer();
+		return isBuffer;
+	}
+
+	@Override
+	public void tagAsEvent() {
+		ensureAccessible();
+
+		isBuffer = false;
 	}
 
 	@Override
@@ -160,7 +150,13 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 	}
 
 	@Override
+	public void setRecycler(BufferRecycler recycler) {
+		this.recycler = recycler;
+	}
+
+	@Override
 	public void recycleBuffer() {
+		LOG.debug("Recycle buffer {} (hash: {}, memorySegment hash: {}).", this, System.identityHashCode(this), System.identityHashCode(this.getMemorySegment()));
 		release();
 	}
 
@@ -181,7 +177,6 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 
 	@Override
 	public ReadOnlySlicedNetworkBuffer readOnlySlice(int index, int length) {
-		checkState(!isCompressed, "Unable to slice a compressed buffer.");
 		return new ReadOnlySlicedNetworkBuffer(this, index, length);
 	}
 
@@ -306,6 +301,11 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 	@Override
 	public void setReaderIndex(int readerIndex) throws IndexOutOfBoundsException {
 		readerIndex(readerIndex);
+	}
+
+	@Override
+	public int getSizeUnsafe() {
+		return writerIndex();
 	}
 
 	@Override
@@ -623,25 +623,4 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
 		return this;
 	}
 
-	@Override
-	public boolean isCompressed() {
-		return isCompressed;
-	}
-
-	@Override
-	public void setCompressed(boolean isCompressed) {
-		this.isCompressed = isCompressed;
-	}
-
-	@Override
-	public DataType getDataType() {
-		return dataType;
-	}
-
-	@Override
-	public void setDataType(DataType dataType) {
-		ensureAccessible();
-
-		this.dataType = dataType;
-	}
 }

@@ -23,7 +23,6 @@ import org.apache.flink.api.java.io.PojoCsvInputFormat
 import org.apache.flink.api.java.io.TupleCsvInputFormat
 import org.apache.flink.api.java.typeutils.PojoTypeInfo
 import org.apache.flink.api.scala._
-import org.apache.flink.api.scala.io.CsvInputFormatTest.CaseClassItem
 import org.apache.flink.api.scala.typeutils.CaseClassTypeInfo
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.core.fs.{FileInputSplit, Path}
@@ -37,6 +36,8 @@ class CsvInputFormatTest {
   private final val PATH: Path = new Path("an/ignored/file/")
   private final val FIRST_PART: String = "That is the first part"
   private final val SECOND_PART: String = "That is the second part"
+
+
 
   @Test
   def ignoreSingleCharPrefixComments():Unit = {
@@ -403,6 +404,8 @@ class CsvInputFormatTest {
     }
   }
 
+  case class CaseClassItem(field1: Int, field2: String, field3: Double)
+
   private def validatePOJOItem(format: PojoCsvInputFormat[POJOItem]): Unit = {
     var result = new POJOItem()
     result = format.nextRecord(result)
@@ -448,7 +451,7 @@ class CsvInputFormatTest {
   def testCaseClass(): Unit = {
     val fileContent = "123,HELLO,3.123\n" + "456,ABC,1.234"
     val tempFile = createTempFile(fileContent)
-    val typeInfo: CaseClassTypeInfo[CaseClassItem] =
+    val typeInfo: CaseClassTypeInfo[CaseClassItem] = 
       createTypeInformation[CaseClassItem]
       .asInstanceOf[CaseClassTypeInfo[CaseClassItem]]
     val format = new TupleCsvInputFormat[CaseClassItem](PATH, typeInfo)
@@ -485,7 +488,7 @@ class CsvInputFormatTest {
     val typeInfo: PojoTypeInfo[POJOItem] = createTypeInformation[POJOItem]
       .asInstanceOf[PojoTypeInfo[POJOItem]]
     val format = new PojoCsvInputFormat[POJOItem](
-      PATH, typeInfo, Array("field2", "field1", "field3"),
+      PATH, typeInfo, Array("field2", "field1", "field3"), 
       Array(true, true, false, true, false))
 
     format.setDelimiter('\n')
@@ -559,9 +562,4 @@ class TwitterPOJO(theTable: String, theTime: String, var tweet: String)
       case _ => false
     }
   }
-}
-
-object CsvInputFormatTest {
-  case class CaseClassItem(field1: Int, field2: String, field3: Double)
-
 }

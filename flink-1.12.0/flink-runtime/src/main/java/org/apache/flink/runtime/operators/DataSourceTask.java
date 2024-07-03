@@ -31,8 +31,6 @@ import org.apache.flink.metrics.SimpleCounter;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
-import org.apache.flink.runtime.jobgraph.InputOutputFormatContainer;
-import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProviderException;
@@ -44,9 +42,7 @@ import org.apache.flink.runtime.operators.util.DistributedRuntimeUDFContext;
 import org.apache.flink.runtime.operators.util.TaskConfig;
 import org.apache.flink.runtime.operators.util.metrics.CountingCollector;
 import org.apache.flink.util.Collector;
-import org.apache.flink.util.UserCodeClassLoader;
 
-import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -104,7 +100,7 @@ public class DataSourceTask<OT> extends AbstractInvokable {
 		LOG.debug(getLogString("Start registering input and output"));
 
 		try {
-			initOutputs(getEnvironment().getUserCodeClassLoader());
+			initOutputs(getUserCodeClassLoader());
 		} catch (Exception ex) {
 			throw new RuntimeException("The initialization of the DataSource's outputs caused an error: " +
 					ex.getMessage(), ex);
@@ -209,11 +205,12 @@ public class DataSourceTask<OT> extends AbstractInvokable {
 				completedSplitsCounter.inc();
 			} // end for all input splits
 
+			// close the collector. if it is a chaining task collector, it will close its chained tasks
+			this.output.close();
+
 			// close all chained tasks letting them report failure
 			BatchTask.closeChainedTasks(this.chainedTasks, this);
 
-			// close the output collector
-			this.output.close();
 		}
 		catch (Exception ex) {
 			// close the input, but do not report any exceptions, since we already have another root cause
@@ -271,11 +268,9 @@ public class DataSourceTask<OT> extends AbstractInvokable {
 		Configuration taskConf = getTaskConfiguration();
 		this.config = new TaskConfig(taskConf);
 
-		final Pair<OperatorID, InputFormat<OT, InputSplit>> operatorIdAndInputFormat;
-		InputOutputFormatContainer formatContainer = new InputOutputFormatContainer(config, userCodeClassLoader);
 		try {
-			operatorIdAndInputFormat = formatContainer.getUniqueInputFormat();
-			this.format = operatorIdAndInputFormat.getValue();
+			this.format = config.<InputFormat<OT, InputSplit>>getStubWrapper(userCodeClassLoader)
+					.getUserCodeObject(InputFormat.class, userCodeClassLoader);
 
 			// check if the class is a subclass, if the check is required
 			if (!InputFormat.class.isAssignableFrom(this.format.getClass())) {
@@ -293,7 +288,7 @@ public class DataSourceTask<OT> extends AbstractInvokable {
 		// configure the stub. catch exceptions here extra, to report them as originating from the user code
 		try {
 			thread.setContextClassLoader(userCodeClassLoader);
-			this.format.configure(formatContainer.getParameters(operatorIdAndInputFormat.getKey()));
+			this.format.configure(this.config.getStubParameters());
 		}
 		catch (Throwable t) {
 			throw new RuntimeException("The user defined 'configure()' method caused an error: " + t.getMessage(), t);
@@ -310,7 +305,7 @@ public class DataSourceTask<OT> extends AbstractInvokable {
 	 * Creates a writer for each output. Creates an OutputCollector which forwards its input to all writers.
 	 * The output collector applies the configured shipping strategy.
 	 */
-	private void initOutputs(UserCodeClassLoader cl) throws Exception {
+	private void initOutputs(ClassLoader cl) throws Exception {
 		this.chainedTasks = new ArrayList<ChainedDriver<?, ?>>();
 		this.eventualOutputs = new ArrayList<RecordWriter<?>>();
 
@@ -405,9 +400,8 @@ public class DataSourceTask<OT> extends AbstractInvokable {
 
 		String sourceName =  getEnvironment().getTaskInfo().getTaskName().split("->")[0].trim();
 		sourceName = sourceName.startsWith("CHAIN") ? sourceName.substring(6) : sourceName;
-
-		return new DistributedRuntimeUDFContext(env.getTaskInfo(), env.getUserCodeClassLoader(),
+		return new DistributedRuntimeUDFContext(env.getTaskInfo(), getUserCodeClassLoader(),
 				getExecutionConfig(), env.getDistributedCacheEntries(), env.getAccumulatorRegistry().getUserMap(), 
-				getEnvironment().getMetricGroup().getOrAddOperator(sourceName), env.getExternalResourceInfoProvider());
+				getEnvironment().getMetricGroup().getOrAddOperator(sourceName));
 	}
 }

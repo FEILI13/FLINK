@@ -26,41 +26,33 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
+import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
-import org.apache.flink.runtime.externalresource.ExternalResourceInfoProvider;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.api.writer.RecordOrEventCollectingResultPartitionWriter;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
-import org.apache.flink.runtime.io.network.partition.consumer.IndexedInputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
+import org.apache.flink.runtime.io.network.util.TestPooledBufferProvider;
+import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
-import org.apache.flink.runtime.jobgraph.tasks.TaskOperatorEventGateway;
 import org.apache.flink.runtime.memory.MemoryManager;
-import org.apache.flink.runtime.memory.MemoryManagerBuilder;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
 import org.apache.flink.runtime.operators.testutils.MockInputSplitProvider;
 import org.apache.flink.runtime.query.KvStateRegistry;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.TaskStateManager;
-import org.apache.flink.runtime.taskexecutor.GlobalAggregateManager;
-import org.apache.flink.runtime.taskexecutor.TestGlobalAggregateManager;
-import org.apache.flink.runtime.taskmanager.CheckpointResponder;
-import org.apache.flink.runtime.taskmanager.NoOpCheckpointResponder;
-import org.apache.flink.runtime.taskmanager.NoOpTaskOperatorEventGateway;
+import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
 import org.apache.flink.runtime.util.TestingTaskManagerRuntimeInfo;
-import org.apache.flink.runtime.util.TestingUserCodeClassLoader;
 import org.apache.flink.util.Preconditions;
-import org.apache.flink.util.UserCodeClassLoader;
-
-import javax.annotation.Nullable;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -68,7 +60,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Future;
-import java.util.function.Consumer;
 
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
@@ -90,7 +81,7 @@ public class StreamMockEnvironment implements Environment {
 
 	private final Configuration taskConfiguration;
 
-	private final List<IndexedInputGate> inputs;
+	private final LinkedList<SingleInputGate> inputs;
 
 	private final List<ResultPartitionWriter> outputs;
 
@@ -110,20 +101,9 @@ public class StreamMockEnvironment implements Environment {
 
 	private final TaskStateManager taskStateManager;
 
-	private final GlobalAggregateManager aggregateManager;
-
-	private final UserCodeClassLoader userCodeClassLoader = TestingUserCodeClassLoader.newBuilder().build();
-
-	@Nullable
-	private Consumer<Throwable> externalExceptionHandler;
+	private volatile boolean wasFailedExternally = false;
 
 	private TaskEventDispatcher taskEventDispatcher = mock(TaskEventDispatcher.class);
-
-	private TaskManagerRuntimeInfo taskManagerRuntimeInfo = new TestingTaskManagerRuntimeInfo();
-
-	private TaskMetricGroup taskMetricGroup = UnregisteredMetricGroups.createUnregisteredTaskMetricGroup();
-
-	private CheckpointResponder checkpointResponder = NoOpCheckpointResponder.INSTANCE;
 
 	public StreamMockEnvironment(
 		Configuration jobConfig,
@@ -135,7 +115,7 @@ public class StreamMockEnvironment implements Environment {
 		TaskStateManager taskStateManager) {
 		this(
 			new JobID(),
-			new ExecutionAttemptID(),
+			new ExecutionAttemptID(0L, 0L),
 			jobConfig,
 			taskConfig,
 			executionConfig,
@@ -151,7 +131,7 @@ public class StreamMockEnvironment implements Environment {
 		Configuration jobConfig,
 		Configuration taskConfig,
 		ExecutionConfig executionConfig,
-		long offHeapMemorySize,
+		long memorySize,
 		MockInputSplitProvider inputSplitProvider,
 		int bufferSize,
 		TaskStateManager taskStateManager) {
@@ -168,12 +148,11 @@ public class StreamMockEnvironment implements Environment {
 			0 /* attempt number */);
 		this.jobConfiguration = jobConfig;
 		this.taskConfiguration = taskConfig;
-		this.inputs = new LinkedList<>();
+		this.inputs = new LinkedList<SingleInputGate>();
 		this.outputs = new LinkedList<ResultPartitionWriter>();
-		this.memManager = MemoryManagerBuilder.newBuilder().setMemorySize(offHeapMemorySize).build();
+		this.memManager = new MemoryManager(memorySize, 1);
 		this.ioManager = new IOManagerAsync();
 		this.taskStateManager = Preconditions.checkNotNull(taskStateManager);
-		this.aggregateManager = new TestGlobalAggregateManager();
 		this.inputSplitProvider = inputSplitProvider;
 		this.bufferSize = bufferSize;
 
@@ -195,7 +174,7 @@ public class StreamMockEnvironment implements Environment {
 		this(jobConfig, taskConfig, new ExecutionConfig(), memorySize, inputSplitProvider, bufferSize, taskStateManager);
 	}
 
-	public void addInputGate(IndexedInputGate gate) {
+	public void addInputGate(SingleInputGate gate) {
 		inputs.add(gate);
 	}
 
@@ -203,6 +182,7 @@ public class StreamMockEnvironment implements Environment {
 		try {
 			outputs.add(new RecordOrEventCollectingResultPartitionWriter<T>(
 				outputList,
+				new TestPooledBufferProvider(Integer.MAX_VALUE),
 				serializer));
 		}
 		catch (Throwable t) {
@@ -211,13 +191,14 @@ public class StreamMockEnvironment implements Environment {
 		}
 	}
 
-	public void setExternalExceptionHandler(Consumer<Throwable> externalExceptionHandler) {
-		this.externalExceptionHandler = externalExceptionHandler;
-	}
-
 	@Override
 	public Configuration getTaskConfiguration() {
 		return this.taskConfiguration;
+	}
+
+	@Override
+	public Task getContainingTask() {
+		return null;
 	}
 
 	@Override
@@ -256,8 +237,8 @@ public class StreamMockEnvironment implements Environment {
 	}
 
 	@Override
-	public UserCodeClassLoader getUserCodeClassLoader() {
-		return userCodeClassLoader;
+	public ClassLoader getUserClassLoader() {
+		return getClass().getClassLoader();
 	}
 
 	@Override
@@ -276,13 +257,15 @@ public class StreamMockEnvironment implements Environment {
 	}
 
 	@Override
-	public IndexedInputGate getInputGate(int index) {
+	public SingleInputGate getInputGate(int index) {
 		return inputs.get(index);
 	}
 
 	@Override
-	public IndexedInputGate[] getAllInputGates() {
-		return inputs.toArray(new IndexedInputGate[0]);
+	public SingleInputGate[] getAllInputGates() {
+		SingleInputGate[] gates = new SingleInputGate[inputs.size()];
+		inputs.toArray(gates);
+		return gates;
 	}
 
 	@Override
@@ -291,8 +274,18 @@ public class StreamMockEnvironment implements Environment {
 	}
 
 	@Override
+	public CausalLogManager getCausalLogManager() {
+		return null;
+	}
+
+	@Override
 	public JobVertexID getJobVertexId() {
 		return new JobVertexID(new byte[16]);
+	}
+
+	@Override
+	public List<JobVertex> getTopologicallySortedJobVertexes() {
+		return null;
 	}
 
 	@Override
@@ -311,11 +304,6 @@ public class StreamMockEnvironment implements Environment {
 	}
 
 	@Override
-	public GlobalAggregateManager getGlobalAggregateManager() {
-		return aggregateManager;
-	}
-
-	@Override
 	public AccumulatorRegistry getAccumulatorRegistry() {
 		return accumulatorRegistry;
 	}
@@ -323,11 +311,6 @@ public class StreamMockEnvironment implements Environment {
 	@Override
 	public TaskKvStateRegistry getTaskKvStateRegistry() {
 		return kvStateRegistry;
-	}
-
-	@Override
-	public ExternalResourceInfoProvider getExternalResourceInfoProvider() {
-		return ExternalResourceInfoProvider.NO_EXTERNAL_RESOURCES;
 	}
 
 	@Override
@@ -344,41 +327,24 @@ public class StreamMockEnvironment implements Environment {
 	}
 
 	@Override
-	public void declineCheckpoint(long checkpointId, Throwable cause) {
-		checkpointResponder.declineCheckpoint(jobID, executionAttemptID, checkpointId, cause);
-	}
-
-	@Override
-	public TaskOperatorEventGateway getOperatorCoordinatorEventGateway() {
-		return new NoOpTaskOperatorEventGateway();
-	}
+	public void declineCheckpoint(long checkpointId, Throwable cause) {}
 
 	@Override
 	public void failExternally(Throwable cause) {
-		if (externalExceptionHandler != null) {
-			externalExceptionHandler.accept(cause);
-		}
+		this.wasFailedExternally = true;
+	}
+
+	public boolean wasFailedExternally() {
+		return wasFailedExternally;
 	}
 
 	@Override
 	public TaskManagerRuntimeInfo getTaskManagerInfo() {
-		return this.taskManagerRuntimeInfo;
-	}
-
-	public void setTaskManagerInfo(TaskManagerRuntimeInfo taskManagerRuntimeInfo) {
-		this.taskManagerRuntimeInfo = taskManagerRuntimeInfo;
+		return new TestingTaskManagerRuntimeInfo();
 	}
 
 	@Override
 	public TaskMetricGroup getMetricGroup() {
-		return this.taskMetricGroup;
-	}
-
-	public void setTaskMetricGroup(TaskMetricGroup taskMetricGroup) {
-		this.taskMetricGroup = taskMetricGroup;
-	}
-
-	public void setCheckpointResponder(CheckpointResponder checkpointResponder) {
-		this.checkpointResponder = checkpointResponder;
+		return UnregisteredMetricGroups.createUnregisteredTaskMetricGroup();
 	}
 }

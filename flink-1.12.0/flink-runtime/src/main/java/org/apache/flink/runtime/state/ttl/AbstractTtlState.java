@@ -18,14 +18,12 @@
 
 package org.apache.flink.runtime.state.ttl;
 
+import org.apache.flink.api.common.state.StateTtlConfig;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.runtime.state.internal.InternalKvState;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.function.SupplierWithException;
 import org.apache.flink.util.function.ThrowingConsumer;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 
 /**
  * Base class for TTL logic wrappers of state objects.
@@ -41,13 +39,9 @@ abstract class AbstractTtlState<K, N, SV, TTLSV, S extends InternalKvState<K, N,
 	implements InternalKvState<K, N, SV> {
 	private final TypeSerializer<SV> valueSerializer;
 
-	/** This registered callback is to be called whenever state is accessed for read or write. */
-	final Runnable accessCallback;
-
-	AbstractTtlState(TtlStateContext<S, SV> ttlStateContext) {
-		super(ttlStateContext.original, ttlStateContext.config, ttlStateContext.timeProvider);
-		this.valueSerializer = ttlStateContext.valueSerializer;
-		this.accessCallback = ttlStateContext.accessCallback;
+	AbstractTtlState(S original, StateTtlConfig config, TtlTimeProvider timeProvider, TypeSerializer<SV> valueSerializer) {
+		super(original, config, timeProvider);
+		this.valueSerializer = valueSerializer;
 	}
 
 	<SE extends Throwable, CE extends Throwable, T> T getWithTtlCheckAndUpdate(
@@ -88,19 +82,5 @@ abstract class AbstractTtlState<K, N, SV, TTLSV, S extends InternalKvState<K, N,
 	@Override
 	public void clear() {
 		original.clear();
-		accessCallback.run();
-	}
-
-	/**
-	 * Check if state has expired or not and update it if it has partially expired.
-	 *
-	 * @return either non expired (possibly updated) state or null if the state has expired.
-	 */
-	@Nullable
-	public abstract TTLSV getUnexpiredOrNull(@Nonnull TTLSV ttlValue);
-
-	@Override
-	public StateIncrementalVisitor<K, N, SV> getStateIncrementalVisitor(int recommendedMaxNumberOfReturnedRecords) {
-		throw new UnsupportedOperationException();
 	}
 }

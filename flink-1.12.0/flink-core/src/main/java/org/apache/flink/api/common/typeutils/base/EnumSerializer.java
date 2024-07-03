@@ -18,35 +18,29 @@
 
 package org.apache.flink.api.common.typeutils.base;
 
-import org.apache.flink.annotation.Internal;
-import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.api.common.typeutils.GenericTypeSerializerConfigSnapshot;
-import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.api.common.typeutils.TypeSerializerSchemaCompatibility;
-import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
-import org.apache.flink.api.java.typeutils.runtime.DataInputViewStream;
-import org.apache.flink.core.memory.DataInputView;
-import org.apache.flink.core.memory.DataOutputView;
-import org.apache.flink.util.InstantiationUtil;
-
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.lang.reflect.Array;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.EnumMap;
-import java.util.LinkedHashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+
+import org.apache.flink.annotation.Internal;
+import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.api.common.typeutils.CompatibilityResult;
+import org.apache.flink.api.common.typeutils.GenericTypeSerializerConfigSnapshot;
+import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.api.common.typeutils.TypeSerializerConfigSnapshot;
+import org.apache.flink.api.java.typeutils.runtime.DataInputViewStream;
+import org.apache.flink.core.memory.DataInputView;
+import org.apache.flink.core.memory.DataOutputView;
+import org.apache.flink.util.InstantiationUtil;
+import org.apache.flink.util.Preconditions;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
-import static org.apache.flink.util.Preconditions.checkState;
 
-/**
- * {@link TypeSerializer} for Java enums.
- */
 @Internal
 public final class EnumSerializer<T extends Enum<T>> extends TypeSerializer<T> {
 
@@ -55,7 +49,7 @@ public final class EnumSerializer<T extends Enum<T>> extends TypeSerializer<T> {
 	private final Class<T> enumClass;
 
 	/**
-	 * Maintain our own map of enum value to their ordinal, instead of directly using {@link Enum#ordinal()}.
+	 * Maintain our own map of enum value to their ordinal, instead of directly using {@link Enum#ordinal}.
 	 * This allows us to maintain backwards compatibility for previous serialized data in the case that the
 	 * order of enum constants was changed or new constants were added.
 	 *
@@ -71,17 +65,13 @@ public final class EnumSerializer<T extends Enum<T>> extends TypeSerializer<T> {
 	private T[] values;
 
 	public EnumSerializer(Class<T> enumClass) {
-		this(enumClass, enumClass.getEnumConstants());
-	}
-
-	private EnumSerializer(Class<T> enumClass, T[] enumValues) {
 		this.enumClass = checkNotNull(enumClass);
-		this.values = checkNotNull(enumValues);
 		checkArgument(Enum.class.isAssignableFrom(enumClass), "not an enum");
 
+		this.values = enumClass.getEnumConstants();
 		checkArgument(this.values.length > 0, "cannot use an empty enum");
 
-		this.valueToOrdinal = new EnumMap<>(this.enumClass);
+		this.valueToOrdinal = new HashMap<>(values.length);
 		int i = 0;
 		for (T value : values) {
 			this.valueToOrdinal.put(value, i++);
@@ -100,7 +90,6 @@ public final class EnumSerializer<T extends Enum<T>> extends TypeSerializer<T> {
 
 	@Override
 	public T createInstance() {
-		checkState(values != null);
 		return values[0];
 	}
 
@@ -142,14 +131,18 @@ public final class EnumSerializer<T extends Enum<T>> extends TypeSerializer<T> {
 
 	@Override
 	public boolean equals(Object obj) {
-		if (obj instanceof EnumSerializer) {
+		if(obj instanceof EnumSerializer) {
 			EnumSerializer<?> other = (EnumSerializer<?>) obj;
 
-			return other.enumClass == this.enumClass &&
-					Arrays.equals(values, other.values);
+			return other.canEqual(this) && other.enumClass == this.enumClass;
 		} else {
 			return false;
 		}
+	}
+
+	@Override
+	public boolean canEqual(Object obj) {
+		return obj instanceof EnumSerializer;
 	}
 
 	@Override
@@ -166,7 +159,7 @@ public final class EnumSerializer<T extends Enum<T>> extends TypeSerializer<T> {
 		if (this.values == null) {
 			this.values = enumClass.getEnumConstants();
 
-			this.valueToOrdinal = new EnumMap<>(this.enumClass);
+			this.valueToOrdinal = new HashMap<>(values.length);
 			int i = 0;
 			for (T value : values) {
 				this.valueToOrdinal.put(value, i++);
@@ -179,114 +172,74 @@ public final class EnumSerializer<T extends Enum<T>> extends TypeSerializer<T> {
 	// --------------------------------------------------------------------------------------------
 
 	@Override
-	public EnumSerializerSnapshot<T> snapshotConfiguration() {
-		return new EnumSerializerSnapshot<>(enumClass, values);
+	public EnumSerializerConfigSnapshot<T> snapshotConfiguration() {
+		return new EnumSerializerConfigSnapshot<>(enumClass, values);
 	}
 
-	/**
-	 * {@link TypeSerializerSnapshot} for {@link EnumSerializer}.
-	 */
-	public static final class EnumSerializerSnapshot<T extends Enum<T>> implements TypeSerializerSnapshot<T> {
-		private static final int CURRENT_VERSION = 3;
+	@SuppressWarnings("unchecked")
+	@Override
+	public CompatibilityResult<T> ensureCompatibility(TypeSerializerConfigSnapshot<?> configSnapshot) {
+		if (configSnapshot instanceof EnumSerializerConfigSnapshot) {
+			final EnumSerializerConfigSnapshot<T> config = (EnumSerializerConfigSnapshot<T>) configSnapshot;
 
-		private T[] previousEnums;
-		private Class<T> enumClass;
+			if (enumClass.equals(config.getTypeClass())) {
 
-		@SuppressWarnings("unused")
-		public EnumSerializerSnapshot() {
-			// this constructor is used when restoring from a checkpoint/savepoint.
-		}
+				T[] reorderedEnumConstants = (T[]) Array.newInstance(enumClass, this.values.length);
+				Map<T, Integer> rebuiltEnumConstantToOrdinalMap = new HashMap<>(this.values.length);
 
-		EnumSerializerSnapshot(Class<T> enumClass, T[] enums) {
-			this.enumClass = checkNotNull(enumClass);
-			this.previousEnums = checkNotNull(enums);
-		}
+				List<String> previousEnumConstants = config.getEnumConstants();
 
-		@Override
-		public int getCurrentVersion() {
-			return CURRENT_VERSION;
-		}
+				if (previousEnumConstants.size() <= this.values.length) {
+					for (int i = 0; i < previousEnumConstants.size(); i++) {
+						String previousEnumConstantStr = previousEnumConstants.get(i);
 
-		@Override
-		public void writeSnapshot(DataOutputView out) throws IOException {
-			checkState(enumClass != null, "Enum class can not be null.");
-			out.writeUTF(enumClass.getName());
-			out.writeInt(previousEnums.length);
-			for (T enumConstant : previousEnums) {
-				out.writeUTF(enumConstant.name());
-			}
-		}
+						try {
+							// fetch the actual enum, and use it to populate the reconstructed bi-directional map
+							T enumConstant = Enum.valueOf(enumClass, previousEnumConstantStr);
 
-		@Override
-		public void readSnapshot(int readVersion, DataInputView in, ClassLoader userCodeClassLoader) throws IOException {
-			enumClass = InstantiationUtil.resolveClassByName(in, userCodeClassLoader);
-
-			int numEnumConstants = in.readInt();
-
-			@SuppressWarnings("unchecked")
-			T[] previousEnums = (T[]) Array.newInstance(enumClass, numEnumConstants);
-			for (int i = 0; i < numEnumConstants; i++) {
-				String enumName = in.readUTF();
-				try {
-					previousEnums[i] = Enum.valueOf(enumClass, enumName);
-				} catch (IllegalArgumentException e) {
-					throw new IllegalStateException("Could not create a restore serializer for enum " +
-							enumClass +
-							". Probably because an enum value was removed.");
+							reorderedEnumConstants[i] = enumConstant;
+							rebuiltEnumConstantToOrdinalMap.put(enumConstant, i);
+						} catch (IllegalArgumentException e) {
+							// a previous enum constant no longer exists, and therefore requires migration
+							return CompatibilityResult.requiresMigration();
+						}
+					}
+				} else {
+					// some enum constants have been removed (because there are
+					// fewer constants now), and therefore requires migration
+					return CompatibilityResult.requiresMigration();
 				}
-			}
 
-			this.previousEnums = previousEnums;
+				// if there are new enum constants, append them to the end
+				if (this.values.length > previousEnumConstants.size()) {
+					int appendedNewOrdinal = previousEnumConstants.size();
+					for (T currentEnumConstant : this.values) {
+						if (!rebuiltEnumConstantToOrdinalMap.containsKey(currentEnumConstant)) {
+							reorderedEnumConstants[appendedNewOrdinal] = currentEnumConstant;
+							rebuiltEnumConstantToOrdinalMap.put(currentEnumConstant, appendedNewOrdinal);
+							appendedNewOrdinal++;
+						}
+					}
+				}
+
+				// if we reach here, we can simply reconfigure ourselves to be compatible
+				this.values = reorderedEnumConstants;
+				this.valueToOrdinal = rebuiltEnumConstantToOrdinalMap;
+				return CompatibilityResult.compatible();
+			}
 		}
 
-		@Override
-		public TypeSerializer<T> restoreSerializer() {
-			checkState(enumClass != null, "Enum class can not be null.");
-
-			return new EnumSerializer<>(enumClass, previousEnums);
-		}
-
-		@Override
-		public TypeSerializerSchemaCompatibility<T> resolveSchemaCompatibility(TypeSerializer<T> newSerializer) {
-			if (!(newSerializer instanceof EnumSerializer)) {
-				return TypeSerializerSchemaCompatibility.incompatible();
-			}
-
-			EnumSerializer<T> newEnumSerializer = (EnumSerializer<T>) newSerializer;
-			if (!enumClass.equals(newEnumSerializer.enumClass)) {
-				return TypeSerializerSchemaCompatibility.incompatible();
-			}
-
-			T[] currentEnums = enumClass.getEnumConstants();
-
-			if (Arrays.equals(previousEnums, currentEnums)) {
-				return TypeSerializerSchemaCompatibility.compatibleAsIs();
-			}
-
-			Set<T> reconfiguredEnumSet = new LinkedHashSet<>(Arrays.asList(previousEnums));
-			reconfiguredEnumSet.addAll(Arrays.asList(currentEnums));
-
-			@SuppressWarnings("unchecked")
-			T[] reconfiguredEnums = reconfiguredEnumSet.toArray(
-					(T[]) Array.newInstance(enumClass, reconfiguredEnumSet.size()));
-
-			EnumSerializer<T> reconfiguredSerializer = new EnumSerializer<>(
-					enumClass,
-					reconfiguredEnums);
-			return TypeSerializerSchemaCompatibility.compatibleWithReconfiguredSerializer(
-					reconfiguredSerializer);
-		}
+		return CompatibilityResult.requiresMigration();
 	}
 
 	/**
 	 * Configuration snapshot of a serializer for enumerations.
 	 *
-	 * <p>Configuration contains the enum class, and an array of the enum's constants
+	 * Configuration contains the enum class, and an array of the enum's constants
 	 * that existed when the configuration snapshot was taken.
 	 *
 	 * @param <T> the enum type.
 	 */
-	@Deprecated
 	public static final class EnumSerializerConfigSnapshot<T extends Enum<T>>
 			extends GenericTypeSerializerConfigSnapshot<T> {
 
@@ -295,8 +248,12 @@ public final class EnumSerializer<T extends Enum<T>> extends TypeSerializer<T> {
 		private List<String> enumConstants;
 
 		/** This empty nullary constructor is required for deserializing the configuration. */
-		@SuppressWarnings("unused")
 		public EnumSerializerConfigSnapshot() {}
+
+		public EnumSerializerConfigSnapshot(Class<T> enumClass, T[] enumConstantsArr) {
+			super(enumClass);
+			this.enumConstants = buildEnumConstantsList(Preconditions.checkNotNull(enumConstantsArr));
+		}
 
 		@Override
 		public void write(DataOutputView out) throws IOException {
@@ -337,27 +294,6 @@ public final class EnumSerializer<T extends Enum<T>> extends TypeSerializer<T> {
 		}
 
 		@Override
-		public TypeSerializerSchemaCompatibility<T> resolveSchemaCompatibility(TypeSerializer<T> newSerializer) {
-
-			Class<T> enumClass = getTypeClass();
-
-			@SuppressWarnings("unchecked")
-			T[] previousEnums = (T[]) Array.newInstance(enumClass, enumConstants.size());
-
-			for (int i = 0; i < enumConstants.size(); i++) {
-				String enumName = enumConstants.get(i);
-				try {
-					previousEnums[i] = Enum.valueOf(enumClass, enumName);
-				} catch (IllegalArgumentException e) {
-					throw new RuntimeException("Could not create a restore serializer for enum " +
-							enumClass +
-							". Probably because an enum value was removed.");
-				}
-			}
-			return new EnumSerializerSnapshot<>(enumClass, previousEnums).resolveSchemaCompatibility(newSerializer);
-		}
-
-		@Override
 		public int getVersion() {
 			return VERSION;
 		}
@@ -367,7 +303,7 @@ public final class EnumSerializer<T extends Enum<T>> extends TypeSerializer<T> {
 			return new int[] {VERSION, 1};
 		}
 
-		List<String> getEnumConstants() {
+		public List<String> getEnumConstants() {
 			return enumConstants;
 		}
 
@@ -404,13 +340,5 @@ public final class EnumSerializer<T extends Enum<T>> extends TypeSerializer<T> {
 	@VisibleForTesting
 	Map<T, Integer> getValueToOrdinal() {
 		return valueToOrdinal;
-	}
-
-	@Override
-	public String toString() {
-		return "EnumSerializer{" +
-				"enumClass=" + enumClass +
-				", values=" + Arrays.toString(values) +
-				'}';
 	}
 }

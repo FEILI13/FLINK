@@ -39,14 +39,12 @@ public class CompletedCheckpointStatsSummaryTest {
 		long triggerTimestamp = 123123L;
 		long ackTimestamp = 123123 + 1212312399L;
 		long stateSize = Integer.MAX_VALUE + 17787L;
-		long processedData = Integer.MAX_VALUE + 123123L;
-		long persistedData = Integer.MAX_VALUE + 42L;
+		long alignmentBuffered = Integer.MAX_VALUE + 123123L;
 
 		CompletedCheckpointStatsSummary summary = new CompletedCheckpointStatsSummary();
 		assertEquals(0, summary.getStateSizeStats().getCount());
 		assertEquals(0, summary.getEndToEndDurationStats().getCount());
-		assertEquals(0, summary.getProcessedDataStats().getCount());
-		assertEquals(0, summary.getPersistedDataStats().getCount());
+		assertEquals(0, summary.getAlignmentBufferedStats().getCount());
 
 		int numCheckpoints = 10;
 
@@ -56,15 +54,13 @@ public class CompletedCheckpointStatsSummaryTest {
 				triggerTimestamp,
 				ackTimestamp + i,
 				stateSize + i,
-				processedData + i,
-				persistedData + i);
+				alignmentBuffered + i);
 
 			summary.updateSummary(completed);
 
 			assertEquals(i + 1, summary.getStateSizeStats().getCount());
 			assertEquals(i + 1, summary.getEndToEndDurationStats().getCount());
-			assertEquals(i + 1, summary.getProcessedDataStats().getCount());
-			assertEquals(i + 1, summary.getPersistedDataStats().getCount());
+			assertEquals(i + 1, summary.getAlignmentBufferedStats().getCount());
 		}
 
 		MinMaxAvgStats stateSizeStats = summary.getStateSizeStats();
@@ -75,13 +71,9 @@ public class CompletedCheckpointStatsSummaryTest {
 		assertEquals(ackTimestamp - triggerTimestamp, durationStats.getMinimum());
 		assertEquals(ackTimestamp - triggerTimestamp + numCheckpoints - 1, durationStats.getMaximum());
 
-		MinMaxAvgStats processedDataStats = summary.getProcessedDataStats();
-		assertEquals(processedData, processedDataStats.getMinimum());
-		assertEquals(processedData + numCheckpoints - 1, processedDataStats.getMaximum());
-
-		MinMaxAvgStats persistedDataStats = summary.getPersistedDataStats();
-		assertEquals(persistedData, persistedDataStats.getMinimum());
-		assertEquals(persistedData + numCheckpoints - 1, persistedDataStats.getMaximum());
+		MinMaxAvgStats alignmentBufferedStats = summary.getAlignmentBufferedStats();
+		assertEquals(alignmentBuffered, alignmentBufferedStats.getMinimum());
+		assertEquals(alignmentBuffered + numCheckpoints - 1, alignmentBufferedStats.getMaximum());
 	}
 
 	private CompletedCheckpointStats createCompletedCheckpoint(
@@ -89,8 +81,7 @@ public class CompletedCheckpointStatsSummaryTest {
 		long triggerTimestamp,
 		long ackTimestamp,
 		long stateSize,
-		long processedData,
-		long persistedData) {
+		long alignmentBuffered) {
 
 		SubtaskStateStats latest = mock(SubtaskStateStats.class);
 		when(latest.getAckTimestamp()).thenReturn(ackTimestamp);
@@ -107,8 +98,7 @@ public class CompletedCheckpointStatsSummaryTest {
 			taskStats,
 			1,
 			stateSize,
-			processedData,
-			persistedData,
+			alignmentBuffered,
 			latest,
 			null);
 	}

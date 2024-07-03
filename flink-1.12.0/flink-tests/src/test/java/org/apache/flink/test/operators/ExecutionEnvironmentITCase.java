@@ -18,6 +18,7 @@
 
 package org.apache.flink.test.operators;
 
+import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.functions.RichMapPartitionFunction;
 import org.apache.flink.api.common.io.GenericInputFormat;
 import org.apache.flink.api.java.DataSet;
@@ -52,6 +53,8 @@ public class ExecutionEnvironmentITCase extends TestLogger {
 		conf.setInteger(TaskManagerOptions.NUM_TASK_SLOTS, PARALLELISM);
 
 		final ExecutionEnvironment env = ExecutionEnvironment.createLocalEnvironment(conf);
+		env.setParallelism(ExecutionConfig.PARALLELISM_AUTO_MAX);
+		env.getConfig().disableSysoutLogging();
 
 		DataSet<Integer> result = env.createInput(new ParallelismDependentInputFormat())
 				.rebalance()

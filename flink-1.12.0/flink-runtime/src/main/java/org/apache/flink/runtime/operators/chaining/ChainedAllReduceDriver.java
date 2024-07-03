@@ -40,6 +40,7 @@ public class ChainedAllReduceDriver<IT> extends ChainedDriver<IT, IT> {
 	// --------------------------------------------------------------------------------------------
 	@Override
 	public void setup(AbstractInvokable parent) {
+		@SuppressWarnings("unchecked")
 		final ReduceFunction<IT> red = BatchTask.instantiateUserCode(this.config, userCodeClassLoader, ReduceFunction.class);
 		this.reducer = red;
 		FunctionUtils.setFunctionRuntimeContext(red, getUdfRuntimeContext());
@@ -68,7 +69,6 @@ public class ChainedAllReduceDriver<IT> extends ChainedDriver<IT, IT> {
 		try {
 			FunctionUtils.closeFunction(this.reducer);
 		} catch (Throwable t) {
-			// Ignore exception.
 		}
 	}
 

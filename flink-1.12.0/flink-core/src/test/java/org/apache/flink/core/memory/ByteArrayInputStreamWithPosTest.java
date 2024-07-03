@@ -19,11 +19,10 @@
 package org.apache.flink.core.memory;
 
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
-
-import static org.junit.Assert.assertEquals;
 
 /**
  * Tests for {@link ByteArrayInputStreamWithPos}.
@@ -33,40 +32,13 @@ public class ByteArrayInputStreamWithPosTest {
 	@Rule
 	public ExpectedException thrown = ExpectedException.none();
 
-	private final byte[] data = new byte[] {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9'};
+	private byte[] data = new byte[] {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9'};
 
-	private final ByteArrayInputStreamWithPos stream = new ByteArrayInputStreamWithPos(data);
+	private ByteArrayInputStreamWithPos stream;
 
-	@Test
-	public void testGetWithNullArray() {
-		thrown.expect(NullPointerException.class);
-		stream.read(null, 0, 1);
-	}
-
-	@Test
-	public void testGetWithNegativeLength() {
-		int read = stream.read(new byte[0], 0, -1);
-		assertEquals(0, read);
-	}
-
-	@Test
-	public void testGetWithTargetArrayOverflow() {
-		thrown.expect(IndexOutOfBoundsException.class);
-		stream.read(new byte[0], 0, 2);
-	}
-
-	@Test
-	public void testGetWithEOF() {
-		drainStream(stream);
-		int read = stream.read(new byte[1], 0, 1);
-		assertEquals(-1, read);
-	}
-
-	@Test
-	public void testGetMoreThanAvailable() {
-		int read = stream.read(new byte[20], 0, 20);
-		assertEquals(10, read);
-		assertEquals(-1, stream.read()); // exhausted now
+	@Before
+	public void setup() {
+		stream = new ByteArrayInputStreamWithPos(data);
 	}
 
 	/**
@@ -122,13 +94,5 @@ public class ByteArrayInputStreamWithPosTest {
 			Assert.assertEquals(testData[i + off], in.read());
 		}
 		Assert.assertEquals(-1, in.read());
-	}
-
-	private static int drainStream(ByteArrayInputStreamWithPos stream) {
-		int skipped = 0;
-		while (stream.read() != -1) {
-			skipped++;
-		}
-		return skipped;
 	}
 }

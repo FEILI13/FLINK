@@ -20,7 +20,6 @@ package org.apache.flink.core.fs;
 
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.core.plugin.Plugin;
 
 import java.io.IOException;
 import java.net.URI;
@@ -32,12 +31,21 @@ import java.net.URI;
  * creating file systems via {@link #create(URI)}.
  */
 @PublicEvolving
-public interface FileSystemFactory extends Plugin {
+public interface FileSystemFactory {
 
 	/**
 	 * Gets the scheme of the file system created by this factory.
 	 */
 	String getScheme();
+
+	/**
+	 * Applies the given configuration to this factory. All future file system
+	 * instantiations via {@link #create(URI)} should take the configuration into
+	 * account.
+	 *
+	 * @param config The configuration to apply.
+	 */
+	void configure(Configuration config);
 
 	/**
 	 * Creates a new file system for the given file system URI.

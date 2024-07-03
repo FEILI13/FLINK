@@ -31,11 +31,11 @@ import org.apache.flink.api.common.operators.Order;
 import org.apache.flink.api.common.operators.Ordering;
 import org.apache.flink.api.common.operators.ResourceSpec;
 import org.apache.flink.api.common.operators.UnaryOperatorInformation;
-import org.apache.flink.api.common.operators.util.OperatorValidationUtils;
 import org.apache.flink.api.common.typeinfo.NothingTypeInfo;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.util.Preconditions;
 
 import java.util.Arrays;
 
@@ -142,7 +142,7 @@ public class DataSink<T> {
 			this.sortOrders = new Order[flatKeys.length];
 			Arrays.fill(this.sortOrders, order);
 		} else {
-			// append sorting info to existing info
+			// append sorting info to exising info
 			int oldLength = this.sortKeyPositions.length;
 			int newLength = oldLength + flatKeys.length;
 			this.sortKeyPositions = Arrays.copyOf(this.sortKeyPositions, newLength);
@@ -286,7 +286,8 @@ public class DataSink<T> {
 	 * @return This data sink with set parallelism.
 	 */
 	public DataSink<T> setParallelism(int parallelism) {
-		OperatorValidationUtils.validateParallelism(parallelism);
+		Preconditions.checkArgument(parallelism > 0 || parallelism == ExecutionConfig.PARALLELISM_DEFAULT,
+			"The parallelism of an operator must be at least 1.");
 
 		this.parallelism = parallelism;
 
@@ -329,7 +330,10 @@ public class DataSink<T> {
 	 * @return The data sink with set minimum and preferred resources.
 	 */
 	private DataSink<T> setResources(ResourceSpec minResources, ResourceSpec preferredResources) {
-		OperatorValidationUtils.validateMinAndPreferredResources(minResources, preferredResources);
+		Preconditions.checkNotNull(minResources, "The min resources must be not null.");
+		Preconditions.checkNotNull(preferredResources, "The preferred resources must be not null.");
+		Preconditions.checkArgument(minResources.isValid() && preferredResources.isValid() && minResources.lessThanOrEqual(preferredResources),
+				"The values in resources must be not less than 0 and the preferred resources must be greater than the min resources.");
 
 		this.minResources = minResources;
 		this.preferredResources = preferredResources;
@@ -344,7 +348,8 @@ public class DataSink<T> {
 	 * @return The data sink with set minimum and preferred resources.
 	 */
 	private DataSink<T> setResources(ResourceSpec resources) {
-		OperatorValidationUtils.validateResources(resources);
+		Preconditions.checkNotNull(resources, "The resources must be not null.");
+		Preconditions.checkArgument(resources.isValid(), "The values in resources must be not less than 0.");
 
 		this.minResources = resources;
 		this.preferredResources = resources;

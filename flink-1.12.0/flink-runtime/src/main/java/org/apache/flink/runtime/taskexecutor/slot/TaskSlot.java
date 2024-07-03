@@ -21,25 +21,16 @@ package org.apache.flink.runtime.taskexecutor.slot;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
-import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
-import org.apache.flink.runtime.memory.MemoryManager;
-import org.apache.flink.util.AutoCloseableAsync;
-import org.apache.flink.util.FlinkException;
+import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.util.Preconditions;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
-import java.util.stream.Collectors;
 
 /**
- * Container for multiple {@link TaskSlotPayload tasks} belonging to the same slot. A {@link TaskSlot} can be in one
+ * Container for multiple {@link Task} belonging to the same slot. A {@link TaskSlot} can be in one
  * of the following states:
  * <ul>
  *     <li>Free - The slot is empty and not allocated to a job</li>
@@ -48,7 +39,7 @@ import java.util.stream.Collectors;
  *     <li>Active - The slot is in active use by a job manager which is the leader of the allocating job.</li>
  * </ul>
  *
- * <p>A task slot can only be allocated if it is in state free. An allocated task slot can transit
+ * <p>A task slot can only be allocated if it is in state free. An allocated task slot can transition
  * to state active.
  *
  * <p>An active slot allows to add tasks from the respective job and with the correct allocation id.
@@ -56,11 +47,8 @@ import java.util.stream.Collectors;
  *
  * <p>An allocated or active slot can only be freed if it is empty. If it is not empty, then it's state
  * can be set to releasing indicating that it can be freed once it becomes empty.
- *
- * @param <T> type of the {@link TaskSlotPayload} stored in this slot
  */
-public class TaskSlot<T extends TaskSlotPayload> implements AutoCloseableAsync {
-	private static final Logger LOG = LoggerFactory.getLogger(TaskSlot.class);
+public class TaskSlot {
 
 	/** Index of the task slot. */
 	private final int index;
@@ -69,48 +57,27 @@ public class TaskSlot<T extends TaskSlotPayload> implements AutoCloseableAsync {
 	private final ResourceProfile resourceProfile;
 
 	/** Tasks running in this slot. */
-	private final Map<ExecutionAttemptID, T> tasks;
-
-	private final MemoryManager memoryManager;
+	private final Map<ExecutionAttemptID, Task> tasks;
 
 	/** State of this slot. */
 	private TaskSlotState state;
 
-	/** Job id to which the slot has been allocated. */
-	private final JobID jobId;
+	/** Job id to which the slot has been allocated; null if not allocated. */
+	private JobID jobId;
 
-	/** Allocation id of this slot. */
-	private final AllocationID allocationId;
+	/** Allocation id of this slot; null if not allocated. */
+	private AllocationID allocationId;
 
-	/** The closing future is completed when the slot is freed and closed. */
-	private final CompletableFuture<Void> closingFuture;
-
-	/**
-	 * {@link Executor} for background actions, e.g. verify all managed memory released.
-	 */
-	private final Executor asyncExecutor;
-
-	public TaskSlot(
-		final int index,
-		final ResourceProfile resourceProfile,
-		final int memoryPageSize,
-		final JobID jobId,
-		final AllocationID allocationId,
-		final Executor asyncExecutor) {
-
+	TaskSlot(final int index, final ResourceProfile resourceProfile) {
+		Preconditions.checkArgument(0 <= index, "The index must be greater than 0.");
 		this.index = index;
 		this.resourceProfile = Preconditions.checkNotNull(resourceProfile);
-		this.asyncExecutor = Preconditions.checkNotNull(asyncExecutor);
 
 		this.tasks = new HashMap<>(4);
-		this.state = TaskSlotState.ALLOCATED;
+		this.state = TaskSlotState.FREE;
 
-		this.jobId = jobId;
-		this.allocationId = allocationId;
-
-		this.memoryManager = createMemoryManager(resourceProfile, memoryPageSize);
-
-		this.closingFuture = new CompletableFuture<>();
+		this.jobId = null;
+		this.allocationId = null;
 	}
 
 	// ----------------------------------------------------------------------------------
@@ -141,6 +108,10 @@ public class TaskSlot<T extends TaskSlotPayload> implements AutoCloseableAsync {
 		return tasks.isEmpty();
 	}
 
+	public boolean isFree() {
+		return TaskSlotState.FREE == state;
+	}
+
 	public boolean isActive(JobID activeJobId, AllocationID activeAllocationId) {
 		Preconditions.checkNotNull(activeJobId);
 		Preconditions.checkNotNull(activeAllocationId);
@@ -167,12 +138,8 @@ public class TaskSlot<T extends TaskSlotPayload> implements AutoCloseableAsync {
 	 *
 	 * @return Iterator to all currently contained tasks in this task slot.
 	 */
-	public Iterator<T> getTasks() {
+	public Iterator<Task> getTasks() {
 		return tasks.values().iterator();
-	}
-
-	public MemoryManager getMemoryManager() {
-		return memoryManager;
 	}
 
 	// ----------------------------------------------------------------------------------
@@ -192,7 +159,7 @@ public class TaskSlot<T extends TaskSlotPayload> implements AutoCloseableAsync {
 	 * @throws IllegalStateException if the task slot is not in state active
 	 * @return true if the task was added to the task slot; otherwise false
 	 */
-	public boolean add(T task) {
+	public boolean add(Task task) {
 		// Check that this slot has been assigned to the job sending this task
 		Preconditions.checkArgument(task.getJobID().equals(jobId), "The task's job id does not match the " +
 			"job id for which the slot has been allocated.");
@@ -200,7 +167,7 @@ public class TaskSlot<T extends TaskSlotPayload> implements AutoCloseableAsync {
 			"id does not match the allocation id for which the slot has been allocated.");
 		Preconditions.checkState(TaskSlotState.ACTIVE == state, "The task slot is not in state active.");
 
-		T oldTask = tasks.put(task.getExecutionId(), task);
+		Task oldTask = tasks.put(task.getExecutionId(), task);
 
 		if (oldTask != null) {
 			tasks.put(task.getExecutionId(), oldTask);
@@ -216,7 +183,7 @@ public class TaskSlot<T extends TaskSlotPayload> implements AutoCloseableAsync {
 	 * @param executionAttemptId identifying the task to be removed
 	 * @return The removed task if there was any; otherwise null.
 	 */
-	public T remove(ExecutionAttemptID executionAttemptId) {
+	public Task remove(ExecutionAttemptID executionAttemptId) {
 		return tasks.remove(executionAttemptId);
 	}
 
@@ -225,6 +192,39 @@ public class TaskSlot<T extends TaskSlotPayload> implements AutoCloseableAsync {
 	 */
 	public void clear() {
 		tasks.clear();
+	}
+
+	/**
+	 * Allocate the task slot for the given job and allocation id. If the slot could be allocated,
+	 * or is already allocated/active for the given job and allocation id, then the method returns
+	 * true. Otherwise it returns false.
+	 *
+	 * <p>A slot can only be allocated if it's current state is free.
+	 *
+	 * @param newJobId to allocate the slot for
+	 * @param newAllocationId to identify the slot allocation
+	 * @return True if the slot was allocated for the given job and allocation id; otherwise false
+	 */
+	public boolean allocate(JobID newJobId, AllocationID newAllocationId) {
+		if (TaskSlotState.FREE == state) {
+			// sanity checks
+			Preconditions.checkState(allocationId == null);
+			Preconditions.checkState(jobId == null);
+
+			this.jobId = Preconditions.checkNotNull(newJobId);
+			this.allocationId = Preconditions.checkNotNull(newAllocationId);
+
+			state = TaskSlotState.ALLOCATED;
+
+			return true;
+		} else if (TaskSlotState.ALLOCATED == state || TaskSlotState.ACTIVE == state) {
+			Preconditions.checkNotNull(newJobId);
+			Preconditions.checkNotNull(newAllocationId);
+
+			return newJobId.equals(jobId) && newAllocationId.equals(allocationId);
+		} else {
+			return false;
+		}
 	}
 
 	/**
@@ -261,13 +261,40 @@ public class TaskSlot<T extends TaskSlotPayload> implements AutoCloseableAsync {
 	}
 
 	/**
+	 * Mark the slot as free. A slot can only marked as free if it's empty.
+	 *
+	 * @return True if the new state is free; otherwise false
+	 */
+	public boolean markFree() {
+		if (isEmpty()) {
+			state = TaskSlotState.FREE;
+			this.jobId = null;
+			this.allocationId = null;
+
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	/**
+	 * Mark this slot as releasing. A slot can always be marked as releasing.
+	 *
+	 * @return True
+	 */
+	public boolean markReleasing() {
+		state = TaskSlotState.RELEASING;
+		return true;
+	}
+
+	/**
 	 * Generate the slot offer from this TaskSlot.
 	 *
 	 * @return The sot offer which this task slot can provide
 	 */
 	public SlotOffer generateSlotOffer() {
 		Preconditions.checkState(TaskSlotState.ACTIVE == state || TaskSlotState.ALLOCATED == state,
-			"The task slot is not in state active or allocated.");
+				"The task slot is not in state active or allocated.");
 		Preconditions.checkState(allocationId != null, "The task slot are not allocated");
 
 		return new SlotOffer(allocationId, index, resourceProfile);
@@ -277,57 +304,5 @@ public class TaskSlot<T extends TaskSlotPayload> implements AutoCloseableAsync {
 	public String toString() {
 		return "TaskSlot(index:" + index + ", state:" + state + ", resource profile: " + resourceProfile +
 			", allocationId: " + (allocationId != null ? allocationId.toString() : "none") + ", jobId: " + (jobId != null ? jobId.toString() : "none") + ')';
-	}
-
-	@Override
-	public CompletableFuture<Void> closeAsync() {
-		return closeAsync(new FlinkException("Closing the slot"));
-	}
-
-	/**
-	 * Close the task slot asynchronously.
-	 *
-	 * <p>Slot is moved to {@link TaskSlotState#RELEASING} state and only once.
-	 * If there are active tasks running in the slot then they are failed.
-	 * The future of all tasks terminated and slot cleaned up is initiated only once and always returned
-	 * in case of multiple attempts to close the slot.
-	 *
-	 * @param cause cause of closing
-	 * @return future of all running task if any being done and slot cleaned up.
-	 */
-	CompletableFuture<Void> closeAsync(Throwable cause) {
-		if (!isReleasing()) {
-			state = TaskSlotState.RELEASING;
-			if (!isEmpty()) {
-				// we couldn't free the task slot because it still contains task, fail the tasks
-				// and set the slot state to releasing so that it gets eventually freed
-				tasks.values().forEach(task -> task.failExternally(cause));
-			}
-
-			final CompletableFuture<Void> shutdownFuture = FutureUtils
-				.waitForAll(tasks.values().stream().map(TaskSlotPayload::getTerminationFuture).collect(Collectors.toList()))
-				.thenRun(memoryManager::shutdown);
-			verifyAllManagedMemoryIsReleasedAfter(shutdownFuture);
-			FutureUtils.forward(shutdownFuture, closingFuture);
-		}
-		return closingFuture;
-	}
-
-	private void verifyAllManagedMemoryIsReleasedAfter(CompletableFuture<Void> after) {
-		after.thenRunAsync(
-			() -> {
-				if (!memoryManager.verifyEmpty()) {
-					LOG.warn(
-						"Not all slot managed memory is freed at {}. This usually indicates memory leak. " +
-							"However, when running an old JVM version it can also be caused by slow garbage collection. " +
-							"Try to upgrade to Java 8u72 or higher if running on an old Java version.",
-						this);
-				}
-			},
-			asyncExecutor);
-	}
-
-	private static MemoryManager createMemoryManager(ResourceProfile resourceProfile, int pageSize) {
-		return MemoryManager.create(resourceProfile.getManagedMemory().getBytes(), pageSize);
 	}
 }

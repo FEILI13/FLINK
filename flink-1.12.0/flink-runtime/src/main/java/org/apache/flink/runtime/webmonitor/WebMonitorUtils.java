@@ -22,9 +22,22 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.WebOptions;
 import org.apache.flink.core.fs.Path;
+import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.runtime.dispatcher.DispatcherGateway;
+import org.apache.flink.runtime.execution.ExecutionState;
+import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
+import org.apache.flink.runtime.executiongraph.AccessExecutionJobVertex;
+import org.apache.flink.runtime.executiongraph.AccessExecutionVertex;
+import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
+import org.apache.flink.runtime.jobgraph.JobStatus;
+import org.apache.flink.runtime.jobmaster.JobManagerGateway;
+import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
+import org.apache.flink.runtime.messages.webmonitor.JobDetails;
 import org.apache.flink.runtime.rest.handler.legacy.files.StaticFileServerHandler;
+import org.apache.flink.runtime.webmonitor.history.JsonArchivist;
 import org.apache.flink.runtime.webmonitor.retriever.GatewayRetriever;
+import org.apache.flink.runtime.webmonitor.retriever.LeaderGatewayRetriever;
+import org.apache.flink.runtime.webmonitor.retriever.MetricQueryServiceRetriever;
 import org.apache.flink.util.FlinkException;
 
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.JsonNode;
@@ -34,12 +47,11 @@ import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.node.Arra
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
-
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -55,23 +67,21 @@ import java.util.concurrent.Executor;
  */
 public final class WebMonitorUtils {
 
-	private static final String WEB_FRONTEND_BOOTSTRAP_CLASS_FQN = "org.apache.flink.runtime.webmonitor.utils.WebFrontendBootstrap";
+	private static final String WEB_RUNTIME_MONITOR_CLASS_FQN = "org.apache.flink.runtime.webmonitor.WebRuntimeMonitor";
 
 	private static final Logger LOG = LoggerFactory.getLogger(WebMonitorUtils.class);
 
 	/**
-	 * Singleton to hold the log file, the stdout file, the log directory.
+	 * Singleton to hold the log and stdout file.
 	 */
 	public static class LogFileLocation {
 
 		public final File logFile;
 		public final File stdOutFile;
-		public final File logDir;
 
-		private LogFileLocation(@Nullable File logFile, @Nullable File stdOutFile, @Nullable File logDir) {
+		private LogFileLocation(File logFile, File stdOutFile) {
 			this.logFile = logFile;
 			this.stdOutFile = stdOutFile;
-			this.logDir = logDir;
 		}
 
 		/**
@@ -90,21 +100,16 @@ public final class WebMonitorUtils {
 			if (logFilePath == null || logFilePath.length() < 4) {
 				LOG.warn("JobManager log files are unavailable in the web dashboard. " +
 					"Log file location not found in environment variable '{}' or configuration key '{}'.",
-					logEnv, WebOptions.LOG_PATH.key());
-				return new LogFileLocation(null, null, null);
+					logEnv, WebOptions.LOG_PATH);
+				return new LogFileLocation(null, null);
 			}
 
 			String outFilePath = logFilePath.substring(0, logFilePath.length() - 3).concat("out");
-			File logFile = resolveFileLocation(logFilePath);
-			File logDir = null;
-			if (logFile != null) {
-				logDir = resolveFileLocation(logFile.getParent());
-			}
 
 			LOG.info("Determined location of main cluster component log file: {}", logFilePath);
 			LOG.info("Determined location of main cluster component stdout file: {}", outFilePath);
 
-			return new LogFileLocation(logFile, resolveFileLocation(outFilePath), logDir);
+			return new LogFileLocation(resolveFileLocation(logFilePath), resolveFileLocation(outFilePath));
 		}
 
 		/**
@@ -120,10 +125,64 @@ public final class WebMonitorUtils {
 	}
 
 	/**
+	 * Starts the web runtime monitor. Because the actual implementation of the runtime monitor is
+	 * in another project, we load the runtime monitor dynamically.
+	 *
+	 * <p>Because failure to start the web runtime monitor is not considered fatal, this method does
+	 * not throw any exceptions, but only logs them.
+	 *
+	 * @param config The configuration for the runtime monitor.
+	 * @param highAvailabilityServices HighAvailabilityServices used to start the WebRuntimeMonitor
+	 * @param jobManagerRetriever which retrieves the currently leading JobManager
+	 * @param queryServiceRetriever which retrieves the query service
+	 * @param timeout for asynchronous operations
+	 * @param scheduledExecutor to run asynchronous operations
+	 */
+	public static WebMonitor startWebRuntimeMonitor(
+			Configuration config,
+			HighAvailabilityServices highAvailabilityServices,
+			LeaderGatewayRetriever<JobManagerGateway> jobManagerRetriever,
+			MetricQueryServiceRetriever queryServiceRetriever,
+			Time timeout,
+			ScheduledExecutor scheduledExecutor) {
+		// try to load and instantiate the class
+		try {
+			Class<? extends WebMonitor> clazz = Class.forName(WEB_RUNTIME_MONITOR_CLASS_FQN).asSubclass(WebMonitor.class);
+
+			Constructor<? extends WebMonitor> constructor = clazz.getConstructor(
+				Configuration.class,
+				LeaderRetrievalService.class,
+				LeaderGatewayRetriever.class,
+				MetricQueryServiceRetriever.class,
+				Time.class,
+				ScheduledExecutor.class);
+			return constructor.newInstance(
+				config,
+				highAvailabilityServices.getJobManagerLeaderRetriever(HighAvailabilityServices.DEFAULT_JOB_ID),
+				jobManagerRetriever,
+				queryServiceRetriever,
+				timeout,
+				scheduledExecutor);
+		} catch (ClassNotFoundException e) {
+			LOG.error("Could not load web runtime monitor. " +
+					"Probably reason: flink-runtime-web is not in the classpath");
+			LOG.debug("Caught exception", e);
+			return null;
+		} catch (InvocationTargetException e) {
+			LOG.error("WebServer could not be created", e.getTargetException());
+			return null;
+		} catch (Throwable t) {
+			LOG.error("Failed to instantiate web runtime monitor.", t);
+			return null;
+		}
+	}
+
+	/**
 	 * Checks whether the flink-runtime-web dependency is available and if so returns a
 	 * StaticFileServerHandler which can serve the static file contents.
 	 *
 	 * @param leaderRetriever to be used by the StaticFileServerHandler
+	 * @param restAddressFuture of the underlying REST server endpoint
 	 * @param timeout for lookup requests
 	 * @param tmpDir to be used by the StaticFileServerHandler to store temporary files
 	 * @param <T> type of the gateway to retrieve
@@ -132,12 +191,14 @@ public final class WebMonitorUtils {
 	 */
 	public static <T extends RestfulGateway> Optional<StaticFileServerHandler<T>> tryLoadWebContent(
 			GatewayRetriever<? extends T> leaderRetriever,
+			CompletableFuture<String> restAddressFuture,
 			Time timeout,
 			File tmpDir) throws IOException {
 
 		if (isFlinkRuntimeWebInClassPath()) {
 			return Optional.of(new StaticFileServerHandler<>(
 				leaderRetriever,
+				restAddressFuture,
 				timeout,
 				tmpDir));
 		} else {
@@ -149,9 +210,9 @@ public final class WebMonitorUtils {
 	 * Loads the {@link WebMonitorExtension} which enables web submission.
 	 *
 	 * @param leaderRetriever to retrieve the leader
+	 * @param restAddressFuture of the underlying REST server endpoint
 	 * @param timeout for asynchronous requests
 	 * @param responseHeaders for the web submission handlers
-	 * @param localAddressFuture of the underlying REST server endpoint
 	 * @param uploadDir where the web submission handler store uploaded jars
 	 * @param executor to run asynchronous operations
 	 * @param configuration used to instantiate the web submission extension
@@ -160,9 +221,9 @@ public final class WebMonitorUtils {
 	 */
 	public static WebMonitorExtension loadWebSubmissionExtension(
 			GatewayRetriever<? extends DispatcherGateway> leaderRetriever,
+			CompletableFuture<String> restAddressFuture,
 			Time timeout,
 			Map<String, String> responseHeaders,
-			CompletableFuture<String> localAddressFuture,
 			java.nio.file.Path uploadDir,
 			Executor executor,
 			Configuration configuration) throws FlinkException {
@@ -173,18 +234,18 @@ public final class WebMonitorUtils {
 					.forName("org.apache.flink.runtime.webmonitor.WebSubmissionExtension")
 					.getConstructor(
 						Configuration.class,
+						CompletableFuture.class,
 						GatewayRetriever.class,
 						Map.class,
-						CompletableFuture.class,
 						java.nio.file.Path.class,
 						Executor.class,
 						Time.class);
 
 				return (WebMonitorExtension) webSubmissionExtensionConstructor.newInstance(
 					configuration,
+					restAddressFuture,
 					leaderRetriever,
 					responseHeaders,
-					localAddressFuture,
 					uploadDir,
 					executor,
 					timeout);
@@ -194,6 +255,22 @@ public final class WebMonitorUtils {
 		} else {
 			throw new FlinkException("The module flink-runtime-web could not be found in the class path. Please add " +
 				"this jar in order to enable web based job submission.");
+		}
+	}
+
+	public static JsonArchivist[] getJsonArchivists() {
+		try {
+			Class<? extends WebMonitor> clazz = Class.forName(WEB_RUNTIME_MONITOR_CLASS_FQN).asSubclass(WebMonitor.class);
+			Method method = clazz.getMethod("getJsonArchivists");
+			return (JsonArchivist[]) method.invoke(null);
+		} catch (ClassNotFoundException e) {
+			LOG.error("Could not load web runtime monitor. " +
+				"Probably reason: flink-runtime-web is not in the classpath");
+			LOG.debug("Caught exception", e);
+			return new JsonArchivist[0];
+		} catch (Throwable t) {
+			LOG.error("Failed to retrieve archivers from web runtime monitor.", t);
+			return new JsonArchivist[0];
 		}
 	}
 
@@ -216,6 +293,42 @@ public final class WebMonitorUtils {
 		catch (Exception e) {
 			throw new RuntimeException(e.getMessage(), e);
 		}
+	}
+
+	public static JobDetails createDetailsForJob(AccessExecutionGraph job) {
+		JobStatus status = job.getState();
+
+		long started = job.getStatusTimestamp(JobStatus.CREATED);
+		long finished = status.isGloballyTerminalState() ? job.getStatusTimestamp(status) : -1L;
+		long duration = (finished >= 0L ? finished : System.currentTimeMillis()) - started;
+
+		int[] countsPerStatus = new int[ExecutionState.values().length];
+		long lastChanged = 0;
+		int numTotalTasks = 0;
+
+		for (AccessExecutionJobVertex ejv : job.getVerticesTopologically()) {
+			AccessExecutionVertex[] vertices = ejv.getTaskVertices();
+			numTotalTasks += vertices.length;
+
+			for (AccessExecutionVertex vertex : vertices) {
+				ExecutionState state = vertex.getExecutionState();
+				countsPerStatus[state.ordinal()]++;
+				lastChanged = Math.max(lastChanged, vertex.getStateTimestamp(state));
+			}
+		}
+
+		lastChanged = Math.max(lastChanged, finished);
+
+		return new JobDetails(
+			job.getJobID(),
+			job.getJobName(),
+			started,
+			finished,
+			duration,
+			status,
+			lastChanged,
+			countsPerStatus,
+			numTotalTasks);
 	}
 
 	/**
@@ -257,7 +370,7 @@ public final class WebMonitorUtils {
 	 */
 	private static boolean isFlinkRuntimeWebInClassPath() {
 		try {
-			Class.forName(WEB_FRONTEND_BOOTSTRAP_CLASS_FQN);
+			Class.forName(WEB_RUNTIME_MONITOR_CLASS_FQN).asSubclass(WebMonitor.class);
 			return true;
 		} catch (ClassNotFoundException e) {
 			// class not found means that there is no flink-runtime-web in the classpath

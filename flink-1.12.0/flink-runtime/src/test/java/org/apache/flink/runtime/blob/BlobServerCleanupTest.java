@@ -204,22 +204,20 @@ public class BlobServerCleanupTest extends TestLogger {
 		int numFiles = 0;
 
 		for (BlobKey key : keys) {
-			final File storageDir;
+			final File blobFile;
 			if (blobService instanceof BlobServer) {
 				BlobServer server = (BlobServer) blobService;
-				storageDir = server.getStorageDir();
+				blobFile = server.getStorageLocation(jobId, key);
 			} else if (blobService instanceof PermanentBlobCache) {
 				PermanentBlobCache cache = (PermanentBlobCache) blobService;
-				storageDir = cache.getStorageDir();
+				blobFile = cache.getStorageLocation(jobId, key);
 			} else if (blobService instanceof TransientBlobCache) {
 				TransientBlobCache cache = (TransientBlobCache) blobService;
-				storageDir = cache.getStorageDir();
+				blobFile = cache.getStorageLocation(jobId, key);
 			} else {
 				throw new UnsupportedOperationException(
 					"unsupported BLOB service class: " + blobService.getClass().getCanonicalName());
 			}
-
-			final File blobFile = new File(BlobUtils.getStorageLocationPath(storageDir.getAbsolutePath(), jobId, key));
 			if (blobFile.exists()) {
 				++numFiles;
 			} else if (doThrow) {

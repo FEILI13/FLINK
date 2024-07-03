@@ -19,7 +19,6 @@
 package org.apache.flink.runtime.state.heap;
 
 import org.apache.flink.api.common.state.StateDescriptor;
-import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.base.IntSerializer;
 import org.apache.flink.core.memory.ByteArrayInputStreamWithPos;
 import org.apache.flink.core.memory.ByteArrayOutputStreamWithPos;
@@ -29,7 +28,6 @@ import org.apache.flink.runtime.state.ArrayListSerializer;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyedBackendSerializationProxy;
 import org.apache.flink.runtime.state.RegisteredKeyValueStateBackendMetaInfo;
-import org.apache.flink.runtime.state.StateEntry;
 import org.apache.flink.runtime.state.StateSnapshot;
 import org.apache.flink.runtime.state.StateSnapshotKeyGroupReader;
 
@@ -40,11 +38,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Random;
 
-/**
- * Test for snapshot compatiblily between differen state tables.
- */
 public class StateTableSnapshotCompatibilityTest {
-	private final TypeSerializer<Integer> keySerializer = IntSerializer.INSTANCE;
 
 	/**
 	 * This test ensures that different implementations of {@link StateTable} are compatible in their serialization
@@ -60,10 +54,11 @@ public class StateTableSnapshotCompatibilityTest {
 				IntSerializer.INSTANCE,
 				new ArrayListSerializer<>(IntSerializer.INSTANCE));
 
-		final MockInternalKeyContext<Integer> keyContext = new MockInternalKeyContext<>();
+		final CopyOnWriteStateTableTest.MockInternalKeyContext<Integer> keyContext =
+			new CopyOnWriteStateTableTest.MockInternalKeyContext<>(IntSerializer.INSTANCE);
 
 		CopyOnWriteStateTable<Integer, Integer, ArrayList<Integer>> cowStateTable =
-			new CopyOnWriteStateTable<>(keyContext, metaInfo, keySerializer);
+			new CopyOnWriteStateTable<>(keyContext, metaInfo);
 
 		for (int i = 0; i < 100; ++i) {
 			ArrayList<Integer> list = new ArrayList<>(5);
@@ -72,17 +67,17 @@ public class StateTableSnapshotCompatibilityTest {
 				list.add(r.nextInt(100));
 			}
 
-			keyContext.setCurrentKey(r.nextInt(10));
-			cowStateTable.put(r.nextInt(2), list);
+			cowStateTable.put(r.nextInt(10), r.nextInt(2), list);
 		}
 
 		StateSnapshot snapshot = cowStateTable.stateSnapshot();
 
 		final NestedMapsStateTable<Integer, Integer, ArrayList<Integer>> nestedMapsStateTable =
-			new NestedMapsStateTable<>(keyContext, metaInfo, keySerializer);
+			new NestedMapsStateTable<>(keyContext, metaInfo);
 
 		restoreStateTableFromSnapshot(nestedMapsStateTable, snapshot, keyContext.getKeyGroupRange());
 		snapshot.release();
+
 
 		Assert.assertEquals(cowStateTable.size(), nestedMapsStateTable.size());
 		for (StateEntry<Integer, Integer, ArrayList<Integer>> entry : cowStateTable) {
@@ -90,7 +85,7 @@ public class StateTableSnapshotCompatibilityTest {
 		}
 
 		snapshot = nestedMapsStateTable.stateSnapshot();
-		cowStateTable = new CopyOnWriteStateTable<>(keyContext, metaInfo, keySerializer);
+		cowStateTable = new CopyOnWriteStateTable<>(keyContext, metaInfo);
 
 		restoreStateTableFromSnapshot(cowStateTable, snapshot, keyContext.getKeyGroupRange());
 		snapshot.release();
@@ -101,8 +96,8 @@ public class StateTableSnapshotCompatibilityTest {
 		}
 	}
 
-	private void restoreStateTableFromSnapshot(
-		StateTable<Integer, Integer, ArrayList<Integer>> stateTable,
+	private static <K, N, S> void restoreStateTableFromSnapshot(
+		StateTable<K, N, S> stateTable,
 		StateSnapshot snapshot,
 		KeyGroupRange keyGroupRange) throws IOException {
 

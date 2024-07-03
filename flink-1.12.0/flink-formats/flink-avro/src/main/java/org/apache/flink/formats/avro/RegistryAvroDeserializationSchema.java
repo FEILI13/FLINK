@@ -26,7 +26,6 @@ import org.apache.avro.specific.SpecificRecord;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
-import java.util.Objects;
 
 /**
  * Deserialization schema that deserializes from Avro binary format using {@link SchemaCoder}.
@@ -53,7 +52,7 @@ public class RegistryAvroDeserializationSchema<T> extends AvroDeserializationSch
 	 * @param schemaCoderProvider schema provider that allows instantiation of {@link SchemaCoder} that will be used for
 	 *                            schema reading
 	 */
-	public RegistryAvroDeserializationSchema(Class<T> recordClazz, @Nullable Schema reader,
+	protected RegistryAvroDeserializationSchema(Class<T> recordClazz, @Nullable Schema reader,
 			SchemaCoder.SchemaCoderProvider schemaCoderProvider) {
 		super(recordClazz, reader);
 		this.schemaCoderProvider = schemaCoderProvider;
@@ -81,25 +80,5 @@ public class RegistryAvroDeserializationSchema<T> extends AvroDeserializationSch
 		if (schemaCoder == null) {
 			this.schemaCoder = schemaCoderProvider.get();
 		}
-	}
-
-	@Override
-	public boolean equals(Object o) {
-		if (this == o) {
-			return true;
-		}
-		if (o == null || getClass() != o.getClass()) {
-			return false;
-		}
-		if (!super.equals(o)) {
-			return false;
-		}
-		RegistryAvroDeserializationSchema<?> that = (RegistryAvroDeserializationSchema<?>) o;
-		return schemaCoderProvider.equals(that.schemaCoderProvider);
-	}
-
-	@Override
-	public int hashCode() {
-		return Objects.hash(super.hashCode(), schemaCoderProvider);
 	}
 }

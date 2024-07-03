@@ -22,15 +22,16 @@ import org.apache.flink.api.common.state.OperatorStateStore;
 import org.apache.flink.util.Disposable;
 
 import java.io.Closeable;
+import java.util.Collection;
 
 /**
  * Interface that combines both, the user facing {@link OperatorStateStore} interface and the system interface
- * {@link SnapshotStrategy}
+ * {@link Snapshotable}
  *
  */
 public interface OperatorStateBackend extends
 	OperatorStateStore,
-	SnapshotStrategy<SnapshotResult<OperatorStateHandle>>,
+	Snapshotable<SnapshotResult<OperatorStateHandle>, Collection<OperatorStateHandle>>,
 	Closeable,
 	Disposable {
 

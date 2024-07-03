@@ -23,6 +23,8 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.core.io.PostVersionedIOReadableWritable;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.Map;
@@ -35,10 +37,10 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 @Internal
 public class InternalTimerServiceSerializationProxy<K> extends PostVersionedIOReadableWritable {
 
-	public static final int VERSION = 2;
+	public static final int VERSION = 1;
 
 	/** The key-group timer services to write / read. */
-	private final InternalTimeServiceManagerImpl<K> timerServicesManager;
+	private final InternalTimeServiceManager<K> timerServicesManager;
 
 	/** The user classloader; only relevant if the proxy is used to restore timer services. */
 	private ClassLoader userCodeClassLoader;
@@ -51,7 +53,7 @@ public class InternalTimerServiceSerializationProxy<K> extends PostVersionedIORe
 	 * Constructor to use when restoring timer services.
 	 */
 	public InternalTimerServiceSerializationProxy(
-		InternalTimeServiceManagerImpl<K> timerServicesManager,
+		InternalTimeServiceManager<K> timerServicesManager,
 		ClassLoader userCodeClassLoader,
 		int keyGroupIdx) {
 		this.timerServicesManager = checkNotNull(timerServicesManager);
@@ -63,7 +65,7 @@ public class InternalTimerServiceSerializationProxy<K> extends PostVersionedIORe
 	 * Constructor to use when writing timer services.
 	 */
 	public InternalTimerServiceSerializationProxy(
-		InternalTimeServiceManagerImpl<K> timerServicesManager,
+		InternalTimeServiceManager<K> timerServicesManager,
 		int keyGroupIdx) {
 		this.timerServicesManager = checkNotNull(timerServicesManager);
 		this.keyGroupIdx = keyGroupIdx;
@@ -75,12 +77,6 @@ public class InternalTimerServiceSerializationProxy<K> extends PostVersionedIORe
 	}
 
 	@Override
-	public int[] getCompatibleVersions() {
-		return new int[] { VERSION, 1 };
-	}
-
-	@Override
-	@SuppressWarnings("unchecked")
 	public void write(DataOutputView out) throws IOException {
 		super.write(out);
 		final Map<String, InternalTimerServiceImpl<K, ?>> registeredTimerServices =
@@ -93,11 +89,7 @@ public class InternalTimerServiceSerializationProxy<K> extends PostVersionedIORe
 
 			out.writeUTF(serviceName);
 			InternalTimersSnapshotReaderWriters
-				.getWriterForVersion(
-					VERSION,
-					timerService.snapshotTimersForKeyGroup(keyGroupIdx),
-					timerService.getKeySerializer(),
-					(TypeSerializer) timerService.getNamespaceSerializer())
+				.getWriterForVersion(VERSION, timerService.snapshotTimersForKeyGroup(keyGroupIdx))
 				.writeTimersSnapshot(out);
 		}
 	}
@@ -125,8 +117,8 @@ public class InternalTimerServiceSerializationProxy<K> extends PostVersionedIORe
 	@SuppressWarnings("unchecked")
 	private <N> InternalTimerServiceImpl<K, N> registerOrGetTimerService(
 		String serviceName, InternalTimersSnapshot<?, ?> restoredTimersSnapshot) {
-		final TypeSerializer<K> keySerializer = (TypeSerializer<K>) restoredTimersSnapshot.getKeySerializerSnapshot().restoreSerializer();
-		final TypeSerializer<N> namespaceSerializer = (TypeSerializer<N>) restoredTimersSnapshot.getNamespaceSerializerSnapshot().restoreSerializer();
+		final TypeSerializer<K> keySerializer = (TypeSerializer<K>) restoredTimersSnapshot.getKeySerializer();
+		final TypeSerializer<N> namespaceSerializer = (TypeSerializer<N>) restoredTimersSnapshot.getNamespaceSerializer();
 		TimerSerializer<K, N> timerSerializer = new TimerSerializer<>(keySerializer, namespaceSerializer);
 		return timerServicesManager.registerOrGetTimerService(serviceName, timerSerializer);
 	}

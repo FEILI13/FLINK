@@ -18,14 +18,11 @@
 
 package org.apache.flink.runtime.io.network.partition.consumer;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.metrics.Counter;
-import org.apache.flink.runtime.checkpoint.CheckpointException;
-import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.execution.CancelTaskException;
-import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
-import org.apache.flink.runtime.io.network.partition.PartitionException;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartitionView;
 
@@ -47,8 +44,8 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * </ol>
  */
 public abstract class InputChannel {
-	/** The info of the input channel to identify it globally within a task. */
-	protected final InputChannelInfo channelInfo;
+
+	protected final int channelIndex;
 
 	protected final ResultPartitionID partitionId;
 
@@ -61,10 +58,10 @@ public abstract class InputChannel {
 	// - Partition request backoff --------------------------------------------
 
 	/** The initial backoff (in ms). */
-	protected final int initialBackoff;
+	private final int initialBackoff;
 
 	/** The maximum backoff (in ms). */
-	protected final int maxBackoff;
+	private final int maxBackoff;
 
 	protected final Counter numBytesIn;
 
@@ -72,6 +69,7 @@ public abstract class InputChannel {
 
 	/** The current backoff (in ms). */
 	private int currentBackoff;
+
 
 	protected InputChannel(
 			SingleInputGate inputGate,
@@ -90,7 +88,7 @@ public abstract class InputChannel {
 		checkArgument(initial >= 0 && initial <= max);
 
 		this.inputGate = checkNotNull(inputGate);
-		this.channelInfo = new InputChannelInfo(inputGate.getGateIndex(), channelIndex);
+		this.channelIndex = channelIndex;
 		this.partitionId = checkNotNull(partitionId);
 
 		this.initialBackoff = initial;
@@ -105,30 +103,15 @@ public abstract class InputChannel {
 	// Properties
 	// ------------------------------------------------------------------------
 
-	/**
-	 * Returns the index of this channel within its {@link SingleInputGate}.
-	 */
 	public int getChannelIndex() {
-		return channelInfo.getInputChannelIdx();
-	}
-
-	/**
-	 * Returns the info of this channel, which uniquely identifies the channel in respect to its operator instance.
-	 */
-	public InputChannelInfo getChannelInfo() {
-		return channelInfo;
+		return channelIndex;
 	}
 
 	public ResultPartitionID getPartitionId() {
 		return partitionId;
 	}
 
-	/**
-	 * After sending a {@link org.apache.flink.runtime.io.network.api.CheckpointBarrier} of
-	 * exactly-once mode, the upstream will be blocked and become unavailable. This method
-	 * tries to unblock the corresponding upstream and resume data consumption.
-	 */
-	public abstract void resumeConsumption() throws IOException;
+	public SingleInputGate getInputGate(){return inputGate;}
 
 	/**
 	 * Notifies the owning {@link SingleInputGate} that this channel became non-empty.
@@ -144,13 +127,6 @@ public abstract class InputChannel {
 	 */
 	protected void notifyChannelNonEmpty() {
 		inputGate.notifyChannelNonEmpty(this);
-	}
-
-	public void notifyPriorityEvent(int priorityBufferNumber) {
-		inputGate.notifyPriorityEvent(this, priorityBufferNumber);
-	}
-
-	protected void notifyBufferAvailable(int numAvailableBuffers) throws IOException {
 	}
 
 	// ------------------------------------------------------------------------
@@ -171,18 +147,6 @@ public abstract class InputChannel {
 	 */
 	abstract Optional<BufferAndAvailability> getNextBuffer() throws IOException, InterruptedException;
 
-	/**
-	 * Called by task thread when checkpointing is started (e.g., any input channel received barrier).
-	 */
-	public void checkpointStarted(CheckpointBarrier barrier) throws CheckpointException {
-	}
-
-	/**
-	 * Called by task thread on cancel/complete to clean-up temporary data.
-	 */
-	public void checkpointStopped(long checkpointId) {
-	}
-
 	// ------------------------------------------------------------------------
 	// Task events
 	// ------------------------------------------------------------------------
@@ -195,13 +159,15 @@ public abstract class InputChannel {
 	 * the producer will wait for all backwards events. Otherwise, this will lead to an Exception
 	 * at runtime.
 	 */
-	abstract void sendTaskEvent(TaskEvent event) throws IOException;
+	public abstract void sendTaskEvent(TaskEvent event) throws IOException, InterruptedException;
 
 	// ------------------------------------------------------------------------
 	// Life cycle
 	// ------------------------------------------------------------------------
 
 	abstract boolean isReleased();
+
+	abstract void notifySubpartitionConsumed() throws IOException;
 
 	/**
 	 * Releases all resources of the channel.
@@ -214,9 +180,6 @@ public abstract class InputChannel {
 
 	/**
 	 * Checks for an error and rethrows it if one was reported.
-	 *
-	 * <p>Note: Any {@link PartitionException} instances should not be transformed
-	 * and make sure they are always visible in task failure cause.
 	 */
 	protected void checkError() throws IOException {
 		final Throwable t = cause.get();
@@ -238,7 +201,7 @@ public abstract class InputChannel {
 	 * Atomically sets an error for this channel and notifies the input gate about available data to
 	 * trigger querying this channel by the task thread.
 	 */
-	protected void setError(Throwable cause) {
+	public void setError(Throwable cause) {
 		if (this.cause.compareAndSet(null, checkNotNull(cause))) {
 			// Notify the input gate.
 			notifyChannelNonEmpty();
@@ -285,15 +248,11 @@ public abstract class InputChannel {
 		return false;
 	}
 
-	// ------------------------------------------------------------------------
-	// Metric related method
-	// ------------------------------------------------------------------------
-
-	public int unsynchronizedGetNumberOfQueuedBuffers() {
-		return 0;
+    public JobID getJobID(){
+		return this.inputGate.getJobID();
 	}
 
-	// ------------------------------------------------------------------------
+    // ------------------------------------------------------------------------
 
 	/**
 	 * A combination of a {@link Buffer} and a flag indicating availability of further buffers,
@@ -303,19 +262,18 @@ public abstract class InputChannel {
 	public static final class BufferAndAvailability {
 
 		private final Buffer buffer;
-		private final Buffer.DataType nextDataType;
+		private final boolean moreAvailable;
 		private final int buffersInBacklog;
-		private final int sequenceNumber;
+		private final long epochID;
 
-		public BufferAndAvailability(
-				Buffer buffer,
-				Buffer.DataType nextDataType,
-				int buffersInBacklog,
-				int sequenceNumber) {
+		public BufferAndAvailability(Buffer buffer, boolean moreAvailable, int buffersInBacklog){
+			this(buffer, moreAvailable, buffersInBacklog, -1L);
+		}
+		public BufferAndAvailability(Buffer buffer, boolean moreAvailable, int buffersInBacklog, long epochID) {
 			this.buffer = checkNotNull(buffer);
-			this.nextDataType = checkNotNull(nextDataType);
+			this.moreAvailable = moreAvailable;
 			this.buffersInBacklog = buffersInBacklog;
-			this.sequenceNumber = sequenceNumber;
+			this.epochID = epochID;
 		}
 
 		public Buffer buffer() {
@@ -323,36 +281,15 @@ public abstract class InputChannel {
 		}
 
 		public boolean moreAvailable() {
-			return nextDataType != Buffer.DataType.NONE;
-		}
-
-		public boolean morePriorityEvents() {
-			return nextDataType.hasPriority();
+			return moreAvailable;
 		}
 
 		public int buffersInBacklog() {
 			return buffersInBacklog;
 		}
 
-		public boolean hasPriority() {
-			return buffer.getDataType().hasPriority();
+		public long getEpochID() {
+			return epochID;
 		}
-
-		public int getSequenceNumber() {
-			return sequenceNumber;
-		}
-
-		@Override
-		public String toString() {
-			return "BufferAndAvailability{" +
-				"buffer=" + buffer +
-				", nextDataType=" + nextDataType +
-				", buffersInBacklog=" + buffersInBacklog +
-				", sequenceNumber=" + sequenceNumber +
-				'}';
-		}
-	}
-
-	void setup() throws IOException {
 	}
 }

@@ -50,15 +50,13 @@ public class RocksDBNativeMetricMonitor implements Closeable {
 
 	private final Object lock;
 
-	static final String COLUMN_FAMILY_KEY = "column_family";
-
 	@GuardedBy("lock")
 	private RocksDB rocksDB;
 
-	public RocksDBNativeMetricMonitor(
+	RocksDBNativeMetricMonitor(
+		@Nonnull RocksDB rocksDB,
 		@Nonnull RocksDBNativeMetricOptions options,
-		@Nonnull MetricGroup metricGroup,
-		@Nonnull RocksDB rocksDB
+		@Nonnull MetricGroup metricGroup
 	) {
 		this.options = options;
 		this.metricGroup = metricGroup;
@@ -73,11 +71,7 @@ public class RocksDBNativeMetricMonitor implements Closeable {
 	 * @param handle native handle to the column family
 	 */
 	void registerColumnFamily(String columnFamilyName, ColumnFamilyHandle handle) {
-
-		boolean columnFamilyAsVariable = options.isColumnFamilyAsVariable();
-		MetricGroup group = columnFamilyAsVariable
-			? metricGroup.addGroup(COLUMN_FAMILY_KEY, columnFamilyName)
-			: metricGroup.addGroup(columnFamilyName);
+		MetricGroup group = metricGroup.addGroup(columnFamilyName);
 
 		for (String property : options.getProperties()) {
 			RocksDBNativeMetricView gauge = new RocksDBNativeMetricView(handle, property);
@@ -101,7 +95,7 @@ public class RocksDBNativeMetricMonitor implements Closeable {
 			}
 		} catch (RocksDBException e) {
 			metricView.close();
-			LOG.warn("Failed to read native metric {} from RocksDB.", property, e);
+			LOG.warn("Failed to read native metric %s from RocksDB", property, e);
 		}
 	}
 
@@ -131,7 +125,7 @@ public class RocksDBNativeMetricMonitor implements Closeable {
 		private boolean closed;
 
 		private RocksDBNativeMetricView(
-			ColumnFamilyHandle handle,
+			@Nonnull ColumnFamilyHandle handle,
 			@Nonnull String property
 		) {
 			this.handle = handle;

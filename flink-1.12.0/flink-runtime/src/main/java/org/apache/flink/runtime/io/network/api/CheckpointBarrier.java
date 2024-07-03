@@ -114,7 +114,4 @@ public class CheckpointBarrier extends RuntimeEvent {
 		return String.format("CheckpointBarrier %d @ %d Options: %s", id, timestamp, checkpointOptions);
 	}
 
-	public boolean isCheckpoint() {
-		return !checkpointOptions.getCheckpointType().isSavepoint();
-	}
 }

@@ -19,9 +19,10 @@
 package org.apache.flink.runtime.jobmanager;
 
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
+import org.apache.flink.runtime.messages.JobManagerMessages.RequestPartitionProducerState;
 
 /**
- * Exception returned to a TaskManager on JobMaster requesting partition state,
+ * Exception returned to a TaskManager on {@link RequestPartitionProducerState}
  * if the producer of a partition has been disposed.
  */
 public class PartitionProducerDisposedException extends Exception {

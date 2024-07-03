@@ -42,23 +42,23 @@ class TtlValueStateTestContext extends TtlStateTestContextBase<TtlValueState<?, 
 
 	@SuppressWarnings("unchecked")
 	@Override
-	public <US extends State, SV> StateDescriptor<US, SV> createStateDescriptor() {
+	<US extends State, SV> StateDescriptor<US, SV> createStateDescriptor() {
 		return (StateDescriptor<US, SV>) new ValueStateDescriptor<>(
-			getName(), StringSerializer.INSTANCE);
+			"TtlValueTestState", StringSerializer.INSTANCE);
 	}
 
 	@Override
-	public void update(String value) throws Exception {
+	void update(String value) throws Exception {
 		ttlState.update(value);
 	}
 
 	@Override
-	public String get() throws Exception {
+	String get() throws Exception {
 		return ttlState.value();
 	}
 
 	@Override
-	public Object getOriginal() throws Exception {
+	Object getOriginal() throws Exception {
 		return ttlState.original.value();
 	}
 }

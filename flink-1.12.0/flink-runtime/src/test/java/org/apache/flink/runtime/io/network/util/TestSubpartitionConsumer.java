@@ -98,7 +98,7 @@ public class TestSubpartitionConsumer implements Callable<Boolean>, BufferAvaila
 				}
 
 				if (bufferAndBacklog != null) {
-					if (bufferAndBacklog.isDataAvailable()) {
+					if (bufferAndBacklog.isMoreAvailable()) {
 						dataAvailableNotification.set(true);
 					}
 					if (bufferAndBacklog.buffer().isBuffer()) {
@@ -112,7 +112,7 @@ public class TestSubpartitionConsumer implements Callable<Boolean>, BufferAvaila
 						bufferAndBacklog.buffer().recycleBuffer();
 
 						if (event.getClass() == EndOfPartitionEvent.class) {
-							subpartitionView.releaseAllResources();
+							subpartitionView.notifySubpartitionConsumed();
 
 							return true;
 						}

@@ -31,6 +31,7 @@ public class TestingPayload implements LogicalSlot.Payload {
 		this.terminationFuture = new CompletableFuture<>();
 	}
 
+
 	@Override
 	public void fail(Throwable cause) {
 		terminationFuture.complete(null);

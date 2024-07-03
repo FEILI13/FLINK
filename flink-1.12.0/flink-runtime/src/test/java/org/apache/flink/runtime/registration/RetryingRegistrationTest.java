@@ -195,11 +195,10 @@ public class RetryingRegistrationTest extends TestLogger {
 				rpcService,
 				testEndpointAddress,
 				leaderId,
-				new RetryingRegistrationConfiguration(
-					initialTimeout,
-					1000L,
-					15000L, // make sure that we timeout in case of an error
-					15000L));
+				initialTimeout,
+				1000L,
+				15000L, // make sure that we timeout in case of an error
+				15000L);
 
 			long started = System.nanoTime();
 			registration.startRegistration();
@@ -347,25 +346,26 @@ public class RetryingRegistrationTest extends TestLogger {
 		static final long MAX_TIMEOUT = 200;
 		static final long DELAY_ON_ERROR = 200;
 		static final long DELAY_ON_DECLINE = 200;
-		static final RetryingRegistrationConfiguration RETRYING_REGISTRATION_CONFIGURATION = new RetryingRegistrationConfiguration(
-			INITIAL_TIMEOUT,
-			MAX_TIMEOUT,
-			DELAY_ON_ERROR,
-			DELAY_ON_DECLINE);
 
 		public TestRetryingRegistration(RpcService rpc, String targetAddress, UUID leaderId) {
 			this(
 				rpc,
 				targetAddress,
 				leaderId,
-				RETRYING_REGISTRATION_CONFIGURATION);
+				INITIAL_TIMEOUT,
+				MAX_TIMEOUT,
+				DELAY_ON_ERROR,
+				DELAY_ON_DECLINE);
 		}
 
 		public TestRetryingRegistration(
 				RpcService rpc,
 				String targetAddress,
 				UUID leaderId,
-				RetryingRegistrationConfiguration retryingRegistrationConfiguration) {
+				long initialTimeout,
+				long maxTimeout,
+				long delayOnError,
+				long delayOnDecline) {
 			super(
 				LoggerFactory.getLogger(RetryingRegistrationTest.class),
 				rpc,
@@ -373,7 +373,10 @@ public class RetryingRegistrationTest extends TestLogger {
 				TestRegistrationGateway.class,
 				targetAddress,
 				leaderId,
-				retryingRegistrationConfiguration);
+				initialTimeout,
+				maxTimeout,
+				delayOnError,
+				delayOnDecline);
 		}
 
 		@Override

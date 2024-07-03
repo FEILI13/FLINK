@@ -18,12 +18,17 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
+import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
+import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
+
+import org.apache.flink.shaded.guava18.com.google.common.collect.HashBasedTable;
+import org.apache.flink.shaded.guava18.com.google.common.collect.ImmutableList;
+import org.apache.flink.shaded.guava18.com.google.common.collect.Table;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.Collection;
-import java.util.HashMap;
 import java.util.Map;
 
 import static org.apache.flink.util.Preconditions.checkState;
@@ -36,15 +41,19 @@ public class ResultPartitionManager implements ResultPartitionProvider {
 
 	private static final Logger LOG = LoggerFactory.getLogger(ResultPartitionManager.class);
 
-	private final Map<ResultPartitionID, ResultPartition> registeredPartitions = new HashMap<>(16);
+	public final Table<ExecutionAttemptID, IntermediateResultPartitionID, ResultPartition>
+			registeredPartitions = HashBasedTable.create();
 
 	private boolean isShutdown;
 
-	public void registerResultPartition(ResultPartition partition) {
+	public void registerResultPartition(ResultPartition partition) throws IOException {
 		synchronized (registeredPartitions) {
 			checkState(!isShutdown, "Result partition manager already shut down.");
 
-			ResultPartition previous = registeredPartitions.put(partition.getPartitionId(), partition);
+			ResultPartitionID partitionId = partition.getPartitionId();
+
+			ResultPartition previous = registeredPartitions.put(
+					partitionId.getProducerId(), partitionId.getPartitionId(), partition);
 
 			if (previous != null) {
 				throw new IllegalStateException("Result partition already registered.");
@@ -60,9 +69,9 @@ public class ResultPartitionManager implements ResultPartitionProvider {
 			int subpartitionIndex,
 			BufferAvailabilityListener availabilityListener) throws IOException {
 
-		final ResultSubpartitionView subpartitionView;
 		synchronized (registeredPartitions) {
-			final ResultPartition partition = registeredPartitions.get(partitionId);
+			final ResultPartition partition = registeredPartitions.get(partitionId.getProducerId(),
+					partitionId.getPartitionId());
 
 			if (partition == null) {
 				throw new PartitionNotFoundException(partitionId);
@@ -70,20 +79,30 @@ public class ResultPartitionManager implements ResultPartitionProvider {
 
 			LOG.debug("Requesting subpartition {} of {}.", subpartitionIndex, partition);
 
-			subpartitionView = partition.createSubpartitionView(subpartitionIndex, availabilityListener);
+			return partition.createSubpartitionView(subpartitionIndex, availabilityListener);
 		}
-
-		return subpartitionView;
 	}
 
-	public void releasePartition(ResultPartitionID partitionId, Throwable cause) {
+	public void releasePartitionsProducedBy(ExecutionAttemptID executionId) {
+		releasePartitionsProducedBy(executionId, null);
+	}
+
+	public void releasePartitionsProducedBy(ExecutionAttemptID executionId, Throwable cause) {
 		synchronized (registeredPartitions) {
-			ResultPartition resultPartition = registeredPartitions.remove(partitionId);
-			if (resultPartition != null) {
-				resultPartition.release(cause);
-				LOG.debug("Released partition {} produced by {}.",
-					partitionId.getPartitionId(), partitionId.getProducerId());
+			final Map<IntermediateResultPartitionID, ResultPartition> partitions =
+					registeredPartitions.row(executionId);
+
+			for (ResultPartition partition : partitions.values()) {
+				partition.release(cause);
 			}
+
+			for (IntermediateResultPartitionID partitionId : ImmutableList
+					.copyOf(partitions.keySet())) {
+
+				registeredPartitions.remove(executionId, partitionId);
+			}
+
+			LOG.debug("Released all partitions produced by {}.", executionId);
 		}
 	}
 
@@ -110,23 +129,22 @@ public class ResultPartitionManager implements ResultPartitionProvider {
 	// ------------------------------------------------------------------------
 
 	void onConsumedPartition(ResultPartition partition) {
+		final ResultPartition previous;
+
 		LOG.debug("Received consume notification from {}.", partition);
 
 		synchronized (registeredPartitions) {
-			final ResultPartition previous = registeredPartitions.remove(partition.getPartitionId());
-			// Release the partition if it was successfully removed
-			if (partition == previous) {
-				partition.release();
-				ResultPartitionID partitionId = partition.getPartitionId();
-				LOG.debug("Released partition {} produced by {}.",
-					partitionId.getPartitionId(), partitionId.getProducerId());
-			}
-		}
-	}
+			ResultPartitionID partitionId = partition.getPartitionId();
 
-	public Collection<ResultPartitionID> getUnreleasedPartitions() {
-		synchronized (registeredPartitions) {
-			return registeredPartitions.keySet();
+			previous = registeredPartitions.remove(partitionId.getProducerId(),
+					partitionId.getPartitionId());
+		}
+
+		// Release the partition if it was successfully removed
+		if (partition == previous) {
+			partition.release();
+
+			LOG.debug("Released {}.", partition);
 		}
 	}
 }

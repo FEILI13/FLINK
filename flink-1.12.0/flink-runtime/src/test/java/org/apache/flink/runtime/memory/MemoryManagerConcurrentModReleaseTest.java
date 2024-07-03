@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.memory;
 
 import org.apache.flink.core.memory.MemorySegment;
+import org.apache.flink.core.memory.MemoryType;
 
 import org.junit.Test;
 
@@ -39,11 +40,7 @@ public class MemoryManagerConcurrentModReleaseTest {
 			final int numSegments = 10000;
 			final int segmentSize = 4096;
 
-			MemoryManager memMan = MemoryManagerBuilder
-				.newBuilder()
-				.setMemorySize(numSegments * segmentSize)
-				.setPageSize(segmentSize)
-				.build();
+			MemoryManager memMan = new MemoryManager(numSegments * segmentSize, 1, segmentSize, MemoryType.HEAP, true);
 
 			ArrayList<MemorySegment> segs = new ListWithConcModExceptionOnFirstAccess<>();
 			memMan.allocatePages(this, segs, numSegments);
@@ -62,11 +59,7 @@ public class MemoryManagerConcurrentModReleaseTest {
 			final int numSegments = 10000;
 			final int segmentSize = 4096;
 
-			MemoryManager memMan = MemoryManagerBuilder
-				.newBuilder()
-				.setMemorySize(numSegments * segmentSize)
-				.setPageSize(segmentSize)
-				.build();
+			MemoryManager memMan = new MemoryManager(numSegments * segmentSize, 1, segmentSize, MemoryType.HEAP, true);
 
 			ArrayList<MemorySegment> segs = new ArrayList<>(numSegments);
 			memMan.allocatePages(this, segs, numSegments);

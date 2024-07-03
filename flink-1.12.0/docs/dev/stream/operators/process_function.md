@@ -1,5 +1,5 @@
 ---
-title: "Process Function"
+title: "Process Function (Low-level Operations)"
 nav-title: "Process Function"
 nav-parent_id: streaming_operators
 nav-pos: 35
@@ -38,13 +38,14 @@ all (acyclic) streaming applications:
 The `ProcessFunction` can be thought of as a `FlatMapFunction` with access to keyed state and timers. It handles events
 by being invoked for each event received in the input stream(s).
 
-For fault-tolerant state, the `ProcessFunction` gives access to Flink's [keyed state]({% link dev/stream/state/state.md %}), accessible via the
+For fault-tolerant state, the `ProcessFunction` gives access to Flink's [keyed state]({{ site.baseurl }}/dev/stream/state/state.html), accessible via the
 `RuntimeContext`, similar to the way other stateful functions can access keyed state.
 
-The timers allow applications to react to changes in processing time and in [event time]({% link dev/event_time.md %}).
+The timers allow applications to react to changes in processing time and in [event time]({{ site.baseurl }}/dev/event_time.html).
 Every call to the function `processElement(...)` gets a `Context` object which gives access to the element's
 event time timestamp, and to the *TimerService*. The `TimerService` can be used to register callbacks for future
-event-/processing-time instants. With event-time timers, the `onTimer(...)` method is called when the current watermark is advanced up to or beyond the timestamp of the timer, while with processing-time timers, `onTimer(...)` is called when wall clock time reaches the specified time. During that call, all states are again scoped to the key with which the timer was created, allowing
+event-/processing-time instants. When a timer's particular time is reached, the `onTimer(...)` method is
+called. During that call, all states are again scoped to the key with which the timer was created, allowing
 timers to manipulate keyed state.
 
 <span class="label label-info">Note</span> If you want to access keyed state and timers you have
@@ -57,7 +58,7 @@ stream.keyBy(...).process(new MyProcessFunction())
 
 ## Low-level Joins
 
-To realize low-level operations on two inputs, applications can use `CoProcessFunction` or `KeyedCoProcessFunction`. This
+To realize low-level operations on two inputs, applications can use `CoProcessFunction`. This
 function is bound to two different inputs and gets individual calls to `processElement1(...)` and
 `processElement2(...)` for records from the two different inputs.
 
@@ -76,16 +77,16 @@ trade.
 
 ## Example
 
-In the following example a `KeyedProcessFunction` maintains counts per key, and emits a key/count pair whenever a minute passes (in event time) without an update for that key:
+The following example maintains counts per key, and emits a key/count pair whenever a minute passes (in event time) without an update for that key:
 
   - The count, key, and last-modification-timestamp are stored in a `ValueState`, which is implicitly scoped by key.
-  - For each record, the `KeyedProcessFunction` increments the counter and sets the last-modification timestamp
+  - For each record, the `ProcessFunction` increments the counter and sets the last-modification timestamp
   - The function also schedules a callback one minute into the future (in event time)
   - Upon each callback, it checks the callback's event time timestamp against the last-modification time of the stored count
     and emits the key/count if they match (i.e., no further update occurred during that minute)
 
 <span class="label label-info">Note</span> This simple example could have been implemented with
-session windows. We use `KeyedProcessFunction` here to illustrate the basic pattern it provides.
+session windows. We use `ProcessFunction` here to illustrate the basic pattern it provides.
 
 <div class="codetabs" markdown="1">
 <div data-lang="java" markdown="1">
@@ -93,12 +94,11 @@ session windows. We use `KeyedProcessFunction` here to illustrate the basic patt
 {% highlight java %}
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
-import org.apache.flink.api.java.tuple.Tuple;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
-import org.apache.flink.streaming.api.functions.KeyedProcessFunction.Context;
-import org.apache.flink.streaming.api.functions.KeyedProcessFunction.OnTimerContext;
+import org.apache.flink.streaming.api.functions.ProcessFunction;
+import org.apache.flink.streaming.api.functions.ProcessFunction.Context;
+import org.apache.flink.streaming.api.functions.ProcessFunction.OnTimerContext;
 import org.apache.flink.util.Collector;
 
 
@@ -107,7 +107,7 @@ DataStream<Tuple2<String, String>> stream = ...;
 
 // apply the process function onto a keyed stream
 DataStream<Tuple2<String, Long>> result = stream
-    .keyBy(value -> value.f0)
+    .keyBy(0)
     .process(new CountWithTimeoutFunction());
 
 /**
@@ -123,8 +123,7 @@ public class CountWithTimestamp {
 /**
  * The implementation of the ProcessFunction that maintains the count and timeouts
  */
-public class CountWithTimeoutFunction 
-        extends KeyedProcessFunction<Tuple, Tuple2<String, String>, Tuple2<String, Long>> {
+public class CountWithTimeoutFunction extends ProcessFunction<Tuple2<String, String>, Tuple2<String, Long>> {
 
     /** The state that is maintained by this process function */
     private ValueState<CountWithTimestamp> state;
@@ -135,10 +134,8 @@ public class CountWithTimeoutFunction
     }
 
     @Override
-    public void processElement(
-            Tuple2<String, String> value, 
-            Context ctx, 
-            Collector<Tuple2<String, Long>> out) throws Exception {
+    public void processElement(Tuple2<String, String> value, Context ctx, Collector<Tuple2<String, Long>> out)
+            throws Exception {
 
         // retrieve the current count
         CountWithTimestamp current = state.value();
@@ -161,10 +158,8 @@ public class CountWithTimeoutFunction
     }
 
     @Override
-    public void onTimer(
-            long timestamp, 
-            OnTimerContext ctx, 
-            Collector<Tuple2<String, Long>> out) throws Exception {
+    public void onTimer(long timestamp, OnTimerContext ctx, Collector<Tuple2<String, Long>> out)
+            throws Exception {
 
         // get the state for the key that scheduled the timer
         CountWithTimestamp result = state.value();
@@ -183,8 +178,9 @@ public class CountWithTimeoutFunction
 {% highlight scala %}
 import org.apache.flink.api.common.state.ValueState
 import org.apache.flink.api.common.state.ValueStateDescriptor
-import org.apache.flink.api.java.tuple.Tuple
-import org.apache.flink.streaming.api.functions.KeyedProcessFunction
+import org.apache.flink.streaming.api.functions.ProcessFunction
+import org.apache.flink.streaming.api.functions.ProcessFunction.Context
+import org.apache.flink.streaming.api.functions.ProcessFunction.OnTimerContext
 import org.apache.flink.util.Collector
 
 // the source data stream
@@ -192,7 +188,7 @@ val stream: DataStream[Tuple2[String, String]] = ...
 
 // apply the process function onto a keyed stream
 val result: DataStream[Tuple2[String, Long]] = stream
-  .keyBy(_._1)
+  .keyBy(0)
   .process(new CountWithTimeoutFunction())
 
 /**
@@ -203,19 +199,16 @@ case class CountWithTimestamp(key: String, count: Long, lastModified: Long)
 /**
   * The implementation of the ProcessFunction that maintains the count and timeouts
   */
-class CountWithTimeoutFunction extends KeyedProcessFunction[Tuple, (String, String), (String, Long)] {
+class CountWithTimeoutFunction extends ProcessFunction[(String, String), (String, Long)] {
 
   /** The state that is maintained by this process function */
   lazy val state: ValueState[CountWithTimestamp] = getRuntimeContext
     .getState(new ValueStateDescriptor[CountWithTimestamp]("myState", classOf[CountWithTimestamp]))
 
 
-  override def processElement(
-      value: (String, String), 
-      ctx: KeyedProcessFunction[Tuple, (String, String), (String, Long)]#Context, 
-      out: Collector[(String, Long)]): Unit = {
-
+  override def processElement(value: (String, String), ctx: Context, out: Collector[(String, Long)]): Unit = {
     // initialize or retrieve/update the state
+
     val current: CountWithTimestamp = state.value match {
       case null =>
         CountWithTimestamp(value._1, 1, ctx.timestamp)
@@ -230,11 +223,7 @@ class CountWithTimeoutFunction extends KeyedProcessFunction[Tuple, (String, Stri
     ctx.timerService.registerEventTimeTimer(current.lastModified + 60000)
   }
 
-  override def onTimer(
-      timestamp: Long, 
-      ctx: KeyedProcessFunction[Tuple, (String, String), (String, Long)]#OnTimerContext, 
-      out: Collector[(String, Long)]): Unit = {
-
+  override def onTimer(timestamp: Long, ctx: OnTimerContext, out: Collector[(String, Long)]): Unit = {
     state.value match {
       case CountWithTimestamp(key, count, lastModified) if (timestamp == lastModified + 60000) =>
         out.collect((key, count))
@@ -383,5 +372,3 @@ ctx.timerService.deleteEventTimeTimer(timestampOfTimerToStop)
 </div>
 
 <span class="label label-info">Note</span> Stopping a timer has no effect if no such timer with the given timestamp is registered.
-
-{% top %}

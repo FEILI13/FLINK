@@ -25,12 +25,12 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-formats</artifactId>
-		<version>1.12.0</version>
+		<version>1.7-CLONOS-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 
 	<artifactId>flink-sequence-file</artifactId>
-	<name>Flink : Formats : Sequence file</name>
+	<name>flink-sequence-file</name>
 
 	<packaging>jar</packaging>
 
@@ -45,16 +45,12 @@ under the License.
 
 		<!-- Hadoop is needed for SequenceFile -->
 		<dependency>
-			<groupId>org.apache.hadoop</groupId>
-			<artifactId>hadoop-common</artifactId>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-shaded-hadoop2</artifactId>
+			<version>${project.version}</version>
 			<scope>provided</scope>
 		</dependency>
 
-		<dependency>
-			<groupId>org.apache.hadoop</groupId>
-			<artifactId>hadoop-hdfs</artifactId>
-			<scope>provided</scope>
-		</dependency>
 		<!-- test dependencies -->
 
 		<dependency>

@@ -18,29 +18,21 @@
 
 package org.apache.flink.runtime.metrics.util;
 
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.time.Time;
-import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.MetricOptions;
 import org.apache.flink.metrics.Gauge;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.runtime.clusterframework.BootstrapTools;
-import org.apache.flink.runtime.clusterframework.types.AllocationID;
-import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.memory.MemoryManager;
-import org.apache.flink.runtime.metrics.MetricNames;
+import org.apache.flink.runtime.io.network.NetworkEnvironment;
+import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
 import org.apache.flink.runtime.metrics.MetricRegistry;
-import org.apache.flink.runtime.metrics.groups.AbstractMetricGroup;
 import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
-import org.apache.flink.runtime.metrics.groups.ProcessMetricGroup;
 import org.apache.flink.runtime.metrics.groups.TaskManagerMetricGroup;
-import org.apache.flink.runtime.rpc.RpcService;
-import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils;
-import org.apache.flink.runtime.taskexecutor.slot.SlotNotFoundException;
-import org.apache.flink.runtime.taskexecutor.slot.TaskSlotTable;
+import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.util.Preconditions;
 
+import akka.actor.ActorSystem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,18 +47,12 @@ import javax.management.ReflectionException;
 import java.lang.management.ClassLoadingMXBean;
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
-import java.lang.management.MemoryPoolMXBean;
 import java.lang.management.MemoryUsage;
 import java.lang.management.ThreadMXBean;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
-import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 import static org.apache.flink.runtime.metrics.util.SystemResourcesMetricsInitializer.instantiateSystemMetrics;
-import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * Utility class to register pre-defined metric sets.
@@ -76,68 +62,51 @@ public class MetricUtils {
 	private static final String METRIC_GROUP_STATUS_NAME = "Status";
 	private static final String METRICS_ACTOR_SYSTEM_NAME = "flink-metrics";
 
-	static final String METRIC_GROUP_HEAP_NAME = "Heap";
-	static final String METRIC_GROUP_NONHEAP_NAME = "NonHeap";
-	static final String METRIC_GROUP_METASPACE_NAME = "Metaspace";
-
-	@VisibleForTesting
-	static final String METRIC_GROUP_FLINK = "Flink";
-
-	@VisibleForTesting
-	static final String METRIC_GROUP_MEMORY = "Memory";
-
-	@VisibleForTesting
-	static final String METRIC_GROUP_MANAGED_MEMORY = "Managed";
-
 	private MetricUtils() {
-	}
-
-	public static ProcessMetricGroup instantiateProcessMetricGroup(
-			final MetricRegistry metricRegistry,
-			final String hostname,
-			final Optional<Time> systemResourceProbeInterval) {
-		final ProcessMetricGroup processMetricGroup = ProcessMetricGroup.create(metricRegistry, hostname);
-
-		createAndInitializeStatusMetricGroup(processMetricGroup);
-
-		systemResourceProbeInterval.ifPresent(interval -> instantiateSystemMetrics(processMetricGroup, interval));
-
-		return processMetricGroup;
 	}
 
 	public static JobManagerMetricGroup instantiateJobManagerMetricGroup(
 			final MetricRegistry metricRegistry,
-			final String hostname) {
+			final String hostname,
+			final Optional<Time> systemResourceProbeInterval) {
 		final JobManagerMetricGroup jobManagerMetricGroup = new JobManagerMetricGroup(
 			metricRegistry,
 			hostname);
 
+		MetricGroup statusGroup = jobManagerMetricGroup.addGroup(METRIC_GROUP_STATUS_NAME);
+
+		// initialize the JM metrics
+		instantiateStatusMetrics(statusGroup);
+
+		if (systemResourceProbeInterval.isPresent()) {
+			instantiateSystemMetrics(jobManagerMetricGroup, systemResourceProbeInterval.get());
+		}
 		return jobManagerMetricGroup;
 	}
 
-	public static Tuple2<TaskManagerMetricGroup, MetricGroup> instantiateTaskManagerMetricGroup(
+	public static TaskManagerMetricGroup instantiateTaskManagerMetricGroup(
 			MetricRegistry metricRegistry,
-			String hostName,
-			ResourceID resourceID,
+			TaskManagerLocation taskManagerLocation,
+			NetworkEnvironment network,
 			Optional<Time> systemResourceProbeInterval) {
 		final TaskManagerMetricGroup taskManagerMetricGroup = new TaskManagerMetricGroup(
 			metricRegistry,
-			hostName,
-			resourceID.toString());
+			taskManagerLocation.getHostname(),
+			taskManagerLocation.getResourceID().toString());
 
-		MetricGroup statusGroup = createAndInitializeStatusMetricGroup(taskManagerMetricGroup);
+		MetricGroup statusGroup = taskManagerMetricGroup.addGroup(METRIC_GROUP_STATUS_NAME);
+
+		// Initialize the TM metrics
+		instantiateStatusMetrics(statusGroup);
+
+		MetricGroup networkGroup = statusGroup
+			.addGroup("Network");
+		instantiateNetworkMetrics(networkGroup, network);
 
 		if (systemResourceProbeInterval.isPresent()) {
 			instantiateSystemMetrics(taskManagerMetricGroup, systemResourceProbeInterval.get());
 		}
-		return Tuple2.of(taskManagerMetricGroup, statusGroup);
-	}
-
-	private static MetricGroup createAndInitializeStatusMetricGroup(AbstractMetricGroup<?> parentMetricGroup) {
-		MetricGroup statusGroup = parentMetricGroup.addGroup(METRIC_GROUP_STATUS_NAME);
-
-		instantiateStatusMetrics(statusGroup);
-		return statusGroup;
+		return taskManagerMetricGroup;
 	}
 
 	public static void instantiateStatusMetrics(
@@ -146,68 +115,30 @@ public class MetricUtils {
 
 		instantiateClassLoaderMetrics(jvm.addGroup("ClassLoader"));
 		instantiateGarbageCollectorMetrics(jvm.addGroup("GarbageCollector"));
-		instantiateMemoryMetrics(jvm.addGroup(METRIC_GROUP_MEMORY));
+		instantiateMemoryMetrics(jvm.addGroup("Memory"));
 		instantiateThreadMetrics(jvm.addGroup("Threads"));
 		instantiateCPUMetrics(jvm.addGroup("CPU"));
 	}
 
-	public static void instantiateFlinkMemoryMetricGroup(
-			MetricGroup parentMetricGroup,
-			TaskSlotTable<?> taskSlotTable,
-			Supplier<Long> managedMemoryTotalSupplier) {
-		checkNotNull(parentMetricGroup);
-		checkNotNull(taskSlotTable);
-		checkNotNull(managedMemoryTotalSupplier);
-
-		MetricGroup flinkMemoryMetricGroup = parentMetricGroup.addGroup(METRIC_GROUP_FLINK).addGroup(METRIC_GROUP_MEMORY);
-
-		instantiateManagedMemoryMetrics(flinkMemoryMetricGroup, taskSlotTable, managedMemoryTotalSupplier);
-	}
-
-	private static void instantiateManagedMemoryMetrics(
-			MetricGroup metricGroup,
-			TaskSlotTable<?> taskSlotTable,
-			Supplier<Long> managedMemoryTotalSupplier) {
-		MetricGroup managedMemoryMetricGroup = metricGroup.addGroup(METRIC_GROUP_MANAGED_MEMORY);
-
-		managedMemoryMetricGroup.gauge("Used", () -> getUsedManagedMemory(taskSlotTable));
-		managedMemoryMetricGroup.gauge("Total", managedMemoryTotalSupplier::get);
-	}
-
-	private static long getUsedManagedMemory(TaskSlotTable<?> taskSlotTable) {
-		Set<AllocationID> activeTaskAllocationIds = taskSlotTable.getActiveTaskSlotAllocationIds();
-
-		long usedMemory = 0L;
-		for (AllocationID allocationID : activeTaskAllocationIds) {
-			try {
-				MemoryManager taskSlotMemoryManager = taskSlotTable.getTaskMemoryManager(allocationID);
-				usedMemory += taskSlotMemoryManager.getMemorySize() - taskSlotMemoryManager.availableMemory();
-			} catch (SlotNotFoundException e) {
-				LOG.debug("The task slot {} is not present anymore and will be ignored in calculating the amount of used memory.", allocationID);
-			}
-		}
-
-		return usedMemory;
-	}
-
-	public static RpcService startRemoteMetricsRpcService(Configuration configuration, String hostname) throws Exception {
+	public static ActorSystem startMetricsActorSystem(Configuration configuration, String hostname, Logger logger) throws Exception {
 		final String portRange = configuration.getString(MetricOptions.QUERY_SERVICE_PORT);
-
-		return startMetricRpcService(configuration, AkkaRpcServiceUtils.remoteServiceBuilder(configuration, hostname, portRange));
-	}
-
-	public static RpcService startLocalMetricsRpcService(Configuration configuration) throws Exception {
-		return startMetricRpcService(configuration, AkkaRpcServiceUtils.localServiceBuilder(configuration));
-	}
-
-	private static RpcService startMetricRpcService(
-			Configuration configuration, AkkaRpcServiceUtils.AkkaRpcServiceBuilder rpcServiceBuilder) throws Exception {
 		final int threadPriority = configuration.getInteger(MetricOptions.QUERY_SERVICE_THREAD_PRIORITY);
+		return BootstrapTools.startActorSystem(
+			configuration,
+			METRICS_ACTOR_SYSTEM_NAME,
+			hostname,
+			portRange,
+			logger,
+			new BootstrapTools.FixedThreadPoolExecutorConfiguration(1, 1, threadPriority));
+	}
 
-		return rpcServiceBuilder
-			.withActorSystemName(METRICS_ACTOR_SYSTEM_NAME)
-			.withActorSystemExecutorConfiguration(new BootstrapTools.FixedThreadPoolExecutorConfiguration(1, 1, threadPriority))
-			.createAndStart();
+	private static void instantiateNetworkMetrics(
+		MetricGroup metrics,
+		final NetworkEnvironment network) {
+
+		final NetworkBufferPool networkBufferPool = network.getNetworkBufferPool();
+		metrics.<Integer, Gauge<Integer>>gauge("TotalMemorySegments", networkBufferPool::getTotalNumberOfMemorySegments);
+		metrics.<Integer, Gauge<Integer>>gauge("AvailableMemorySegments", networkBufferPool::getNumberOfAvailableMemorySegments);
 	}
 
 	private static void instantiateClassLoaderMetrics(MetricGroup metrics) {
@@ -228,9 +159,20 @@ public class MetricUtils {
 	}
 
 	private static void instantiateMemoryMetrics(MetricGroup metrics) {
-		instantiateHeapMemoryMetrics(metrics.addGroup(METRIC_GROUP_HEAP_NAME));
-		instantiateNonHeapMemoryMetrics(metrics.addGroup(METRIC_GROUP_NONHEAP_NAME));
-		instantiateMetaspaceMemoryMetrics(metrics);
+		final MemoryUsage heapMemoryUsage = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage();
+		final MemoryUsage nonHeapMemoryUsage = ManagementFactory.getMemoryMXBean().getNonHeapMemoryUsage();
+
+		MetricGroup heap = metrics.addGroup("Heap");
+
+		heap.<Long, Gauge<Long>>gauge("Used", heapMemoryUsage::getUsed);
+		heap.<Long, Gauge<Long>>gauge("Committed", heapMemoryUsage::getCommitted);
+		heap.<Long, Gauge<Long>>gauge("Max", heapMemoryUsage::getMax);
+
+		MetricGroup nonHeap = metrics.addGroup("NonHeap");
+
+		nonHeap.<Long, Gauge<Long>>gauge("Used", nonHeapMemoryUsage::getUsed);
+		nonHeap.<Long, Gauge<Long>>gauge("Committed", nonHeapMemoryUsage::getCommitted);
+		nonHeap.<Long, Gauge<Long>>gauge("Max", nonHeapMemoryUsage::getMax);
 
 		final MBeanServer con = ManagementFactory.getPlatformMBeanServer();
 
@@ -261,45 +203,6 @@ public class MetricUtils {
 		} catch (MalformedObjectNameException e) {
 			LOG.warn("Could not create object name {}.", mappedBufferPoolName, e);
 		}
-	}
-
-	@VisibleForTesting
-	static void instantiateHeapMemoryMetrics(final MetricGroup metricGroup) {
-		instantiateMemoryUsageMetrics(metricGroup, () -> ManagementFactory.getMemoryMXBean().getHeapMemoryUsage());
-	}
-
-	@VisibleForTesting
-	static void instantiateNonHeapMemoryMetrics(final MetricGroup metricGroup) {
-		instantiateMemoryUsageMetrics(metricGroup, () -> ManagementFactory.getMemoryMXBean().getNonHeapMemoryUsage());
-	}
-
-	@VisibleForTesting
-	static void instantiateMetaspaceMemoryMetrics(final MetricGroup parentMetricGroup) {
-		final List<MemoryPoolMXBean> memoryPoolMXBeans = ManagementFactory.getMemoryPoolMXBeans()
-			.stream()
-			.filter(bean -> "Metaspace".equals(bean.getName()))
-			.collect(Collectors.toList());
-
-		if (memoryPoolMXBeans.isEmpty()) {
-			LOG.info("The '{}' metrics will not be exposed because no pool named 'Metaspace' could be found. This might be caused by the used JVM.", METRIC_GROUP_METASPACE_NAME);
-			return;
-		}
-
-		final MetricGroup metricGroup = parentMetricGroup.addGroup(METRIC_GROUP_METASPACE_NAME);
-		final Iterator<MemoryPoolMXBean> beanIterator = memoryPoolMXBeans.iterator();
-
-		final MemoryPoolMXBean firstPool = beanIterator.next();
-		instantiateMemoryUsageMetrics(metricGroup, firstPool::getUsage);
-
-		if (beanIterator.hasNext()) {
-			LOG.debug("More than one memory pool named 'Metaspace' is present. Only the first pool was used for instantiating the '{}' metrics.", METRIC_GROUP_METASPACE_NAME);
-		}
-	}
-
-	private static void instantiateMemoryUsageMetrics(final MetricGroup metricGroup, final Supplier<MemoryUsage> memoryUsageSupplier) {
-		metricGroup.<Long, Gauge<Long>>gauge(MetricNames.MEMORY_USED, () -> memoryUsageSupplier.get().getUsed());
-		metricGroup.<Long, Gauge<Long>>gauge(MetricNames.MEMORY_COMMITTED, () -> memoryUsageSupplier.get().getCommitted());
-		metricGroup.<Long, Gauge<Long>>gauge(MetricNames.MEMORY_MAX, () -> memoryUsageSupplier.get().getMax());
 	}
 
 	private static void instantiateThreadMetrics(MetricGroup metrics) {

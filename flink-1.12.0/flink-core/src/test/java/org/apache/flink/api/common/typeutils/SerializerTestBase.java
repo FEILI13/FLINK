@@ -19,16 +19,14 @@
 package org.apache.flink.api.common.typeutils;
 
 import org.apache.flink.api.java.typeutils.runtime.NullableSerializer;
-import org.apache.flink.api.java.typeutils.runtime.kryo.KryoSerializer;
 import org.apache.flink.core.memory.DataInputDeserializer;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.core.memory.DataOutputSerializer;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
-import org.apache.flink.testutils.CustomEqualityMatcher;
-import org.apache.flink.testutils.DeeplyEqualsChecker;
 import org.apache.flink.util.InstantiationUtil;
+import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.TestLogger;
 
 import org.apache.commons.lang3.SerializationException;
@@ -42,12 +40,14 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CyclicBarrier;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -60,16 +60,6 @@ import static org.junit.Assert.fail;
  * internal state would be corrupt, which becomes evident when toString is called.
  */
 public abstract class SerializerTestBase<T> extends TestLogger {
-
-	private final DeeplyEqualsChecker checker;
-
-	protected SerializerTestBase() {
-		this.checker = new DeeplyEqualsChecker();
-	}
-
-	protected SerializerTestBase(DeeplyEqualsChecker checker) {
-		this.checker = checker;
-	}
 
 	protected abstract TypeSerializer<T> createSerializer();
 
@@ -85,25 +75,17 @@ public abstract class SerializerTestBase<T> extends TestLogger {
 
 	protected abstract T[] getTestData();
 
-	/**
-	 * Allows {@link TypeSerializer#createInstance()} to return null.
-	 *
-	 * <p>The {@link KryoSerializer} is one example.
-	 */
-	protected boolean allowNullInstances(TypeSerializer<T> serializer) {
-		return serializer.getClass().getName().endsWith("KryoSerializer");
-	}
-
 	// --------------------------------------------------------------------------------------------
 
 	@Test
 	public void testInstantiate() {
 		try {
 			TypeSerializer<T> serializer = getSerializer();
-			T instance = serializer.createInstance();
-			if (instance == null && allowNullInstances(serializer)) {
+			if(serializer.getClass().getName().endsWith("KryoSerializer")) {
+				// the kryo serializer will return null. We ignore this test for Kryo.
 				return;
 			}
+			T instance = serializer.createInstance();
 			assertNotNull("The created instance must not be null.", instance);
 
 			Class<T> type = getTypeClass();
@@ -147,16 +129,9 @@ public abstract class SerializerTestBase<T> extends TestLogger {
 		}
 
 		TypeSerializerSchemaCompatibility<T> strategy = restoredConfig.resolveSchemaCompatibility(getSerializer());
-		final TypeSerializer<T> restoreSerializer;
-		if (strategy.isCompatibleAsIs()) {
-			restoreSerializer = restoredConfig.restoreSerializer();
-		}
-		else if (strategy.isCompatibleWithReconfiguredSerializer()) {
-			restoreSerializer = strategy.getReconfiguredSerializer();
-		}
-		else {
-			throw new AssertionError("Unable to restore serializer with " + strategy);
-		}
+		assertTrue(strategy.isCompatibleAsIs());
+
+		TypeSerializer<T> restoreSerializer = restoredConfig.restoreSerializer();
 		assertEquals(serializer.getClass(), restoreSerializer.getClass());
 	}
 
@@ -483,8 +458,7 @@ public abstract class SerializerTestBase<T> extends TestLogger {
 				startLatch,
 				serializer.duplicate(),
 				testData,
-				120L,
-				checker);
+				120L);
 
 			runner.start();
 			concurrentRunners.add(runner);
@@ -498,8 +472,46 @@ public abstract class SerializerTestBase<T> extends TestLogger {
 
 	// --------------------------------------------------------------------------------------------
 
-	private void deepEquals(String message, T should, T is) {
-		assertThat(message, is, CustomEqualityMatcher.deeplyEquals(should).withChecker(checker));
+	protected void deepEquals(String message, T should, T is) {
+		Assert.assertTrue((should == null && is == null) || (should != null && is != null));
+		if (should == null) {
+			return;
+		}
+		if (should.getClass().isArray()) {
+			if (should instanceof boolean[]) {
+				Assert.assertTrue(message, Arrays.equals((boolean[]) should, (boolean[]) is));
+			}
+			else if (should instanceof byte[]) {
+				assertArrayEquals(message, (byte[]) should, (byte[]) is);
+			}
+			else if (should instanceof short[]) {
+				assertArrayEquals(message, (short[]) should, (short[]) is);
+			}
+			else if (should instanceof int[]) {
+				assertArrayEquals(message, (int[]) should, (int[]) is);
+			}
+			else if (should instanceof long[]) {
+				assertArrayEquals(message, (long[]) should, (long[]) is);
+			}
+			else if (should instanceof float[]) {
+				assertArrayEquals(message, (float[]) should, (float[]) is, 0.0f);
+			}
+			else if (should instanceof double[]) {
+				assertArrayEquals(message, (double[]) should, (double[]) is, 0.0);
+			}
+			else if (should instanceof char[]) {
+				assertArrayEquals(message, (char[]) should, (char[]) is);
+			}
+			else {
+				assertArrayEquals(message, (Object[]) should, (Object[]) is);
+			}
+		}
+		else if (should instanceof Throwable) {
+			assertEquals(((Throwable)should).getMessage(), ((Throwable)is).getMessage());
+		}
+		else {
+			assertEquals(message,  should, is);
+		}
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -557,20 +569,18 @@ public abstract class SerializerTestBase<T> extends TestLogger {
 		final TypeSerializer<T> serializer;
 		final T[] testData;
 		final long durationLimitMillis;
-		Throwable failure;
-		final DeeplyEqualsChecker checker;
+		Exception failure;
 
 		SerializerRunner(
 			CyclicBarrier allReadyBarrier,
 			TypeSerializer<T> serializer,
 			T[] testData,
-			long testTargetDurationMillis, DeeplyEqualsChecker checker) {
+			long testTargetDurationMillis) {
 
 			this.allReadyBarrier = allReadyBarrier;
 			this.serializer = serializer;
 			this.testData = testData;
 			this.durationLimitMillis =  testTargetDurationMillis;
-			this.checker = checker;
 			this.failure = null;
 		}
 
@@ -592,10 +602,8 @@ public abstract class SerializerTestBase<T> extends TestLogger {
 						T copySerdeTestItem = serializer.copy(serdeTestItem);
 						dataOutputSerializer.clear();
 
-						assertThat(
-							"Serialization/Deserialization cycle resulted in an object that are not equal to the original.",
-							copySerdeTestItem,
-							CustomEqualityMatcher.deeplyEquals(testItem).withChecker(checker));
+						Preconditions.checkState(Objects.deepEquals(testItem, copySerdeTestItem),
+							"Serialization/Deserialization cycle resulted in an object that are not equal to the original.");
 
 						// try to enforce some upper bound to the test time
 						if (System.nanoTime() >= endTimeNanos) {
@@ -603,18 +611,14 @@ public abstract class SerializerTestBase<T> extends TestLogger {
 						}
 					}
 				}
-			} catch (Throwable ex) {
+			} catch (Exception ex) {
 				failure = ex;
 			}
 		}
 
 		void checkResult() throws Exception {
 			if (failure != null) {
-				if (failure instanceof AssertionError) {
-					throw (AssertionError) failure;
-				} else {
-					throw (Exception) failure;
-				}
+				throw failure;
 			}
 		}
 	}

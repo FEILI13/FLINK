@@ -21,7 +21,6 @@ import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyedStateHandle;
 
 import org.rocksdb.ColumnFamilyHandle;
-import org.rocksdb.ReadOptions;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 
@@ -73,13 +72,12 @@ public class RocksDBIncrementalCheckpointUtils {
 	 * @param currentKeyGroupRange the key group range of the db instance.
 	 * @param keyGroupPrefixBytes Number of bytes required to prefix the key groups.
 	 */
-	public static void clipDBWithKeyGroupRange(
+	static void clipDBWithKeyGroupRange(
 		@Nonnull RocksDB db,
 		@Nonnull List<ColumnFamilyHandle> columnFamilyHandles,
 		@Nonnull KeyGroupRange targetKeyGroupRange,
 		@Nonnull KeyGroupRange currentKeyGroupRange,
-		@Nonnegative int keyGroupPrefixBytes,
-		@Nonnegative long writeBatchSize) throws RocksDBException {
+		@Nonnegative int keyGroupPrefixBytes) throws RocksDBException {
 
 		final byte[] beginKeyGroupBytes = new byte[keyGroupPrefixBytes];
 		final byte[] endKeyGroupBytes = new byte[keyGroupPrefixBytes];
@@ -89,7 +87,7 @@ public class RocksDBIncrementalCheckpointUtils {
 				currentKeyGroupRange.getStartKeyGroup(), beginKeyGroupBytes);
 			RocksDBKeySerializationUtils.serializeKeyGroup(
 				targetKeyGroupRange.getStartKeyGroup(), endKeyGroupBytes);
-			deleteRange(db, columnFamilyHandles, beginKeyGroupBytes, endKeyGroupBytes, writeBatchSize);
+			deleteRange(db, columnFamilyHandles, beginKeyGroupBytes, endKeyGroupBytes);
 		}
 
 		if (currentKeyGroupRange.getEndKeyGroup() > targetKeyGroupRange.getEndKeyGroup()) {
@@ -97,7 +95,7 @@ public class RocksDBIncrementalCheckpointUtils {
 				targetKeyGroupRange.getEndKeyGroup() + 1, beginKeyGroupBytes);
 			RocksDBKeySerializationUtils.serializeKeyGroup(
 				currentKeyGroupRange.getEndKeyGroup() + 1, endKeyGroupBytes);
-			deleteRange(db, columnFamilyHandles, beginKeyGroupBytes, endKeyGroupBytes, writeBatchSize);
+			deleteRange(db, columnFamilyHandles, beginKeyGroupBytes, endKeyGroupBytes);
 		}
 	}
 
@@ -113,13 +111,11 @@ public class RocksDBIncrementalCheckpointUtils {
 		RocksDB db,
 		List<ColumnFamilyHandle> columnFamilyHandles,
 		byte[] beginKeyBytes,
-		byte[] endKeyBytes,
-		@Nonnegative long writeBatchSize) throws RocksDBException {
+		byte[] endKeyBytes) throws RocksDBException {
 
 		for (ColumnFamilyHandle columnFamilyHandle : columnFamilyHandles) {
-			try (ReadOptions readOptions = RocksDBOperationUtils.createTotalOrderSeekReadOptions();
-				RocksIteratorWrapper iteratorWrapper = RocksDBOperationUtils.getRocksIterator(db, columnFamilyHandle, readOptions);
-				RocksDBWriteBatchWrapper writeBatchWrapper = new RocksDBWriteBatchWrapper(db, writeBatchSize)) {
+			try (RocksIteratorWrapper iteratorWrapper = RocksDBKeyedStateBackend.getRocksIterator(db, columnFamilyHandle);
+				RocksDBWriteBatchWrapper writeBatchWrapper = new RocksDBWriteBatchWrapper(db)) {
 
 				iteratorWrapper.seek(beginKeyBytes);
 
@@ -139,7 +135,7 @@ public class RocksDBIncrementalCheckpointUtils {
 	/**
 	 * check whether the bytes is before prefixBytes in the character order.
 	 */
-	public static boolean beforeThePrefixBytes(@Nonnull byte[] bytes, @Nonnull byte[] prefixBytes) {
+	static boolean beforeThePrefixBytes(@Nonnull byte[] bytes, @Nonnull byte[] prefixBytes) {
 		final int prefixLength = prefixBytes.length;
 		for (int i = 0; i < prefixLength; ++i) {
 			int r = (char) prefixBytes[i] - (char) bytes[i];
@@ -159,7 +155,7 @@ public class RocksDBIncrementalCheckpointUtils {
 	 * @return The best candidate or null if no candidate was a good fit.
 	 */
 	@Nullable
-	public static KeyedStateHandle chooseTheBestStateHandleForInitial(
+	static KeyedStateHandle chooseTheBestStateHandleForInitial(
 		@Nonnull Collection<KeyedStateHandle> restoreStateHandles,
 		@Nonnull KeyGroupRange targetKeyGroupRange) {
 

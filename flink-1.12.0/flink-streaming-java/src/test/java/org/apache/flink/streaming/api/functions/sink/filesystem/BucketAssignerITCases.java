@@ -19,7 +19,6 @@
 package org.apache.flink.streaming.api.functions.sink.filesystem;
 
 import org.apache.flink.api.common.serialization.SimpleStringEncoder;
-import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketassigners.BasePathBucketAssigner;
 import org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.DefaultRollingPolicy;
@@ -47,7 +46,7 @@ public class BucketAssignerITCases {
 
 		final RollingPolicy<String, String> rollingPolicy =
 			DefaultRollingPolicy
-				.builder()
+				.create()
 				.withMaxPartSize(7L)
 				.build();
 
@@ -55,10 +54,9 @@ public class BucketAssignerITCases {
 			basePath,
 			new BasePathBucketAssigner<>(),
 			new DefaultBucketFactoryImpl<>(),
-			new RowWiseBucketWriter<>(FileSystem.get(basePath.toUri()).createRecoverableWriter(), new SimpleStringEncoder<>()),
+			new RowWisePartWriter.Factory<>(new SimpleStringEncoder<>()),
 			rollingPolicy,
-			0,
-			OutputFileConfig.builder().build()
+			0
 		);
 
 		Bucket<String, String> bucket =

@@ -26,12 +26,12 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-parent</artifactId>
-		<version>1.12.0</version>
+		<version>1.7-CLONOS-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 
 	<artifactId>flink-filesystems</artifactId>
-	<name>Flink : FileSystems : </name>
+	<name>flink-filesystems</name>
 	<packaging>pom</packaging>
 
 	<properties>
@@ -46,8 +46,6 @@ under the License.
 		<module>flink-s3-fs-hadoop</module>
 		<module>flink-s3-fs-presto</module>
 		<module>flink-swift-fs-hadoop</module>
-		<module>flink-oss-fs-hadoop</module>
-		<module>flink-azure-fs-hadoop</module>
 	</modules>
 
 	<!-- Common dependency setup for all filesystems -->

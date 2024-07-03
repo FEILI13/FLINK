@@ -29,6 +29,7 @@ import org.apache.flink.api.java.typeutils.TypeExtractor;
 
 import org.apache.avro.specific.SpecificRecordBase;
 
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
@@ -56,31 +57,33 @@ public class AvroTypeInfo<T extends SpecificRecordBase> extends PojoTypeInfo<T> 
 	}
 
 	@Override
+	@SuppressWarnings("deprecation")
 	public TypeSerializer<T> createSerializer(ExecutionConfig config) {
 		return new AvroSerializer<>(getTypeClass());
 	}
 
+	@SuppressWarnings("unchecked")
 	@Internal
 	private static <T extends SpecificRecordBase> List<PojoField> generateFieldsFromAvroSchema(Class<T> typeClass) {
 			PojoTypeExtractor pte = new PojoTypeExtractor();
-			List<Type> typeHierarchy = new ArrayList<>();
+			ArrayList<Type> typeHierarchy = new ArrayList<>();
 			typeHierarchy.add(typeClass);
-			TypeInformation<T> ti = pte.analyzePojo(typeClass, typeHierarchy, null, null);
+			TypeInformation ti = pte.analyzePojo(typeClass, typeHierarchy, null, null, null);
 
 			if (!(ti instanceof PojoTypeInfo)) {
 				throw new IllegalStateException("Expecting type to be a PojoTypeInfo");
 			}
-			PojoTypeInfo<T> pti =  (PojoTypeInfo<T>) ti;
+			PojoTypeInfo pti =  (PojoTypeInfo) ti;
 			List<PojoField> newFields = new ArrayList<>(pti.getTotalFields());
 
 			for (int i = 0; i < pti.getArity(); i++) {
 				PojoField f = pti.getPojoFieldAt(i);
-				TypeInformation<?> newType = f.getTypeInformation();
+				TypeInformation newType = f.getTypeInformation();
 				// check if type is a CharSequence
 				if (newType instanceof GenericTypeInfo) {
 					if ((newType).getTypeClass().equals(CharSequence.class)) {
 						// replace the type by a org.apache.avro.util.Utf8
-						newType = new GenericTypeInfo<>(org.apache.avro.util.Utf8.class);
+						newType = new GenericTypeInfo(org.apache.avro.util.Utf8.class);
 					}
 				}
 				PojoField newField = new PojoField(f.getField(), newType);
@@ -95,12 +98,9 @@ public class AvroTypeInfo<T extends SpecificRecordBase> extends PojoTypeInfo<T> 
 		}
 
 		@Override
-		public <OUT, IN1, IN2> TypeInformation<OUT> analyzePojo(
-				Type type,
-				List<Type> typeHierarchy,
-				TypeInformation<IN1> in1Type,
-				TypeInformation<IN2> in2Type) {
-			return super.analyzePojo(type, typeHierarchy, in1Type, in2Type);
+		public <OUT, IN1, IN2> TypeInformation<OUT> analyzePojo(Class<OUT> clazz, ArrayList<Type> typeHierarchy,
+				ParameterizedType parameterizedType, TypeInformation<IN1> in1Type, TypeInformation<IN2> in2Type) {
+			return super.analyzePojo(clazz, typeHierarchy, parameterizedType, in1Type, in2Type);
 		}
 	}
 }

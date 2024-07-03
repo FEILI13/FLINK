@@ -18,15 +18,13 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
+import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.ConnectionManager;
-import org.apache.flink.runtime.io.network.PartitionRequestClient;
-import org.apache.flink.runtime.io.network.TaskEventPublisher;
+import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionProvider;
 
 import java.io.IOException;
-
-import static org.apache.flink.util.Preconditions.checkNotNull;
 
 public class NettyConnectionManager implements ConnectionManager {
 
@@ -38,27 +36,36 @@ public class NettyConnectionManager implements ConnectionManager {
 
 	private final PartitionRequestClientFactory partitionRequestClientFactory;
 
-	private final NettyProtocol nettyProtocol;
+	private final CausalLogManager causalLogManager;
 
-	public NettyConnectionManager(
-		ResultPartitionProvider partitionProvider,
-		TaskEventPublisher taskEventPublisher,
-		NettyConfig nettyConfig) {
+	private final boolean sensitiveFailureDetectionEnabled;
 
+	public NettyConnectionManager(NettyConfig nettyConfig) {
+		this(nettyConfig, null);
+	}
+
+	public NettyConnectionManager(NettyConfig nettyConfig, CausalLogManager causalLogManager) {
+
+		this.sensitiveFailureDetectionEnabled = nettyConfig.getSensitiveFailureDetectionEnabled();
 		this.server = new NettyServer(nettyConfig);
 		this.client = new NettyClient(nettyConfig);
 		this.bufferPool = new NettyBufferPool(nettyConfig.getNumberOfArenas());
+		this.causalLogManager = causalLogManager;
 
-		this.partitionRequestClientFactory = new PartitionRequestClientFactory(client, nettyConfig.getNetworkRetries());
-
-		this.nettyProtocol = new NettyProtocol(checkNotNull(partitionProvider), checkNotNull(taskEventPublisher));
+		this.partitionRequestClientFactory = new PartitionRequestClientFactory(client, causalLogManager);
 	}
 
-	@Override
-	public int start() throws IOException {
-		client.init(nettyProtocol, bufferPool);
 
-		return server.init(nettyProtocol, bufferPool);
+
+	@Override
+	public void start(ResultPartitionProvider partitionProvider, TaskEventDispatcher taskEventDispatcher) throws IOException {
+		NettyProtocol partitionRequestProtocol = new NettyProtocol(
+			partitionProvider,
+			taskEventDispatcher,
+			client.getConfig().isCreditBasedEnabled(), causalLogManager, this.sensitiveFailureDetectionEnabled);
+
+		client.init(partitionRequestProtocol, bufferPool);
+		server.init(partitionRequestProtocol, bufferPool);
 	}
 
 	@Override
@@ -75,6 +82,15 @@ public class NettyConnectionManager implements ConnectionManager {
 	@Override
 	public int getNumberOfActiveConnections() {
 		return partitionRequestClientFactory.getNumberOfActiveClients();
+	}
+
+	@Override
+	public int getDataPort() {
+		if (server != null && server.getLocalAddress() != null) {
+			return server.getLocalAddress().getPort();
+		} else {
+			return -1;
+		}
 	}
 
 	@Override

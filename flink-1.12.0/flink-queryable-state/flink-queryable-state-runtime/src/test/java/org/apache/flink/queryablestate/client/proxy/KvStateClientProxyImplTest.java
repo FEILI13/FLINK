@@ -47,7 +47,7 @@ public class KvStateClientProxyImplTest extends TestLogger {
 	@Before
 	public void setup() {
 		kvStateClientProxy = new KvStateClientProxyImpl(
-			InetAddress.getLoopbackAddress().getHostName(),
+			InetAddress.getLoopbackAddress(),
 			Collections.singleton(0).iterator(),
 			1,
 			1,

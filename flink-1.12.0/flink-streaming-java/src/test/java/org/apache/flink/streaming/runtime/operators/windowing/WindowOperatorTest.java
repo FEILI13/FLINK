@@ -19,7 +19,9 @@
 package org.apache.flink.streaming.runtime.operators.windowing;
 
 import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.functions.FoldFunction;
 import org.apache.flink.api.common.functions.ReduceFunction;
+import org.apache.flink.api.common.state.FoldingStateDescriptor;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.state.ReducingStateDescriptor;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
@@ -1942,7 +1944,7 @@ public class WindowOperatorTest extends TestLogger {
 				new InternalSingleValueWindowFunction<>(new ReducedSessionWindowFunction()),
 				EventTimeTrigger.create(),
 				lateness,
-				lateOutputTag /* late data output tag */);
+				null /* late data output tag */);
 
 		OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Tuple3<String, Long, Long>> testHarness =
 			createTestHarness(operator);
@@ -2041,7 +2043,7 @@ public class WindowOperatorTest extends TestLogger {
 				new InternalSingleValueWindowFunction<>(new ReducedSessionWindowFunction()),
 				PurgingTrigger.of(EventTimeTrigger.create()),
 				lateness,
-				lateOutputTag /* late data output tag */);
+				null /* late data output tag */);
 
 		OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Tuple3<String, Long, Long>> testHarness =
 			createTestHarness(operator);
@@ -2130,7 +2132,7 @@ public class WindowOperatorTest extends TestLogger {
 				new InternalSingleValueWindowFunction<>(new ReducedSessionWindowFunction()),
 				EventTimeTrigger.create(),
 				lateness,
-				lateOutputTag /* late data output tag */);
+				null /* late data output tag */);
 
 		OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Tuple3<String, Long, Long>> testHarness =
 			createTestHarness(operator);
@@ -2345,6 +2347,62 @@ public class WindowOperatorTest extends TestLogger {
 	}
 
 	@Test
+	public void testCleanupTimerWithEmptyFoldingStateForTumblingWindows() throws Exception {
+		final int windowSize = 2;
+		final long lateness = 1;
+
+		FoldingStateDescriptor<Tuple2<String, Integer>, Tuple2<String, Integer>> windowStateDesc =
+			new FoldingStateDescriptor<>(
+				"window-contents",
+				new Tuple2<>((String) null, 0),
+				new FoldFunction<Tuple2<String, Integer>, Tuple2<String, Integer>>() {
+					private static final long serialVersionUID = 1L;
+
+					@Override
+					public Tuple2<String, Integer> fold(Tuple2<String, Integer> accumulator, Tuple2<String, Integer> value) throws Exception {
+						return new Tuple2<>(value.f0, accumulator.f1 + value.f1);
+					}
+				},
+				STRING_INT_TUPLE);
+		windowStateDesc.initializeSerializerUnlessSet(new ExecutionConfig());
+
+		WindowOperator<String, Tuple2<String, Integer>, Tuple2<String, Integer>, Tuple2<String, Integer>, TimeWindow> operator =
+			new WindowOperator<>(
+				TumblingEventTimeWindows.of(Time.of(windowSize, TimeUnit.SECONDS)),
+				new TimeWindow.Serializer(),
+				new TupleKeySelector(),
+				BasicTypeInfo.STRING_TYPE_INFO.createSerializer(new ExecutionConfig()),
+				windowStateDesc,
+				new InternalSingleValueWindowFunction<>(new PassThroughFunction()),
+				EventTimeTrigger.create(),
+				lateness,
+				null /* late data output tag */);
+
+		OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Tuple2<String, Integer>> testHarness =
+			createTestHarness(operator);
+
+		testHarness.open();
+
+		ConcurrentLinkedQueue<Object> expected = new ConcurrentLinkedQueue<>();
+
+		// normal element
+		testHarness.processElement(new StreamRecord<>(new Tuple2<>("key2", 1), 1000));
+		testHarness.processWatermark(new Watermark(1599));
+		testHarness.processWatermark(new Watermark(1999));
+		testHarness.processWatermark(new Watermark(2000));
+		testHarness.processWatermark(new Watermark(5000));
+
+		expected.add(new Watermark(1599));
+		expected.add(new StreamRecord<>(new Tuple2<>("key2", 1), 1999));
+		expected.add(new Watermark(1999)); // here it fires and purges
+		expected.add(new Watermark(2000)); // here is the cleanup timer
+		expected.add(new Watermark(5000));
+
+		TestHarnessUtil.assertOutputEqualsSorted("Output was not correct.", expected, testHarness.getOutput(), new Tuple2ResultSortComparator());
+		testHarness.close();
+	}
+
+	@Test
 	public void testCleanupTimerWithEmptyListStateForSessionWindows() throws Exception {
 		final int gapSize = 3;
 		final long lateness = 10;
@@ -2418,6 +2476,60 @@ public class WindowOperatorTest extends TestLogger {
 		testHarness.processWatermark(new Watermark(4998));
 
 		expected.add(new StreamRecord<>(new Tuple3<>("key2-1", 1000L, 4000L), 3999));
+		expected.add(new Watermark(4998));
+
+		testHarness.processWatermark(new Watermark(14600));
+		expected.add(new Watermark(14600));
+
+		ConcurrentLinkedQueue<Object> actual = testHarness.getOutput();
+		TestHarnessUtil.assertOutputEqualsSorted("Output was not correct.", expected, actual, new Tuple2ResultSortComparator());
+		testHarness.close();
+	}
+
+	// TODO this test seems invalid, as it uses the unsupported combination of merging windows and folding window state
+	@Test
+	public void testCleanupTimerWithEmptyFoldingStateForSessionWindows() throws Exception {
+		final int gapSize = 3;
+		final long lateness = 10;
+
+		FoldingStateDescriptor<Tuple2<String, Integer>, Tuple2<String, Integer>> windowStateDesc =
+			new FoldingStateDescriptor<>(
+				"window-contents",
+				new Tuple2<>((String) null, 0),
+				new FoldFunction<Tuple2<String, Integer>, Tuple2<String, Integer>>() {
+					private static final long serialVersionUID = 1L;
+
+					@Override
+					public Tuple2<String, Integer> fold(Tuple2<String, Integer> accumulator, Tuple2<String, Integer> value) throws Exception {
+						return new Tuple2<>(value.f0, accumulator.f1 + value.f1);
+					}
+				},
+				STRING_INT_TUPLE);
+		windowStateDesc.initializeSerializerUnlessSet(new ExecutionConfig());
+
+		WindowOperator<String, Tuple2<String, Integer>, Tuple2<String, Integer>, Tuple2<String, Integer>, TimeWindow> operator =
+			new WindowOperator<>(
+				EventTimeSessionWindows.withGap(Time.seconds(gapSize)),
+				new TimeWindow.Serializer(),
+				new TupleKeySelector(),
+				BasicTypeInfo.STRING_TYPE_INFO.createSerializer(new ExecutionConfig()),
+				windowStateDesc,
+				new InternalSingleValueWindowFunction<>(new PassThroughFunction()),
+				EventTimeTrigger.create(),
+				lateness,
+				null /* late data output tag */);
+
+		OneInputStreamOperatorTestHarness<Tuple2<String, Integer>, Tuple2<String, Integer>> testHarness =
+			createTestHarness(operator);
+
+		testHarness.open();
+
+		ConcurrentLinkedQueue<Object> expected = new ConcurrentLinkedQueue<>();
+
+		testHarness.processElement(new StreamRecord<>(new Tuple2<>("key2", 1), 1000));
+		testHarness.processWatermark(new Watermark(4998));
+
+		expected.add(new StreamRecord<>(new Tuple2<>("key2", 1), 3999));
 		expected.add(new Watermark(4998));
 
 		testHarness.processWatermark(new Watermark(14600));

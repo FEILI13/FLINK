@@ -101,6 +101,11 @@ public final class SqlDateSerializer extends TypeSerializerSingleton<Date> {
 	}
 
 	@Override
+	public boolean canEqual(Object obj) {
+		return obj instanceof SqlDateSerializer;
+	}
+
+	@Override
 	public TypeSerializerSnapshot<Date> snapshotConfiguration() {
 		return new SqlDateSerializerSnapshot();
 	}
@@ -110,11 +115,10 @@ public final class SqlDateSerializer extends TypeSerializerSingleton<Date> {
 	/**
 	 * Serializer configuration snapshot for compatibility and format evolution.
 	 */
-	@SuppressWarnings("WeakerAccess")
 	public static final class SqlDateSerializerSnapshot extends SimpleTypeSerializerSnapshot<Date> {
 
 		public SqlDateSerializerSnapshot() {
-			super(() -> INSTANCE);
+			super(SqlDateSerializer.class);
 		}
 	}
 }

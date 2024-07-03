@@ -20,6 +20,7 @@ package org.apache.flink.runtime.state.ttl.mock;
 
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.state.AggregatingStateDescriptor;
+import org.apache.flink.api.common.state.FoldingStateDescriptor;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.state.ReducingStateDescriptor;
@@ -28,7 +29,7 @@ import org.apache.flink.api.common.state.StateDescriptor;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.core.fs.CloseableRegistry;
+import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.AbstractKeyedStateBackend;
@@ -44,10 +45,8 @@ import org.apache.flink.runtime.state.SharedStateRegistry;
 import org.apache.flink.runtime.state.SnapshotResult;
 import org.apache.flink.runtime.state.StateSnapshotTransformer;
 import org.apache.flink.runtime.state.StateSnapshotTransformer.StateSnapshotTransformFactory;
-import org.apache.flink.runtime.state.StateSnapshotTransformers;
 import org.apache.flink.runtime.state.heap.HeapPriorityQueueElement;
 import org.apache.flink.runtime.state.heap.HeapPriorityQueueSet;
-import org.apache.flink.runtime.state.heap.InternalKeyContext;
 import org.apache.flink.runtime.state.ttl.TtlStateFactory;
 import org.apache.flink.runtime.state.ttl.TtlTimeProvider;
 import org.apache.flink.util.FlinkRuntimeException;
@@ -55,6 +54,8 @@ import org.apache.flink.util.FlinkRuntimeException;
 import javax.annotation.Nonnull;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,33 +74,32 @@ public class MockKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 			StateDescriptor<S, SV> stateDesc) throws Exception;
 	}
 
+	@SuppressWarnings("deprecation")
 	private static final Map<Class<? extends StateDescriptor>, StateFactory> STATE_FACTORIES =
 		Stream.of(
 			Tuple2.of(ValueStateDescriptor.class, (StateFactory) MockInternalValueState::createState),
 			Tuple2.of(ListStateDescriptor.class, (StateFactory) MockInternalListState::createState),
 			Tuple2.of(MapStateDescriptor.class, (StateFactory) MockInternalMapState::createState),
 			Tuple2.of(ReducingStateDescriptor.class, (StateFactory) MockInternalReducingState::createState),
-			Tuple2.of(AggregatingStateDescriptor.class, (StateFactory) MockInternalAggregatingState::createState)
+			Tuple2.of(AggregatingStateDescriptor.class, (StateFactory) MockInternalAggregatingState::createState),
+			Tuple2.of(FoldingStateDescriptor.class, (StateFactory) MockInternalFoldingState::createState)
 		).collect(Collectors.toMap(t -> t.f0, t -> t.f1));
 
-	private final Map<String, Map<K, Map<Object, Object>>> stateValues;
+	private final Map<String, Map<K, Map<Object, Object>>> stateValues = new HashMap<>();
 
-	private final Map<String, StateSnapshotTransformer<Object>> stateSnapshotFilters;
+	private final Map<String, StateSnapshotTransformer<Object>> stateSnapshotFilters = new HashMap<>();
 
 	MockKeyedStateBackend(
 		TaskKvStateRegistry kvStateRegistry,
 		TypeSerializer<K> keySerializer,
 		ClassLoader userCodeClassLoader,
+		int numberOfKeyGroups,
+		KeyGroupRange keyGroupRange,
 		ExecutionConfig executionConfig,
 		TtlTimeProvider ttlTimeProvider,
-		Map<String, Map<K, Map<Object, Object>>> stateValues,
-		Map<String, StateSnapshotTransformer<Object>> stateSnapshotFilters,
-		CloseableRegistry cancelStreamRegistry,
-		InternalKeyContext<K> keyContext) {
+		MetricGroup operatorMetricGroup) {
 		super(kvStateRegistry, keySerializer, userCodeClassLoader,
-			executionConfig, ttlTimeProvider, cancelStreamRegistry, keyContext);
-		this.stateValues = stateValues;
-		this.stateSnapshotFilters = stateSnapshotFilters;
+			numberOfKeyGroups, keyGroupRange, executionConfig, ttlTimeProvider);
 	}
 
 	@Override
@@ -131,9 +131,11 @@ public class MockKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 		Optional<StateSnapshotTransformer<SEV>> original = snapshotTransformFactory.createForDeserializedState();
 		if (original.isPresent()) {
 			if (stateDesc instanceof ListStateDescriptor) {
-				return (StateSnapshotTransformer<SV>) new StateSnapshotTransformers.ListStateSnapshotTransformer<>(original.get());
+				return (StateSnapshotTransformer<SV>) new StateSnapshotTransformer
+					.ListStateSnapshotTransformer<>(original.get());
 			} else if (stateDesc instanceof MapStateDescriptor) {
-				return (StateSnapshotTransformer<SV>) new StateSnapshotTransformers.MapStateSnapshotTransformer<>(original.get());
+				return (StateSnapshotTransformer<SV>) new StateSnapshotTransformer
+					.MapStateSnapshotTransformer<>(original.get());
 			} else {
 				return (StateSnapshotTransformer<SV>) original.get();
 			}
@@ -164,25 +166,10 @@ public class MockKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 	}
 
 	@Override
-	public void notifyCheckpointAborted(long checkpointId) {
-		// noop
-	}
-
-	@Override
 	public <N> Stream<K> getKeys(String state, N namespace) {
 		return stateValues.get(state).entrySet().stream()
 			.filter(e -> e.getValue().containsKey(namespace))
 			.map(Map.Entry::getKey);
-	}
-
-	@Override
-	@SuppressWarnings("unchecked")
-	public <N> Stream<Tuple2<K, N>> getKeysAndNamespaces(String state) {
-		return stateValues.get(state).entrySet().stream()
-			.flatMap(entry ->
-				entry.getValue().entrySet().stream()
-					.map(namespace ->
-						Tuple2.of(entry.getKey(), (N) namespace.getKey())));
 	}
 
 	@Nonnull
@@ -196,7 +183,20 @@ public class MockKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 			SnapshotResult.of(new MockKeyedStateHandle<>(copy(stateValues, stateSnapshotFilters))));
 	}
 
-	static <K> Map<String, Map<K, Map<Object, Object>>> copy(
+	@SuppressWarnings("unchecked")
+	@Override
+	public void restore(Collection<KeyedStateHandle> state) {
+		stateValues.clear();
+		state = state == null ? Collections.emptyList() : state;
+		state.forEach(ksh -> stateValues.putAll(copy(((MockKeyedStateHandle<K>) ksh).snapshotStates)));
+	}
+
+	private static <K> Map<String, Map<K, Map<Object, Object>>> copy(
+		Map<String, Map<K, Map<Object, Object>>> stateValues) {
+		return copy(stateValues, Collections.emptyMap());
+	}
+
+	private static <K> Map<String, Map<K, Map<Object, Object>>> copy(
 		Map<String, Map<K, Map<Object, Object>>> stateValues, Map<String, StateSnapshotTransformer<Object>> stateSnapshotFilters) {
 		Map<String, Map<K, Map<Object, Object>>> snapshotStates = new HashMap<>();
 		for (String stateName : stateValues.keySet()) {
@@ -243,7 +243,7 @@ public class MockKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 			0);
 	}
 
-	static class MockKeyedStateHandle<K> implements KeyedStateHandle {
+	private static class MockKeyedStateHandle<K> implements KeyedStateHandle {
 		private static final long serialVersionUID = 1L;
 
 		final Map<String, Map<K, Map<Object, Object>>> snapshotStates;
@@ -264,7 +264,7 @@ public class MockKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 
 		@Override
 		public void registerSharedStates(SharedStateRegistry stateRegistry) {
-
+			throw new UnsupportedOperationException();
 		}
 
 		@Override

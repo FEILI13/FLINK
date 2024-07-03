@@ -32,6 +32,8 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.rocksdb.ColumnFamilyHandle;
 
+import javax.annotation.Nullable;
+
 import java.math.BigInteger;
 import java.util.ArrayList;
 
@@ -69,9 +71,9 @@ public class RocksDBNativeMetricMonitorTest {
 		options.enableSizeAllMemTables();
 
 		RocksDBNativeMetricMonitor monitor = new RocksDBNativeMetricMonitor(
+			localRocksDBResource.getRocksDB(),
 			options,
-			group,
-			localRocksDBResource.getRocksDB()
+			group
 		);
 
 		ColumnFamilyHandle handle = localRocksDBResource.createNewColumnFamily(COLUMN_FAMILY_NAME);
@@ -99,10 +101,7 @@ public class RocksDBNativeMetricMonitorTest {
 	}
 
 	@Test
-	public void testReturnsUnsigned() throws Throwable {
-		RocksDBResource localRocksDBResource = new RocksDBResource();
-		localRocksDBResource.before();
-
+	public void testReturnsUnsigned() {
 		SimpleMetricRegistry registry = new SimpleMetricRegistry();
 		GenericMetricGroup group = new GenericMetricGroup(
 			registry,
@@ -114,19 +113,16 @@ public class RocksDBNativeMetricMonitorTest {
 		options.enableSizeAllMemTables();
 
 		RocksDBNativeMetricMonitor monitor = new RocksDBNativeMetricMonitor(
+			null,
 			options,
-			group,
-			localRocksDBResource.getRocksDB()
+			group
 		);
 
-		ColumnFamilyHandle handle = rocksDBResource.createNewColumnFamily(COLUMN_FAMILY_NAME);
-		monitor.registerColumnFamily(COLUMN_FAMILY_NAME, handle);
+		monitor.registerColumnFamily(COLUMN_FAMILY_NAME, null);
 		RocksDBNativeMetricMonitor.RocksDBNativeMetricView view = registry.metrics.get(0);
 
 		view.setValue(-1);
 		BigInteger result = view.getValue();
-
-		localRocksDBResource.after();
 
 		Assert.assertEquals("Failed to interpret RocksDB result as an unsigned long", 1, result.signum());
 	}
@@ -144,9 +140,9 @@ public class RocksDBNativeMetricMonitorTest {
 		options.enableSizeAllMemTables();
 
 		RocksDBNativeMetricMonitor monitor = new RocksDBNativeMetricMonitor(
+			rocksDBResource.getRocksDB(),
 			options,
-			group,
-			rocksDBResource.getRocksDB()
+			group
 		);
 
 		ColumnFamilyHandle handle = rocksDBResource.createNewColumnFamily(COLUMN_FAMILY_NAME);
@@ -165,6 +161,11 @@ public class RocksDBNativeMetricMonitorTest {
 
 		@Override
 		public char getDelimiter() {
+			return 0;
+		}
+
+		@Override
+		public char getDelimiter(int index) {
 			return 0;
 		}
 
@@ -195,6 +196,12 @@ public class RocksDBNativeMetricMonitorTest {
 			config.setString(MetricOptions.SCOPE_NAMING_OPERATOR, "D");
 
 			return ScopeFormats.fromConfig(config);
+		}
+
+		@Nullable
+		@Override
+		public String getMetricQueryServicePath() {
+			return null;
 		}
 	}
 }

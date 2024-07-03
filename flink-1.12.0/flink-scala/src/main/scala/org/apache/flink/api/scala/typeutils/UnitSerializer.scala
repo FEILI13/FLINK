@@ -17,12 +17,8 @@
  */
 package org.apache.flink.api.scala.typeutils
 
-import java.util.function.Supplier
-
 import org.apache.flink.annotation.Internal
-import org.apache.flink.api.common.typeutils.{SimpleTypeSerializerSnapshot, TypeSerializer, TypeSerializerSnapshot}
 import org.apache.flink.api.common.typeutils.base.TypeSerializerSingleton
-import org.apache.flink.api.scala.typeutils.UnitSerializer.UnitSerializerSnapshot
 import org.apache.flink.core.memory.{DataInputView, DataOutputView}
 
 @Internal
@@ -59,26 +55,7 @@ class UnitSerializer extends TypeSerializerSingleton[Unit] {
 
   override def hashCode(): Int = classOf[UnitSerializer].hashCode
 
-  // -----------------------------------------------------------------------------------
-
-  @Override
-  def snapshotConfiguration(): TypeSerializerSnapshot[Unit] = {
-    new UnitSerializerSnapshot()
+  override def canEqual(obj: scala.Any): Boolean = {
+    obj.isInstanceOf[UnitSerializer]
   }
-
-  /**
-    * Serializer configuration snapshot for compatibility and format evolution.
-    */
-}
-
-object UnitSerializer {
-
-  /**
-    * Serializer configuration snapshot for compatibility and format evolution.
-    */
-  final class UnitSerializerSnapshot
-        extends SimpleTypeSerializerSnapshot[Unit](
-    new Supplier[TypeSerializer[Unit]] {
-      override def get() = new UnitSerializer()
-    })
 }

@@ -27,6 +27,7 @@ import org.apache.flink.runtime.blob.BlobStoreService;
 import org.apache.flink.runtime.blob.BlobUtils;
 import org.apache.flink.runtime.blob.PermanentBlobCache;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
+import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.jobmanager.HighAvailabilityMode;
 import org.apache.flink.util.TestLogger;
 
@@ -37,6 +38,7 @@ import org.junit.rules.TemporaryFolder;
 import java.io.File;
 import java.io.FileInputStream;
 import java.net.InetSocketAddress;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -77,19 +79,11 @@ public class BlobLibraryCacheRecoveryITCase extends TestLogger {
 		try {
 			blobStoreService = BlobUtils.createBlobStoreFromConfig(config);
 
-			final BlobLibraryCacheManager.ClassLoaderFactory classLoaderFactory = BlobLibraryCacheManager.defaultClassLoaderFactory(
-				FlinkUserCodeClassLoaders.ResolveOrder.CHILD_FIRST,
-				new String[0],
-				null,
-				true);
-
 			for (int i = 0; i < server.length; i++) {
 				server[i] = new BlobServer(config, blobStoreService);
 				server[i].start();
 				serverAddress[i] = new InetSocketAddress("localhost", server[i].getPort());
-				libServer[i] = new BlobLibraryCacheManager(
-					server[i],
-					classLoaderFactory);
+				libServer[i] = new BlobLibraryCacheManager(server[i], FlinkUserCodeClassLoaders.ResolveOrder.CHILD_FIRST, new String[0]);
 			}
 
 			// Random data
@@ -109,8 +103,8 @@ public class BlobLibraryCacheRecoveryITCase extends TestLogger {
 			cache = new PermanentBlobCache(config, blobStoreService, serverAddress[0]);
 
 			// Register uploaded libraries
-			final LibraryCacheManager.ClassLoaderLease classLoaderLease = libServer[0].registerClassLoaderLease(jobId);
-			classLoaderLease.getOrResolveClassLoader(keys, Collections.emptyList());
+			ExecutionAttemptID executionId = new ExecutionAttemptID();
+			libServer[0].registerTask(jobId, executionId, keys, Collections.<URL>emptyList());
 
 			// Verify key 1
 			File f = cache.getFile(jobId, keys.get(0));

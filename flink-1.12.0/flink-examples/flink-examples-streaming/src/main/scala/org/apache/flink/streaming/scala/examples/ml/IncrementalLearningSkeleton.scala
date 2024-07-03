@@ -18,16 +18,18 @@
 
 package org.apache.flink.streaming.scala.examples.ml
 
+import java.util.concurrent.TimeUnit
+
 import org.apache.flink.api.java.utils.ParameterTool
 import org.apache.flink.api.scala._
+import org.apache.flink.streaming.api.TimeCharacteristic
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks
 import org.apache.flink.streaming.api.functions.co.CoMapFunction
 import org.apache.flink.streaming.api.functions.source.SourceFunction
 import org.apache.flink.streaming.api.functions.source.SourceFunction.SourceContext
-import org.apache.flink.streaming.api.scala.function.AllWindowFunction
 import org.apache.flink.streaming.api.scala.{DataStream, StreamExecutionEnvironment}
+import org.apache.flink.streaming.api.scala.function.AllWindowFunction
 import org.apache.flink.streaming.api.watermark.Watermark
-import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows
 import org.apache.flink.streaming.api.windowing.time.Time
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow
 import org.apache.flink.util.Collector
@@ -60,18 +62,19 @@ object IncrementalLearningSkeleton {
 
     // set up the execution environment
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
 
     // build new model on every second of new data
-    val trainingData: DataStream[Integer] = env.addSource(new FiniteTrainingDataSource)
-    val newData: DataStream[Integer] = env.addSource(new FiniteNewDataSource)
+    val trainingData: DataStream[Int] = env.addSource(new FiniteTrainingDataSource)
+    val newData: DataStream[Int] = env.addSource(new FiniteNewDataSource)
 
-    val model: DataStream[Array[java.lang.Double]] = trainingData
+    val model: DataStream[Array[Double]] = trainingData
       .assignTimestampsAndWatermarks(new LinearTimestamp)
-      .windowAll(TumblingEventTimeWindows.of(Time.milliseconds(5000)))
+      .timeWindowAll(Time.of(5000, TimeUnit.MILLISECONDS))
       .apply(new PartialModelBuilder)
 
     // use partial model for newData
-    val prediction: DataStream[Integer] = newData.connect(model).map(new Predictor)
+    val prediction: DataStream[Int] = newData.connect(model).map(new Predictor)
 
     // emit result
     if (params.has("output")) {
@@ -93,8 +96,8 @@ object IncrementalLearningSkeleton {
    * Feeds new data for newData. By default it is implemented as constantly
    * emitting the Integer 1 in a loop.
    */
-  private class FiniteNewDataSource extends SourceFunction[Integer] {
-    override def run(ctx: SourceContext[Integer]) = {
+  private class FiniteNewDataSource extends SourceFunction[Int] {
+    override def run(ctx: SourceContext[Int]) = {
       Thread.sleep(15)
       (0 until 50).foreach{ _ =>
         Thread.sleep(5)
@@ -111,24 +114,23 @@ object IncrementalLearningSkeleton {
    * Feeds new training data for the partial model builder. By default it is
    * implemented as constantly emitting the Integer 1 in a loop.
    */
-  private class FiniteTrainingDataSource extends SourceFunction[Integer] {
-    override def run(ctx: SourceContext[Integer]) =
-      (0 until 8200).foreach( _ => ctx.collect(1) )
+  private class FiniteTrainingDataSource extends SourceFunction[Int] {
+    override def run(ctx: SourceContext[Int]) = (0 until 8200).foreach( _ => ctx.collect(1) )
 
     override def cancel() = {
       // No cleanup needed
     }
   }
 
-  private class LinearTimestamp extends AssignerWithPunctuatedWatermarks[Integer] {
+  private class LinearTimestamp extends AssignerWithPunctuatedWatermarks[Int] {
     var counter = 0L
 
-    override def extractTimestamp(element: Integer, previousElementTimestamp: Long): Long = {
+    override def extractTimestamp(element: Int, previousElementTimestamp: Long): Long = {
       counter += 10L
       counter
     }
 
-    override def checkAndGetNextWatermark(lastElement: Integer, extractedTimestamp: Long) = {
+    override def checkAndGetNextWatermark(lastElement: Int, extractedTimestamp: Long) = {
       new Watermark(counter - 1)
     }
   }
@@ -136,15 +138,13 @@ object IncrementalLearningSkeleton {
   /**
    * Builds up-to-date partial models on new training data.
    */
-  private class PartialModelBuilder
-      extends AllWindowFunction[Integer, Array[java.lang.Double], TimeWindow] {
+  private class PartialModelBuilder extends AllWindowFunction[Int, Array[Double], TimeWindow] {
 
-    protected def buildPartialModel(values: Iterable[Integer]): Array[java.lang.Double] =
-      Array[java.lang.Double](1)
+    protected def buildPartialModel(values: Iterable[Int]): Array[Double] = Array[Double](1)
 
     override def apply(window: TimeWindow,
-                       values: Iterable[Integer],
-                       out: Collector[Array[java.lang.Double]]): Unit = {
+                       values: Iterable[Int],
+                       out: Collector[Array[Double]]): Unit = {
       out.collect(buildPartialModel(values))
     }
   }
@@ -157,17 +157,17 @@ object IncrementalLearningSkeleton {
    * for every model update.
    *
    */
-  private class Predictor extends CoMapFunction[Integer, Array[java.lang.Double], Integer] {
+  private class Predictor extends CoMapFunction[Int, Array[Double], Int] {
 
-    var batchModel: Array[java.lang.Double] = null
-    var partialModel: Array[java.lang.Double] = null
+    var batchModel: Array[Double] = null
+    var partialModel: Array[Double] = null
 
-    override def map1(value: Integer): Integer = {
+    override def map1(value: Int): Int = {
       // Return newData
       predict(value)
     }
 
-    override def map2(value: Array[java.lang.Double]): Integer = {
+    override def map2(value: Array[Double]): Int = {
       // Update model
       partialModel = value
       batchModel = getBatchModel()
@@ -175,7 +175,7 @@ object IncrementalLearningSkeleton {
     }
 
     // pulls model built with batch-job on the old training data
-    protected def getBatchModel(): Array[java.lang.Double] = Array[java.lang.Double](0)
+    protected def getBatchModel(): Array[Double] = Array[Double](0)
 
     // performs newData using the two models
     protected def predict(inTuple: Int): Int = 0

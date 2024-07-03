@@ -192,7 +192,7 @@ public class DataSourceTaskTest extends TaskTestBase {
 	}
 
 	
-	public static class InputFilePreparator {
+	private static class InputFilePreparator {
 		public static void prepareInputFile(MutableObjectIterator<Record> inIt, File inputFile, boolean insertInvalidData)
 		throws IOException {
 

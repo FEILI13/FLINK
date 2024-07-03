@@ -45,6 +45,7 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
 /**
@@ -53,6 +54,7 @@ import java.util.concurrent.Executor;
 public class CheckpointConfigHandler extends AbstractExecutionGraphHandler<CheckpointConfigInfo, JobMessageParameters> implements JsonArchivist {
 
 	public CheckpointConfigHandler(
+			CompletableFuture<String> localRestAddress,
 			GatewayRetriever<? extends RestfulGateway> leaderRetriever,
 			Time timeout,
 			Map<String, String> responseHeaders,
@@ -60,6 +62,7 @@ public class CheckpointConfigHandler extends AbstractExecutionGraphHandler<Check
 			ExecutionGraphCache executionGraphCache,
 			Executor executor) {
 		super(
+			localRestAddress,
 			leaderRetriever,
 			timeout,
 			responseHeaders,
@@ -92,7 +95,7 @@ public class CheckpointConfigHandler extends AbstractExecutionGraphHandler<Check
 		if (checkpointCoordinatorConfiguration == null) {
 			throw new RestHandlerException(
 				"Checkpointing is not enabled for this job (" + executionGraph.getJobID() + ").",
-				HttpResponseStatus.NOT_FOUND, RestHandlerException.LoggingBehavior.IGNORE);
+				HttpResponseStatus.NOT_FOUND);
 		} else {
 			CheckpointRetentionPolicy retentionPolicy = checkpointCoordinatorConfiguration.getCheckpointRetentionPolicy();
 
@@ -100,17 +103,13 @@ public class CheckpointConfigHandler extends AbstractExecutionGraphHandler<Check
 					retentionPolicy != CheckpointRetentionPolicy.NEVER_RETAIN_AFTER_TERMINATION,
 					retentionPolicy != CheckpointRetentionPolicy.RETAIN_ON_CANCELLATION);
 
-			String stateBackendName = executionGraph.getStateBackendName().orElse(null);
-
 			return new CheckpointConfigInfo(
 				checkpointCoordinatorConfiguration.isExactlyOnce() ? CheckpointConfigInfo.ProcessingMode.EXACTLY_ONCE : CheckpointConfigInfo.ProcessingMode.AT_LEAST_ONCE,
 				checkpointCoordinatorConfiguration.getCheckpointInterval(),
 				checkpointCoordinatorConfiguration.getCheckpointTimeout(),
 				checkpointCoordinatorConfiguration.getMinPauseBetweenCheckpoints(),
 				checkpointCoordinatorConfiguration.getMaxConcurrentCheckpoints(),
-				externalizedCheckpointInfo,
-				stateBackendName,
-				checkpointCoordinatorConfiguration.isUnalignedCheckpointsEnabled());
+				externalizedCheckpointInfo);
 		}
 	}
 }

@@ -22,7 +22,6 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcService;
-import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceConfiguration;
 import org.apache.flink.util.TestLogger;
 
 import akka.actor.ActorSystem;
@@ -33,14 +32,9 @@ import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
-import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 
 /**
@@ -55,7 +49,7 @@ public class RpcEndpointTest extends TestLogger {
 	@BeforeClass
 	public static void setup() {
 		actorSystem = AkkaUtils.createDefaultActorSystem();
-		rpcService = new AkkaRpcService(actorSystem, AkkaRpcServiceConfiguration.defaultConfiguration());
+		rpcService = new AkkaRpcService(actorSystem, TIMEOUT);
 	}
 
 	@AfterClass
@@ -87,7 +81,7 @@ public class RpcEndpointTest extends TestLogger {
 
 			assertEquals(Integer.valueOf(expectedValue), foobar.get());
 		} finally {
-			RpcUtils.terminateRpcEndpoint(baseEndpoint, TIMEOUT);
+			baseEndpoint.shutDown();
 		}
 	}
 
@@ -107,7 +101,7 @@ public class RpcEndpointTest extends TestLogger {
 
 			fail("Expected to fail with a RuntimeException since we requested the wrong gateway type.");
 		} finally {
-			RpcUtils.terminateRpcEndpoint(baseEndpoint, TIMEOUT);
+			baseEndpoint.shutDown();
 		}
 	}
 
@@ -136,44 +130,8 @@ public class RpcEndpointTest extends TestLogger {
 			assertEquals(Integer.valueOf(barfoo), extendedGateway.barfoo().get());
 			assertEquals(foo, differentGateway.foo().get());
 		} finally {
-			RpcUtils.terminateRpcEndpoint(endpoint, TIMEOUT);
+			endpoint.shutDown();
 		}
-	}
-
-	/**
-	 * Tests that the RPC is running after it has been started.
-	 */
-	@Test
-	public void testRunningState() throws InterruptedException, ExecutionException, TimeoutException {
-		RunningStateTestingEndpoint endpoint = new RunningStateTestingEndpoint(
-			rpcService,
-			CompletableFuture.completedFuture(null));
-		RunningStateTestingEndpointGateway gateway = endpoint.getSelfGateway(RunningStateTestingEndpointGateway.class);
-
-		try {
-			endpoint.start();
-			assertThat(gateway.queryIsRunningFlag().get(), is(true));
-		} finally {
-			RpcUtils.terminateRpcEndpoint(endpoint, TIMEOUT);
-		}
-	}
-
-	/**
-	 * Tests that the RPC is not running if it is being stopped.
-	 */
-	@Test
-	public void testNotRunningState() throws InterruptedException, ExecutionException, TimeoutException {
-		CompletableFuture<Void> stopFuture = new CompletableFuture<>();
-		RunningStateTestingEndpoint endpoint = new RunningStateTestingEndpoint(rpcService, stopFuture);
-		RunningStateTestingEndpointGateway gateway = endpoint.getSelfGateway(RunningStateTestingEndpointGateway.class);
-
-		endpoint.start();
-		CompletableFuture<Void> terminationFuture = endpoint.closeAndWaitUntilOnStopCalled();
-
-		assertThat(gateway.queryIsRunningFlag().get(), is(false));
-
-		stopFuture.complete(null);
-		terminationFuture.get(TIMEOUT.toMilliseconds(), TimeUnit.MILLISECONDS);
 	}
 
 	public interface BaseGateway extends RpcGateway {
@@ -202,6 +160,11 @@ public class RpcEndpointTest extends TestLogger {
 		public CompletableFuture<Integer> foobar() {
 			return CompletableFuture.completedFuture(foobarValue);
 		}
+
+		@Override
+		public CompletableFuture<Void> postStop() {
+			return CompletableFuture.completedFuture(null);
+		}
 	}
 
 	public static class ExtendedEndpoint extends BaseEndpoint implements ExtendedGateway, DifferentGateway {
@@ -225,37 +188,6 @@ public class RpcEndpointTest extends TestLogger {
 		@Override
 		public CompletableFuture<String> foo() {
 			return CompletableFuture.completedFuture(fooString);
-		}
-	}
-
-	public interface RunningStateTestingEndpointGateway extends RpcGateway {
-		CompletableFuture<Boolean> queryIsRunningFlag();
-	}
-
-	private static final class RunningStateTestingEndpoint extends RpcEndpoint implements RunningStateTestingEndpointGateway {
-		private final CountDownLatch onStopCalled;
-		private final CompletableFuture<Void> stopFuture;
-
-		RunningStateTestingEndpoint(RpcService rpcService, CompletableFuture<Void> stopFuture) {
-			super(rpcService);
-			this.stopFuture = stopFuture;
-			this.onStopCalled = new CountDownLatch(1);
-		}
-
-		@Override
-		public CompletableFuture<Void> onStop() {
-			onStopCalled.countDown();
-			return stopFuture;
-		}
-
-		CompletableFuture<Void> closeAndWaitUntilOnStopCalled() throws InterruptedException {
-			CompletableFuture<Void> terminationFuture = closeAsync();
-			onStopCalled.await();
-			return terminationFuture;
-		}
-
-		public CompletableFuture<Boolean> queryIsRunningFlag() {
-			return CompletableFuture.completedFuture(isRunning());
 		}
 	}
 }

@@ -19,13 +19,10 @@ package org.apache.flink.streaming.runtime.partitioner;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.java.functions.KeySelector;
-import org.apache.flink.runtime.io.network.api.writer.SubtaskStateMapper;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.Preconditions;
-
-import java.util.Objects;
 
 /**
  * Partitioner selects the target channel based on the key group index.
@@ -35,6 +32,8 @@ import java.util.Objects;
 @Internal
 public class KeyGroupStreamPartitioner<T, K> extends StreamPartitioner<T> implements ConfigurableStreamPartitioner {
 	private static final long serialVersionUID = 1L;
+
+	private final int[] returnArray = new int[1];
 
 	private final KeySelector<T, K> keySelector;
 
@@ -51,20 +50,20 @@ public class KeyGroupStreamPartitioner<T, K> extends StreamPartitioner<T> implem
 	}
 
 	@Override
-	public int selectChannel(SerializationDelegate<StreamRecord<T>> record) {
+	public int[] selectChannels(
+		SerializationDelegate<StreamRecord<T>> record,
+		int numberOfOutputChannels) {
+
 		K key;
 		try {
 			key = keySelector.getKey(record.getInstance().getValue());
 		} catch (Exception e) {
 			throw new RuntimeException("Could not extract key from " + record.getInstance().getValue(), e);
 		}
-		return KeyGroupRangeAssignment.assignKeyToParallelOperator(key, maxParallelism, numberOfChannels);
+		returnArray[0] = KeyGroupRangeAssignment.assignKeyToParallelOperator(key, maxParallelism, numberOfOutputChannels);
+		return returnArray;
 	}
 
-	@Override
-	public SubtaskStateMapper getDownstreamSubtaskStateMapper() {
-		return SubtaskStateMapper.RANGE;
-	}
 
 	@Override
 	public StreamPartitioner<T> copy() {
@@ -82,24 +81,5 @@ public class KeyGroupStreamPartitioner<T, K> extends StreamPartitioner<T> implem
 		this.maxParallelism = maxParallelism;
 	}
 
-	@Override
-	public boolean equals(Object o) {
-		if (this == o) {
-			return true;
-		}
-		if (o == null || getClass() != o.getClass()) {
-			return false;
-		}
-		if (!super.equals(o)) {
-			return false;
-		}
-		final KeyGroupStreamPartitioner<?, ?> that = (KeyGroupStreamPartitioner<?, ?>) o;
-		return maxParallelism == that.maxParallelism &&
-			keySelector.equals(that.keySelector);
-	}
 
-	@Override
-	public int hashCode() {
-		return Objects.hash(super.hashCode(), keySelector, maxParallelism);
-	}
 }

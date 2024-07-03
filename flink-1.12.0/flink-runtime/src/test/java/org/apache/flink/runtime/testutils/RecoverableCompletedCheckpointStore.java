@@ -18,10 +18,9 @@
 
 package org.apache.flink.runtime.testutils;
 
-import org.apache.flink.api.common.JobStatus;
-import org.apache.flink.runtime.checkpoint.CheckpointsCleaner;
 import org.apache.flink.runtime.checkpoint.CompletedCheckpoint;
 import org.apache.flink.runtime.checkpoint.CompletedCheckpointStore;
+import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.util.Preconditions;
 
 import org.slf4j.Logger;
@@ -61,7 +60,7 @@ public class RecoverableCompletedCheckpointStore implements CompletedCheckpointS
 	}
 
 	@Override
-	public void addCheckpoint(CompletedCheckpoint checkpoint, CheckpointsCleaner checkpointsCleaner, Runnable postCleanup) throws Exception {
+	public void addCheckpoint(CompletedCheckpoint checkpoint) throws Exception {
 
 		checkpoints.addLast(checkpoint);
 
@@ -76,7 +75,12 @@ public class RecoverableCompletedCheckpointStore implements CompletedCheckpointS
 	}
 
 	@Override
-	public void shutdown(JobStatus jobStatus, CheckpointsCleaner checkpointsCleaner, Runnable postCleanup) throws Exception {
+	public CompletedCheckpoint getLatestCheckpoint() throws Exception {
+		return checkpoints.isEmpty() ? null : checkpoints.getLast();
+	}
+
+	@Override
+	public void shutdown(JobStatus jobStatus) throws Exception {
 		if (jobStatus.isGloballyTerminalState()) {
 			checkpoints.clear();
 			suspended.clear();

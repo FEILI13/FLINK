@@ -19,12 +19,9 @@
 package org.apache.flink.runtime.metrics;
 
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.MetricOptions;
-import org.apache.flink.metrics.Metric;
+import org.apache.flink.metrics.Gauge;
 import org.apache.flink.metrics.MetricConfig;
-import org.apache.flink.metrics.MetricGroup;
-import org.apache.flink.metrics.reporter.MetricReporter;
-import org.apache.flink.runtime.concurrent.FutureUtils;
+import org.apache.flink.metrics.reporter.AbstractReporter;
 import org.apache.flink.runtime.testutils.MiniClusterResource;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.util.TestLogger;
@@ -33,17 +30,16 @@ import org.junit.ClassRule;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 import static org.apache.flink.configuration.MetricOptions.REPORTERS_LIST;
 import static org.apache.flink.configuration.MetricOptions.SYSTEM_RESOURCE_METRICS;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 
 /**
  * Integration tests for proper initialization of the system resource metrics.
@@ -62,8 +58,6 @@ public class SystemResourcesMetricsITCase extends TestLogger {
 		Configuration configuration = new Configuration();
 		configuration.setBoolean(SYSTEM_RESOURCE_METRICS, true);
 		configuration.setString(REPORTERS_LIST, "test_reporter");
-		configuration.setString(MetricOptions.SCOPE_NAMING_JM, "jobmanager");
-		configuration.setString(MetricOptions.SCOPE_NAMING_TM, "taskmanager");
 		configuration.setString("metrics.reporter.test_reporter.class", TestReporter.class.getName());
 		return configuration;
 	}
@@ -73,11 +67,25 @@ public class SystemResourcesMetricsITCase extends TestLogger {
 		assertEquals(1, TestReporter.OPENED_REPORTERS.size());
 		TestReporter reporter = TestReporter.OPENED_REPORTERS.iterator().next();
 
-		reporter.patternsExhaustedFuture.get(10, TimeUnit.SECONDS);
+		List<String> expectedPatterns = getExpectedPatterns();
+
+		Collection<String> gaugeNames = reporter.getGauges().values();
+
+		for (String expectedPattern : expectedPatterns) {
+			boolean found = false;
+			for (String gaugeName : gaugeNames) {
+				if (gaugeName.matches(expectedPattern)) {
+					found = true;
+				}
+			}
+			if (!found) {
+				fail(String.format("Failed to find gauge [%s] in registered gauges [%s]", expectedPattern, gaugeNames));
+			}
+		}
 	}
 
 	private static List<String> getExpectedPatterns() {
-		String[] expectedGauges = {
+		String[] expectedGauges = new String[] {
 			"System.CPU.Idle",
 			"System.CPU.Sys",
 			"System.CPU.User",
@@ -93,9 +101,9 @@ public class SystemResourcesMetricsITCase extends TestLogger {
 			"System.Network.*SendRate"
 		};
 
-		String[] expectedHosts = {
-			"taskmanager.",
-			"jobmanager."
+		String[] expectedHosts = new String[] {
+			"localhost.taskmanager.([a-f0-9\\\\-])*.",
+			"localhost.jobmanager."
 		};
 
 		List<String> patterns = new ArrayList<>();
@@ -110,11 +118,13 @@ public class SystemResourcesMetricsITCase extends TestLogger {
 	/**
 	 * Test metric reporter that exposes registered metrics.
 	 */
-	public static final class TestReporter implements MetricReporter {
+	public static final class TestReporter extends AbstractReporter {
 		public static final Set<TestReporter> OPENED_REPORTERS = ConcurrentHashMap.newKeySet();
-		private final Map<String, CompletableFuture<Void>> patternFutures = getExpectedPatterns().stream()
-			.collect(Collectors.toMap(pattern -> pattern, pattern -> new CompletableFuture<>()));
-		private final CompletableFuture<Void> patternsExhaustedFuture = FutureUtils.waitForAll(patternFutures.values());
+
+		@Override
+		public String filterCharacters(String input) {
+			return input;
+		}
 
 		@Override
 		public void open(MetricConfig config) {
@@ -126,18 +136,8 @@ public class SystemResourcesMetricsITCase extends TestLogger {
 			OPENED_REPORTERS.remove(this);
 		}
 
-		@Override
-		public void notifyOfAddedMetric(Metric metric, String metricName, MetricGroup group) {
-			final String metricIdentifier = group.getMetricIdentifier(metricName, name -> name);
-			for (final String expectedPattern : patternFutures.keySet()) {
-				if (metricIdentifier.matches(expectedPattern)) {
-					patternFutures.get(expectedPattern).complete(null);
-				}
-			}
-		}
-
-		@Override
-		public void notifyOfRemovedMetric(Metric metric, String metricName, MetricGroup group) {
+		public Map<Gauge<?>, String> getGauges() {
+			return gauges;
 		}
 	}
 }

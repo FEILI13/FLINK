@@ -27,16 +27,18 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-parent</artifactId>
-		<version>1.12.0</version>
+		<version>1.7-CLONOS-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 
 	<artifactId>flink-contrib</artifactId>
-	<name>Flink : Contrib : </name>
+	<name>flink-contrib</name>
 
 	<packaging>pom</packaging>
 
 	<modules>
+		<module>flink-storm</module>
+		<module>flink-storm-examples</module>
 		<module>flink-connector-wikiedits</module>
 	</modules>
 

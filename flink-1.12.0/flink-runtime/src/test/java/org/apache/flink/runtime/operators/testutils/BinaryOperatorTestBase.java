@@ -30,21 +30,18 @@ import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.memory.MemoryManager;
-import org.apache.flink.runtime.memory.MemoryManagerBuilder;
 import org.apache.flink.runtime.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
 import org.apache.flink.runtime.operators.Driver;
 import org.apache.flink.runtime.operators.ResettableDriver;
 import org.apache.flink.runtime.operators.TaskContext;
-import org.apache.flink.runtime.operators.sort.Sorter;
-import org.apache.flink.runtime.operators.sort.ExternalSorter;
+import org.apache.flink.runtime.operators.sort.UnilateralSortMerger;
 import org.apache.flink.runtime.operators.util.TaskConfig;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
 import org.apache.flink.runtime.util.TestingTaskManagerRuntimeInfo;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.MutableObjectIterator;
 import org.apache.flink.util.TestLogger;
-
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.runner.RunWith;
@@ -69,7 +66,7 @@ public abstract class BinaryOperatorTestBase<S extends Function, IN, OUT> extend
 	
 	private final List<TypeComparator<IN>> comparators;
 	
-	private final List<Sorter<IN>> sorters;
+	private final List<UnilateralSortMerger<IN>> sorters;
 	
 	private final AbstractInvokable owner;
 	
@@ -105,7 +102,7 @@ public abstract class BinaryOperatorTestBase<S extends Function, IN, OUT> extend
 		this.perSortMem = perSortMemory;
 		this.perSortFractionMem = (double) perSortMemory / totalMem;
 		this.ioManager = new IOManagerAsync();
-		this.memManager = totalMem > 0 ? MemoryManagerBuilder.newBuilder().setMemorySize(totalMem).build() : null;
+		this.memManager = totalMem > 0 ? new MemoryManager(totalMem, 1) : null;
 		
 		this.inputs = new ArrayList<>();
 		this.comparators = new ArrayList<>();
@@ -141,20 +138,22 @@ public abstract class BinaryOperatorTestBase<S extends Function, IN, OUT> extend
 		this.inputSerializers.add(serializer);
 	}
 	
+	@SuppressWarnings("unchecked")
 	public void addInputSorted(MutableObjectIterator<IN> input, TypeSerializer<IN> serializer, TypeComparator<IN> comp) throws Exception {
 		this.inputSerializers.add(serializer);
-		Sorter<IN> sorter =
-			ExternalSorter.newBuilder(
-					this.memManager,
-					this.owner,
-					serializer,
-					comp)
-				.maxNumFileHandles(32)
-				.enableSpilling(ioManager, 0.8f)
-				.memoryFraction(this.perSortFractionMem)
-				.objectReuse(false)
-				.largeRecords(true)
-				.build(input);
+		UnilateralSortMerger<IN> sorter = new UnilateralSortMerger<>(
+				this.memManager,
+				this.ioManager,
+				input,
+				this.owner,
+				new RuntimeSerializerFactory<>(serializer, (Class<IN>) serializer.createInstance().getClass()),
+				comp,
+				this.perSortFractionMem,
+				32,
+				0.8f,
+				true /*use large record handler*/,
+				false
+		);
 		this.sorters.add(sorter);
 		this.inputs.add(null);
 	}
@@ -328,8 +327,6 @@ public abstract class BinaryOperatorTestBase<S extends Function, IN, OUT> extend
 				in = this.sorters.get(index).getIterator();
 			} catch (InterruptedException e) {
 				throw new RuntimeException("Interrupted");
-			} catch (IOException e) {
-				throw new RuntimeException("IOException");
 			}
 			this.inputs.set(index, in);
 		}
@@ -383,7 +380,7 @@ public abstract class BinaryOperatorTestBase<S extends Function, IN, OUT> extend
 	@After
 	public void shutdownAll() throws Exception {
 		// 1st, shutdown sorters
-		for (Sorter<?> sorter : this.sorters) {
+		for (UnilateralSortMerger<?> sorter : this.sorters) {
 			if (sorter != null) {
 				sorter.close();
 			}
@@ -391,8 +388,9 @@ public abstract class BinaryOperatorTestBase<S extends Function, IN, OUT> extend
 		this.sorters.clear();
 		
 		// 2nd, shutdown I/O
-		this.ioManager.close();
-
+		this.ioManager.shutdown();
+		Assert.assertTrue("I/O Manager has not properly shut down.", this.ioManager.isProperlyShutDown());
+		
 		// last, verify all memory is returned and shutdown mem manager
 		MemoryManager memMan = getMemoryManager();
 		if (memMan != null) {

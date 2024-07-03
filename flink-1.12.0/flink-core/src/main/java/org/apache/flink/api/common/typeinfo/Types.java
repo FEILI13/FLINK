@@ -44,9 +44,6 @@ import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -154,23 +151,9 @@ public class Types {
 	 */
 	public static final TypeInformation<Timestamp> SQL_TIMESTAMP = SqlTimeTypeInfo.TIMESTAMP;
 
-	/**
-	 * Returns type information for {@link java.time.LocalDate}. Supports a null value.
-	 */
-	public static final TypeInformation<LocalDate> LOCAL_DATE = LocalTimeTypeInfo.LOCAL_DATE;
 
 	/**
-	 * Returns type information for {@link java.time.LocalTime}. Supports a null value.
-	 */
-	public static final TypeInformation<LocalTime> LOCAL_TIME = LocalTimeTypeInfo.LOCAL_TIME;
-
-	/**
-	 * Returns type information for {@link java.time.LocalDateTime}. Supports a null value.
-	 */
-	public static final TypeInformation<LocalDateTime> LOCAL_DATE_TIME = LocalTimeTypeInfo.LOCAL_DATE_TIME;
-
-	/**
-	 * Returns type information for {@link java.time.Instant}. Supports a null value.
+	 * Returns type infomation for {@link java.time.Instant}. Supports a null value.
 	 */
 	public static final TypeInformation<Instant> INSTANT = BasicTypeInfo.INSTANT_TYPE_INFO;
 
@@ -183,7 +166,7 @@ public class Types {
 	 * <p>A row is a fixed-length, null-aware composite type for storing multiple values in a
 	 * deterministic field order. Every field can be null regardless of the field's type.
 	 * The type of row fields cannot be automatically inferred; therefore, it is required to provide
-	 * type information whenever a row is produced.
+	 * type information whenever a row is used.
 	 *
 	 * <p>The schema of rows can have up to <code>Integer.MAX_VALUE</code> fields, however, all row instances
 	 * must strictly adhere to the schema defined by the type info.

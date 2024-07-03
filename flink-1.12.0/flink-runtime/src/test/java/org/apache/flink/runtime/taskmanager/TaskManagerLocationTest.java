@@ -18,7 +18,6 @@
 
 package org.apache.flink.runtime.taskmanager;
 
-import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -198,21 +197,5 @@ public class TaskManagerLocationTest {
 			e.printStackTrace();
 			fail(e.getMessage());
 		}
-	}
-
-	@Test
-	public void testNotRetrieveHostName() {
-		InetAddress address = mock(InetAddress.class);
-		when(address.getCanonicalHostName()).thenReturn("worker10");
-		when(address.getHostName()).thenReturn("worker10");
-		when(address.getHostAddress()).thenReturn("127.0.0.1");
-
-		TaskManagerLocation info = new TaskManagerLocation(ResourceID.generate(), address, 19871,
-				new TaskManagerLocation.IpOnlyHostNameSupplier(address));
-
-		assertNotEquals("worker10", info.getHostname());
-		assertNotEquals("worker10", info.getFQDNHostname());
-		assertEquals("127.0.0.1", info.getHostname());
-		assertEquals("127.0.0.1", info.getFQDNHostname());
 	}
 }

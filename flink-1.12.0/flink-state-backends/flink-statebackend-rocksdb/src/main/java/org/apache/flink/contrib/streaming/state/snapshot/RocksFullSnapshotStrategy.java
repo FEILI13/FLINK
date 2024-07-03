@@ -22,7 +22,6 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.base.array.BytePrimitiveArraySerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.contrib.streaming.state.RocksDBKeyedStateBackend.RocksDbKvStateInfo;
 import org.apache.flink.contrib.streaming.state.RocksIteratorWrapper;
 import org.apache.flink.contrib.streaming.state.iterator.RocksStatesPerKeyGroupMergeIterator;
 import org.apache.flink.contrib.streaming.state.iterator.RocksTransformingIteratorWrapper;
@@ -30,6 +29,7 @@ import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
+import org.apache.flink.runtime.checkpoint.CheckpointType;
 import org.apache.flink.runtime.state.AsyncSnapshotCallable;
 import org.apache.flink.runtime.state.CheckpointStreamFactory;
 import org.apache.flink.runtime.state.CheckpointStreamWithResultProvider;
@@ -40,6 +40,7 @@ import org.apache.flink.runtime.state.KeyedBackendSerializationProxy;
 import org.apache.flink.runtime.state.KeyedStateHandle;
 import org.apache.flink.runtime.state.LocalRecoveryConfig;
 import org.apache.flink.runtime.state.RegisteredKeyValueStateBackendMetaInfo;
+import org.apache.flink.runtime.state.RegisteredStateMetaInfoBase;
 import org.apache.flink.runtime.state.SnapshotResult;
 import org.apache.flink.runtime.state.StateSnapshotTransformer;
 import org.apache.flink.runtime.state.StreamCompressionDecorator;
@@ -79,7 +80,7 @@ import static org.apache.flink.contrib.streaming.state.snapshot.RocksSnapshotUti
  */
 public class RocksFullSnapshotStrategy<K> extends RocksDBSnapshotStrategyBase<K> {
 
-	private static final String DESCRIPTION = "Asynchronous full RocksDB snapshot";
+	private static final String DESCRIPTION = "Asynchronous incremental RocksDB snapshot";
 
 	/** This decorator is used to apply compression per key-group for the written snapshot data. */
 	@Nonnull
@@ -89,7 +90,7 @@ public class RocksFullSnapshotStrategy<K> extends RocksDBSnapshotStrategyBase<K>
 		@Nonnull RocksDB db,
 		@Nonnull ResourceGuard rocksDBResourceGuard,
 		@Nonnull TypeSerializer<K> keySerializer,
-		@Nonnull LinkedHashMap<String, RocksDbKvStateInfo> kvStateInformation,
+		@Nonnull LinkedHashMap<String, Tuple2<ColumnFamilyHandle, RegisteredStateMetaInfoBase>> kvStateInformation,
 		@Nonnull KeyGroupRange keyGroupRange,
 		@Nonnegative int keyGroupPrefixBytes,
 		@Nonnull LocalRecoveryConfig localRecoveryConfig,
@@ -121,13 +122,13 @@ public class RocksFullSnapshotStrategy<K> extends RocksDBSnapshotStrategyBase<K>
 			createCheckpointStreamSupplier(checkpointId, primaryStreamFactory, checkpointOptions);
 
 		final List<StateMetaInfoSnapshot> stateMetaInfoSnapshots = new ArrayList<>(kvStateInformation.size());
-		final List<RocksDbKvStateInfo> metaDataCopy =
+		final List<Tuple2<ColumnFamilyHandle, RegisteredStateMetaInfoBase>> metaDataCopy =
 			new ArrayList<>(kvStateInformation.size());
 
-		for (RocksDbKvStateInfo stateInfo : kvStateInformation.values()) {
+		for (Tuple2<ColumnFamilyHandle, RegisteredStateMetaInfoBase> tuple2 : kvStateInformation.values()) {
 			// snapshot meta info
-			stateMetaInfoSnapshots.add(stateInfo.metaInfo.snapshot());
-			metaDataCopy.add(stateInfo);
+			stateMetaInfoSnapshots.add(tuple2.f1.snapshot());
+			metaDataCopy.add(tuple2);
 		}
 
 		final ResourceGuard.Lease lease = rocksDBResourceGuard.acquireResource();
@@ -150,17 +151,13 @@ public class RocksFullSnapshotStrategy<K> extends RocksDBSnapshotStrategyBase<K>
 		// nothing to do.
 	}
 
-	@Override
-	public void notifyCheckpointAborted(long checkpointId) {
-		// nothing to do.
-	}
-
 	private SupplierWithException<CheckpointStreamWithResultProvider, Exception> createCheckpointStreamSupplier(
 		long checkpointId,
 		CheckpointStreamFactory primaryStreamFactory,
 		CheckpointOptions checkpointOptions) {
 
-		return localRecoveryConfig.isLocalRecoveryEnabled() && !checkpointOptions.getCheckpointType().isSavepoint() ?
+		return localRecoveryConfig.isLocalRecoveryEnabled() &&
+			(CheckpointType.SAVEPOINT != checkpointOptions.getCheckpointType()) ?
 
 			() -> CheckpointStreamWithResultProvider.createDuplicatingStream(
 				checkpointId,
@@ -195,7 +192,7 @@ public class RocksFullSnapshotStrategy<K> extends RocksDBSnapshotStrategyBase<K>
 		private List<StateMetaInfoSnapshot> stateMetaInfoSnapshots;
 
 		@Nonnull
-		private List<MetaData> metaData;
+		private List<Tuple2<ColumnFamilyHandle, RegisteredStateMetaInfoBase>> metaDataCopy;
 
 		@Nonnull
 		private final String logPathString;
@@ -205,14 +202,14 @@ public class RocksFullSnapshotStrategy<K> extends RocksDBSnapshotStrategyBase<K>
 			@Nonnull ResourceGuard.Lease dbLease,
 			@Nonnull Snapshot snapshot,
 			@Nonnull List<StateMetaInfoSnapshot> stateMetaInfoSnapshots,
-			@Nonnull List<RocksDbKvStateInfo> metaDataCopy,
+			@Nonnull List<Tuple2<ColumnFamilyHandle, RegisteredStateMetaInfoBase>> metaDataCopy,
 			@Nonnull String logPathString) {
 
 			this.checkpointStreamSupplier = checkpointStreamSupplier;
 			this.dbLease = dbLease;
 			this.snapshot = snapshot;
 			this.stateMetaInfoSnapshots = stateMetaInfoSnapshots;
-			this.metaData = fillMetaData(metaDataCopy);
+			this.metaDataCopy = metaDataCopy;
 			this.logPathString = logPathString;
 		}
 
@@ -222,10 +219,10 @@ public class RocksFullSnapshotStrategy<K> extends RocksDBSnapshotStrategyBase<K>
 			final CheckpointStreamWithResultProvider checkpointStreamWithResultProvider =
 				checkpointStreamSupplier.get();
 
-			snapshotCloseableRegistry.registerCloseable(checkpointStreamWithResultProvider);
+			registerCloseableForCancellation(checkpointStreamWithResultProvider);
 			writeSnapshotToOutputStream(checkpointStreamWithResultProvider, keyGroupRangeOffsets);
 
-			if (snapshotCloseableRegistry.unregisterCloseable(checkpointStreamWithResultProvider)) {
+			if (unregisterCloseableFromCancellation(checkpointStreamWithResultProvider)) {
 				return CheckpointStreamWithResultProvider.toKeyedStateHandleSnapshotResult(
 					checkpointStreamWithResultProvider.closeAndFinalizeCheckpointStreamResult(),
 					keyGroupRangeOffsets);
@@ -251,7 +248,7 @@ public class RocksFullSnapshotStrategy<K> extends RocksDBSnapshotStrategyBase<K>
 			@Nonnull KeyGroupRangeOffsets keyGroupRangeOffsets) throws IOException, InterruptedException {
 
 			final List<Tuple2<RocksIteratorWrapper, Integer>> kvStateIterators =
-				new ArrayList<>(metaData.size());
+				new ArrayList<>(metaDataCopy.size());
 			final DataOutputView outputView =
 				new DataOutputViewStreamWrapper(checkpointStreamWithResultProvider.getCheckpointOutputStream());
 			final ReadOptions readOptions = new ReadOptions();
@@ -276,9 +273,11 @@ public class RocksFullSnapshotStrategy<K> extends RocksDBSnapshotStrategyBase<K>
 
 			int kvStateId = 0;
 
-			for (MetaData metaDataEntry : metaData) {
-				RocksIteratorWrapper rocksIteratorWrapper = getRocksIterator(
-					db, metaDataEntry.rocksDbKvStateInfo.columnFamilyHandle, metaDataEntry.stateSnapshotTransformer, readOptions);
+			for (Tuple2<ColumnFamilyHandle, RegisteredStateMetaInfoBase> tuple2 : metaDataCopy) {
+
+				RocksIteratorWrapper rocksIteratorWrapper =
+					getRocksIterator(db, tuple2.f0, tuple2.f1, readOptions);
+
 				kvStateIterators.add(Tuple2.of(rocksIteratorWrapper, kvStateId));
 				++kvStateId;
 			}
@@ -403,42 +402,20 @@ public class RocksFullSnapshotStrategy<K> extends RocksDBSnapshotStrategyBase<K>
 		}
 	}
 
-	private static List<MetaData> fillMetaData(
-		List<RocksDbKvStateInfo> metaDataCopy) {
-		List<MetaData> metaData = new ArrayList<>(metaDataCopy.size());
-		for (RocksDbKvStateInfo rocksDbKvStateInfo : metaDataCopy) {
-			StateSnapshotTransformer<byte[]> stateSnapshotTransformer = null;
-			if (rocksDbKvStateInfo.metaInfo instanceof RegisteredKeyValueStateBackendMetaInfo) {
-				stateSnapshotTransformer = ((RegisteredKeyValueStateBackendMetaInfo<?, ?>) rocksDbKvStateInfo.metaInfo).
-					getStateSnapshotTransformFactory().createForSerializedState().orElse(null);
-			}
-			metaData.add(new MetaData(rocksDbKvStateInfo, stateSnapshotTransformer));
-		}
-		return metaData;
-	}
-
 	@SuppressWarnings("unchecked")
 	private static RocksIteratorWrapper getRocksIterator(
 		RocksDB db,
 		ColumnFamilyHandle columnFamilyHandle,
-		StateSnapshotTransformer<byte[]> stateSnapshotTransformer,
+		RegisteredStateMetaInfoBase metaInfo,
 		ReadOptions readOptions) {
+		StateSnapshotTransformer<byte[]> stateSnapshotTransformer = null;
+		if (metaInfo instanceof RegisteredKeyValueStateBackendMetaInfo) {
+			stateSnapshotTransformer = (StateSnapshotTransformer<byte[]>)
+				((RegisteredKeyValueStateBackendMetaInfo<?, ?>) metaInfo).getSnapshotTransformer();
+		}
 		RocksIterator rocksIterator = db.newIterator(columnFamilyHandle, readOptions);
 		return stateSnapshotTransformer == null ?
 			new RocksIteratorWrapper(rocksIterator) :
 			new RocksTransformingIteratorWrapper(rocksIterator, stateSnapshotTransformer);
-	}
-
-	private static class MetaData {
-		final RocksDbKvStateInfo rocksDbKvStateInfo;
-		final StateSnapshotTransformer<byte[]> stateSnapshotTransformer;
-
-		private MetaData(
-			RocksDbKvStateInfo rocksDbKvStateInfo,
-			StateSnapshotTransformer<byte[]> stateSnapshotTransformer) {
-
-			this.rocksDbKvStateInfo = rocksDbKvStateInfo;
-			this.stateSnapshotTransformer = stateSnapshotTransformer;
-		}
 	}
 }

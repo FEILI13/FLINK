@@ -25,6 +25,7 @@ import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.formats.avro.utils.DataInputDecoder;
 import org.apache.flink.formats.avro.utils.DataOutputEncoder;
+import org.apache.flink.util.InstantiationUtil;
 
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -168,10 +169,8 @@ public class AvroSerializer<T> extends TypeSerializer<T> {
 	// ------------------------------------------------------------------------
 
 	@Override
-	@SuppressWarnings("unchecked")
 	public T createInstance() {
-		checkAvroInitialized();
-		return (T) avroData.newRecord(null, runtimeSchema);
+		return InstantiationUtil.instantiate(type);
 	}
 
 	@Override
@@ -307,6 +306,11 @@ public class AvroSerializer<T> extends TypeSerializer<T> {
 		else {
 			return false;
 		}
+	}
+
+	@Override
+	public boolean canEqual(Object obj) {
+		return obj.getClass() == this.getClass();
 	}
 
 	@Override

@@ -19,10 +19,7 @@
 package org.apache.flink.configuration;
 
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.annotation.docs.Documentation;
 import org.apache.flink.configuration.description.Description;
-
-import java.time.Duration;
 
 import static org.apache.flink.configuration.ConfigOptions.key;
 import static org.apache.flink.configuration.description.TextElement.text;
@@ -50,20 +47,16 @@ public class MetricOptions {
 	 */
 	public static final ConfigOption<String> REPORTERS_LIST =
 		key("metrics.reporters")
-			.noDefaultValue()
-			.withDescription("An optional list of reporter names. If configured, only reporters whose name matches" +
-				" any of the names in the list will be started. Otherwise, all reporters that could be found in" +
-				" the configuration will be started.");
+			.noDefaultValue();
 
 	public static final ConfigOption<String> REPORTER_CLASS =
 		key("metrics.reporter.<name>.class")
 			.noDefaultValue()
 			.withDescription("The reporter class to use for the reporter named <name>.");
 
-	public static final ConfigOption<Duration> REPORTER_INTERVAL =
+	public static final ConfigOption<String> REPORTER_INTERVAL =
 		key("metrics.reporter.<name>.interval")
-			.durationType()
-			.defaultValue(Duration.ofSeconds(10))
+			.noDefaultValue()
 			.withDescription("The reporter interval to use for the reporter named <name>.");
 
 	public static final ConfigOption<String> REPORTER_CONFIG_PARAMETER =
@@ -75,8 +68,7 @@ public class MetricOptions {
 	/** The delimiter used to assemble the metric identifier. */
 	public static final ConfigOption<String> SCOPE_DELIMITER =
 		key("metrics.scope.delimiter")
-			.defaultValue(".")
-			.withDescription("Delimiter used to assemble the metric identifier.");
+			.defaultValue(".");
 
 	/** The scope format string that is applied to all metrics scoped to a JobManager. */
 	public static final ConfigOption<String> SCOPE_NAMING_JM =
@@ -143,24 +135,19 @@ public class MetricOptions {
 	 */
 	public static final ConfigOption<Boolean> SYSTEM_RESOURCE_METRICS =
 		key("metrics.system-resource")
-			.defaultValue(false)
-			.withDescription("Flag indicating whether Flink should report system resource metrics such as machine's CPU," +
-				" memory or network usage.");
+			.defaultValue(false);
 	/**
 	 * Interval between probing of system resource metrics specified in milliseconds. Has an effect only when
 	 * {@link #SYSTEM_RESOURCE_METRICS} is enabled.
 	 */
 	public static final ConfigOption<Long> SYSTEM_RESOURCE_METRICS_PROBING_INTERVAL =
 		key("metrics.system-resource-probing-interval")
-			.defaultValue(5000L)
-			.withDescription("Interval between probing of system resource metrics specified in milliseconds. Has an effect" +
-				" only when '" + SYSTEM_RESOURCE_METRICS.key() + "' is enabled.");
+			.defaultValue(5000L);
 
 	/**
 	 * The default network port range for Flink's internal metric query service. The {@code "0"} means that
 	 * Flink searches for a free port.
 	 */
-	@Documentation.Section(Documentation.Sections.COMMON_HOST_PORT)
 	public static final ConfigOption<String> QUERY_SERVICE_PORT =
 		key("metrics.internal.query-service.port")
 		.defaultValue("0")
@@ -180,15 +167,6 @@ public class MetricOptions {
 			" by Akka's thread pool executor. " +
 			"The range of the priority is from 1 (MIN_PRIORITY) to 10 (MAX_PRIORITY). " +
 			"Warning, increasing this value may bring the main Flink components down.");
-	/**
-	 * The config parameter defining the update interval for the metric fetcher used by the web UI in milliseconds.
-	 */
-	public static final ConfigOption<Long> METRIC_FETCHER_UPDATE_INTERVAL =
-		key("metrics.fetcher.update-interval")
-			.defaultValue(10000L)
-			.withDescription("Update interval for the metric fetcher used by the web UI in milliseconds. Decrease this value for " +
-				"faster updating metrics. Increase this value if the metric fetcher causes too much load. Setting this value to 0 " +
-				"disables the metric fetching completely.");
 
 	private MetricOptions() {
 	}

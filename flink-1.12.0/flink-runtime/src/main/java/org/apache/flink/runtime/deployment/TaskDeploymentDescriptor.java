@@ -26,16 +26,15 @@ import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.JobInformation;
 import org.apache.flink.runtime.executiongraph.TaskInformation;
-import org.apache.flink.util.FileUtils;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
 
 import javax.annotation.Nullable;
-
 import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
-import java.util.List;
+import java.nio.file.Files;
+import java.util.Collection;
 
 /**
  * A task deployment descriptor contains all the information necessary to deploy a task on a task manager.
@@ -44,12 +43,16 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 	private static final long serialVersionUID = -3233562176034358530L;
 
+
+	public boolean isStandby() {
+		return isStandby;
+	}
+
 	/**
 	 * Wrapper class for serialized values which may be offloaded to the {@link
 	 * org.apache.flink.runtime.blob.BlobServer} or not.
 	 *
-	 * @param <T>
-	 * 		type of the serialized value
+	 * @param <T> type of the serialized value
 	 */
 	@SuppressWarnings("unused")
 	public static class MaybeOffloaded<T> implements Serializable {
@@ -124,6 +127,9 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	/** The ID referencing the attempt to execute the task. */
 	private final ExecutionAttemptID executionId;
 
+	/** Whether the deployment concerns a standby task. */
+	private final boolean isStandby;
+
 	/** The allocation ID of the slot in which the task shall be run. */
 	private final AllocationID allocationId;
 
@@ -134,10 +140,10 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	private final int attemptNumber;
 
 	/** The list of produced intermediate result partition deployment descriptors. */
-	private final List<ResultPartitionDeploymentDescriptor> producedPartitions;
+	private final Collection<ResultPartitionDeploymentDescriptor> producedPartitions;
 
 	/** The list of consumed intermediate result partitions. */
-	private final List<InputGateDeploymentDescriptor> inputGates;
+	private final Collection<InputGateDeploymentDescriptor> inputGates;
 
 	/** Slot number to run the sub task in on the target machine. */
 	private final int targetSlotNumber;
@@ -145,6 +151,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	/** Information to restore the task. This can be null if there is no state to restore. */
 	@Nullable
 	private final JobManagerTaskRestore taskRestore;
+
 
 	public TaskDeploymentDescriptor(
 		JobID jobId,
@@ -156,8 +163,28 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		int attemptNumber,
 		int targetSlotNumber,
 		@Nullable JobManagerTaskRestore taskRestore,
-		List<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
-		List<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors) {
+		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors) {
+
+		this(jobId, serializedJobInformation, serializedTaskInformation,
+			executionAttemptId, allocationId, subtaskIndex, attemptNumber,
+			targetSlotNumber, taskRestore, resultPartitionDeploymentDescriptors,
+			inputGateDeploymentDescriptors, false);
+	}
+
+
+	public TaskDeploymentDescriptor(
+		JobID jobId,
+		MaybeOffloaded<JobInformation> serializedJobInformation,
+		MaybeOffloaded<TaskInformation> serializedTaskInformation,
+		ExecutionAttemptID executionAttemptId,
+		AllocationID allocationId,
+		int subtaskIndex,
+		int attemptNumber,
+		int targetSlotNumber,
+		@Nullable JobManagerTaskRestore taskRestore,
+		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors, boolean isStandby) {
 
 		this.jobId = Preconditions.checkNotNull(jobId);
 
@@ -166,6 +193,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 		this.executionId = Preconditions.checkNotNull(executionAttemptId);
 		this.allocationId = Preconditions.checkNotNull(allocationId);
+		this.isStandby = isStandby;
 
 		Preconditions.checkArgument(0 <= subtaskIndex, "The subtask index must be positive.");
 		this.subtaskIndex = subtaskIndex;
@@ -185,10 +213,10 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	/**
 	 * Return the sub task's serialized job information.
 	 *
-	 * @return serialized job information (may throw {@link IllegalStateException} if {@link
-	 * #loadBigData(PermanentBlobService)} is not called beforehand).
-	 * @throws IllegalStateException If job information is offloaded to BLOB store.
+	 * @return serialized job information (may be <tt>null</tt> before a call to {@link
+	 * #loadBigData(PermanentBlobService)}).
 	 */
+	@Nullable
 	public SerializedValue<JobInformation> getSerializedJobInformation() {
 		if (serializedJobInformation instanceof NonOffloaded) {
 			NonOffloaded<JobInformation> jobInformation =
@@ -203,10 +231,10 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	/**
 	 * Return the sub task's serialized task information.
 	 *
-	 * @return serialized task information (may throw {@link IllegalStateException} if {@link
-	 * #loadBigData(PermanentBlobService)} is not called beforehand)).
-	 * @throws IllegalStateException If job information is offloaded to BLOB store.
+	 * @return serialized task information (may be <tt>null</tt> before a call to {@link
+	 * #loadBigData(PermanentBlobService)}).
 	 */
+	@Nullable
 	public SerializedValue<TaskInformation> getSerializedTaskInformation() {
 		if (serializedTaskInformation instanceof NonOffloaded) {
 			NonOffloaded<TaskInformation> taskInformation =
@@ -256,11 +284,11 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		return targetSlotNumber;
 	}
 
-	public List<ResultPartitionDeploymentDescriptor> getProducedPartitions() {
+	public Collection<ResultPartitionDeploymentDescriptor> getProducedPartitions() {
 		return producedPartitions;
 	}
 
-	public List<InputGateDeploymentDescriptor> getInputGates() {
+	public Collection<InputGateDeploymentDescriptor> getInputGates() {
 		return inputGates;
 	}
 
@@ -271,6 +299,10 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 	public AllocationID getAllocationId() {
 		return allocationId;
+	}
+
+	public boolean getIsStandby() {
+		return isStandby;
 	}
 
 	/**
@@ -300,7 +332,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 			//       (it is deleted automatically on the BLOB server and cache when the job
 			//       enters a terminal state)
 			SerializedValue<JobInformation> serializedValue =
-				SerializedValue.fromBytes(FileUtils.readAllBytes(dataFile.toPath()));
+				SerializedValue.fromBytes(Files.readAllBytes(dataFile.toPath()));
 			serializedJobInformation = new NonOffloaded<>(serializedValue);
 		}
 
@@ -315,7 +347,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 			//       (it is deleted automatically on the BLOB server and cache when the job
 			//       enters a terminal state)
 			SerializedValue<TaskInformation> serializedValue =
-				SerializedValue.fromBytes(FileUtils.readAllBytes(dataFile.toPath()));
+				SerializedValue.fromBytes(Files.readAllBytes(dataFile.toPath()));
 			serializedTaskInformation = new NonOffloaded<>(serializedValue);
 		}
 

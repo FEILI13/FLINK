@@ -64,6 +64,10 @@ public class TestBufferFactory {
 		return numberOfCreatedBuffers;
 	}
 
+	public synchronized int getBufferSize() {
+		return bufferSize;
+	}
+
 	// ------------------------------------------------------------------------
 	// Static test helpers
 	// ------------------------------------------------------------------------
@@ -93,6 +97,6 @@ public class TestBufferFactory {
 	 */
 	public static Buffer createBuffer(int bufferSize, int dataSize) {
 		return new NetworkBuffer(MemorySegmentFactory.allocateUnpooledSegment(bufferSize),
-				RECYCLER, Buffer.DataType.DATA_BUFFER, dataSize);
+				RECYCLER, true, dataSize);
 	}
 }

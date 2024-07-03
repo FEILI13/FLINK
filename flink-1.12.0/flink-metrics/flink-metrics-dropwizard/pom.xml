@@ -25,12 +25,12 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-metrics</artifactId>
-		<version>1.12.0</version>
+		<version>1.7-CLONOS-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 
 	<artifactId>flink-metrics-dropwizard</artifactId>
-	<name>Flink : Metrics : Dropwizard</name>
+	<name>flink-metrics-dropwizard</name>
 
 	<dependencies>
 		<dependency>
@@ -50,7 +50,7 @@ under the License.
 		<dependency>
 			<groupId>io.dropwizard.metrics</groupId>
 			<artifactId>metrics-core</artifactId>
-			<version>${dropwizard.version}</version>
+			<version>${metrics.version}</version>
 		</dependency>
 
 

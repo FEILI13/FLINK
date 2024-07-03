@@ -18,6 +18,7 @@
 
 package org.apache.flink.test.runtime;
 
+import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.client.program.ClusterClient;
 import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.core.memory.DataInputView;
@@ -25,19 +26,16 @@ import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.api.reader.RecordReader;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
-import org.apache.flink.runtime.io.network.api.writer.RecordWriterBuilder;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.jobmanager.scheduler.SlotSharingGroup;
-import org.apache.flink.runtime.jobmaster.JobResult;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.test.util.MiniClusterWithClientResource;
 import org.apache.flink.util.TestLogger;
 
-import org.junit.Assert;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -79,7 +77,7 @@ public class NetworkStackThroughputITCase extends TestLogger {
 
 		@Override
 		public void invoke() throws Exception {
-			RecordWriter<SpeedTestRecord> writer = new RecordWriterBuilder<SpeedTestRecord>().build(getEnvironment().getWriter(0));
+			RecordWriter<SpeedTestRecord> writer = new RecordWriter<>(getEnvironment().getWriter(0));
 
 			try {
 				// Determine the amount of data to send per subtask
@@ -105,7 +103,7 @@ public class NetworkStackThroughputITCase extends TestLogger {
 				}
 			}
 			finally {
-				writer.close();
+				writer.clearBuffers();
 				writer.flushAll();
 			}
 		}
@@ -129,7 +127,7 @@ public class NetworkStackThroughputITCase extends TestLogger {
 					SpeedTestRecord.class,
 					getEnvironment().getTaskManagerInfo().getTmpDirectories());
 
-			RecordWriter<SpeedTestRecord> writer = new RecordWriterBuilder<SpeedTestRecord>().build(getEnvironment().getWriter(0));
+			RecordWriter<SpeedTestRecord> writer = new RecordWriter<>(getEnvironment().getWriter(0));
 
 			try {
 				SpeedTestRecord record;
@@ -139,7 +137,7 @@ public class NetworkStackThroughputITCase extends TestLogger {
 			}
 			finally {
 				reader.clearBuffers();
-				writer.close();
+				writer.clearBuffers();
 				writer.flushAll();
 			}
 		}
@@ -266,22 +264,23 @@ public class NetworkStackThroughputITCase extends TestLogger {
 			final boolean isSlowSender,
 			final boolean isSlowReceiver,
 			final int parallelism) throws Exception {
-		final ClusterClient<?> client = cluster.getClusterClient();
-		final JobGraph jobGraph = createJobGraph(
-			dataVolumeGb,
-			useForwarder,
-			isSlowSender,
-			isSlowReceiver,
-			parallelism);
-		final JobResult jobResult = client.submitJob(jobGraph)
-			.thenCompose(client::requestJobResult)
-			.get();
+		ClusterClient<?> client = cluster.getClusterClient();
+		client.setDetached(false);
+		client.setPrintStatusDuringExecution(false);
 
-		Assert.assertFalse(jobResult.getSerializedThrowable().isPresent());
+		JobExecutionResult jer = (JobExecutionResult) client.submitJob(
+			createJobGraph(
+				dataVolumeGb,
+				useForwarder,
+				isSlowSender,
+				isSlowReceiver,
+				parallelism),
+			getClass().getClassLoader());
 
-		final long dataVolumeMbit = dataVolumeGb * 8192;
-		final long runtimeSecs = TimeUnit.SECONDS.convert(jobResult.getNetRuntime(), TimeUnit.MILLISECONDS);
-		final int mbitPerSecond = (int) (((double) dataVolumeMbit) / runtimeSecs);
+		long dataVolumeMbit = dataVolumeGb * 8192;
+		long runtimeSecs = jer.getNetRuntime(TimeUnit.SECONDS);
+
+		int mbitPerSecond = (int) (((double) dataVolumeMbit) / runtimeSecs);
 
 		LOG.info(String.format("Test finished with throughput of %d MBit/s (runtime [secs]: %d, " +
 			"data volume [gb/mbits]: %d/%d)", mbitPerSecond, runtimeSecs, dataVolumeGb, dataVolumeMbit));

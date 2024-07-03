@@ -18,7 +18,6 @@
 
 package org.apache.flink.runtime.jobmanager.scheduler;
 
-import org.apache.flink.runtime.instance.SlotSharingGroupId;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 
 /**
@@ -27,8 +26,9 @@ import org.apache.flink.runtime.jobgraph.JobVertexID;
 public class DummyScheduledUnit extends ScheduledUnit {
 	public DummyScheduledUnit() {
 		super(
+			null,
 			new JobVertexID(),
-			new SlotSharingGroupId(),
+			null,
 			null);
 	}
 }

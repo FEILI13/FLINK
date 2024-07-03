@@ -21,7 +21,6 @@ package org.apache.flink.runtime.resourcemanager.registration;
 import org.apache.flink.runtime.clusterframework.types.ResourceIDRetrievable;
 import org.apache.flink.runtime.instance.HardwareDescription;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
-import org.apache.flink.runtime.taskexecutor.TaskExecutorMemoryConfiguration;
 import org.apache.flink.util.Preconditions;
 
 /**
@@ -33,27 +32,19 @@ public class WorkerRegistration<WorkerType extends ResourceIDRetrievable> extend
 
 	private final int dataPort;
 
-	private final int jmxPort;
-
 	private final HardwareDescription hardwareDescription;
-
-	private final TaskExecutorMemoryConfiguration memoryConfiguration;
 
 	public WorkerRegistration(
 			TaskExecutorGateway taskExecutorGateway,
 			WorkerType worker,
 			int dataPort,
-			int jmxPort,
-			HardwareDescription hardwareDescription,
-			TaskExecutorMemoryConfiguration memoryConfiguration) {
+			HardwareDescription hardwareDescription) {
 
 		super(worker.getResourceID(), taskExecutorGateway);
 
 		this.worker = Preconditions.checkNotNull(worker);
 		this.dataPort = dataPort;
-		this.jmxPort = jmxPort;
 		this.hardwareDescription = Preconditions.checkNotNull(hardwareDescription);
-		this.memoryConfiguration = Preconditions.checkNotNull(memoryConfiguration);
 	}
 
 	public WorkerType getWorker() {
@@ -64,15 +55,7 @@ public class WorkerRegistration<WorkerType extends ResourceIDRetrievable> extend
 		return dataPort;
 	}
 
-	public int getJmxPort() {
-		return jmxPort;
-	}
-
 	public HardwareDescription getHardwareDescription() {
 		return hardwareDescription;
-	}
-
-	public TaskExecutorMemoryConfiguration getMemoryConfiguration() {
-		return memoryConfiguration;
 	}
 }

@@ -105,6 +105,11 @@ public final class CharPrimitiveArraySerializer extends TypeSerializerSingleton<
 	}
 
 	@Override
+	public boolean canEqual(Object obj) {
+		return obj instanceof CharPrimitiveArraySerializer;
+	}
+
+	@Override
 	public TypeSerializerSnapshot<char[]> snapshotConfiguration() {
 		return new CharPrimitiveArraySerializerSnapshot();
 	}
@@ -114,11 +119,10 @@ public final class CharPrimitiveArraySerializer extends TypeSerializerSingleton<
 	/**
 	 * Serializer configuration snapshot for compatibility and format evolution.
 	 */
-	@SuppressWarnings("WeakerAccess")
 	public static final class CharPrimitiveArraySerializerSnapshot extends SimpleTypeSerializerSnapshot<char[]> {
 
 		public CharPrimitiveArraySerializerSnapshot() {
-			super(() -> INSTANCE);
+			super(CharPrimitiveArraySerializer.class);
 		}
 	}
 }

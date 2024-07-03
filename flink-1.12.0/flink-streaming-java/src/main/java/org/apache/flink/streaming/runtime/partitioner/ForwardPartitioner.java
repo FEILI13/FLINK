@@ -18,7 +18,6 @@
 package org.apache.flink.streaming.runtime.partitioner;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.runtime.io.network.api.writer.SubtaskStateMapper;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
@@ -31,9 +30,11 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 public class ForwardPartitioner<T> extends StreamPartitioner<T> {
 	private static final long serialVersionUID = 1L;
 
+	private final int[] returnArray = new int[] {0};
+
 	@Override
-	public int selectChannel(SerializationDelegate<StreamRecord<T>> record) {
-		return 0;
+	public int[] selectChannels(SerializationDelegate<StreamRecord<T>> record, int numberOfOutputChannels) {
+		return returnArray;
 	}
 
 	public StreamPartitioner<T> copy() {
@@ -45,8 +46,4 @@ public class ForwardPartitioner<T> extends StreamPartitioner<T> {
 		return "FORWARD";
 	}
 
-	@Override
-	public SubtaskStateMapper getDownstreamSubtaskStateMapper() {
-		return SubtaskStateMapper.ROUND_ROBIN;
-	}
 }

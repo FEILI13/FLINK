@@ -45,13 +45,21 @@ function check_logs {
     fi
 }
 
-# This function does a cleanup after the test. The watchdog is terminated and temporary
+# This function does a cleanup after the test. The configuration is restored, the watchdog is terminated and temporary
 # files and folders are deleted.
 function cleanup_after_test {
-    kill ${watchdog_pid} 2> /dev/null || true
-    wait ${watchdog_pid} 2> /dev/null || true
+    # Reset the configurations
+    sed -i -e 's/log4j.rootLogger=.*/log4j.rootLogger=INFO, file/' "$FLINK_DIR/conf/log4j.properties"
+    #
+    kill ${watchdog_pid} 2> /dev/null
+    wait ${watchdog_pid} 2> /dev/null
 }
-on_exit cleanup_after_test
+
+# Calls the cleanup step for this tests and exits with an error.
+function cleanup_after_test_and_exit_fail {
+    cleanup_after_test
+    exit 1
+}
 
 ## This function executes one run for a certain configuration
 function run_local_recovery_test {
@@ -73,12 +81,12 @@ function run_local_recovery_test {
     create_ha_config
 
     # Enable debug logging
-    sed -i -e 's/rootLogger.level = .*/rootLogger.level = DEBUG/' "$FLINK_DIR/conf/log4j.properties"
+    sed -i -e 's/log4j.rootLogger=.*/log4j.rootLogger=DEBUG, file/' "$FLINK_DIR/conf/log4j.properties"
 
     # Enable local recovery
-    set_config_key "state.backend.local-recovery" "true"
+    set_conf "state.backend.local-recovery" "true"
     # Ensure that each TM only has one operator(chain)
-    set_config_key "taskmanager.numberOfTaskSlots" "1"
+    set_conf "taskmanager.numberOfTaskSlots" "1"
 
     rm $FLINK_DIR/log/* 2> /dev/null
 
@@ -104,4 +112,7 @@ function run_local_recovery_test {
 }
 
 ## MAIN
-run_test_with_timeout 600 run_local_recovery_test "$@"
+trap cleanup_after_test_and_exit_fail EXIT
+run_local_recovery_test "$@"
+trap - EXIT
+exit 0
