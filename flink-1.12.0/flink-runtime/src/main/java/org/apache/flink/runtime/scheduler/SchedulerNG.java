@@ -47,6 +47,9 @@ import org.apache.flink.runtime.operators.coordination.OperatorCoordinator;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.query.KvStateLocation;
 import org.apache.flink.runtime.query.UnknownKvStateLocation;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
+import org.apache.flink.runtime.reConfig.utils.InstanceState;
+import org.apache.flink.runtime.reConfig.message.ReConfigStage;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.OperatorBackPressureStats;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
@@ -165,4 +168,28 @@ public interface SchedulerNG {
 	 *                        for the given ID, or the coordinator cannot handle client events.
 	 */
 	CompletableFuture<CoordinationResponse> deliverCoordinationRequestToCoordinator(OperatorID operator, CoordinationRequest request) throws FlinkException;
+
+    default void acknowledgeReConfig(JobID jobID, ExecutionAttemptID executionAttemptID, ReConfigStage stage){
+		throw new UnsupportedOperationException();
+	}
+
+	default void acknowledgeReConfig(JobID jobID, ExecutionAttemptID executionAttemptID, InstanceState state){
+		throw new UnsupportedOperationException();
+	}
+
+	default void acknowledgeReConfig(JobID jobID, ExecutionAttemptID executionAttemptID, ReConfigSignal signal){
+		throw new UnsupportedOperationException();
+	}
+
+	default void changeTopo(String taskName, int newParallelism){
+		throw new UnsupportedOperationException();
+	}
+
+	default void rescaleClean(){
+		throw new UnsupportedOperationException();
+	}
+
+	default void acknowledgeDeploymentForRescaling(ExecutionAttemptID executionAttemptID) {
+		throw new UnsupportedOperationException();
+	}
 }

@@ -63,12 +63,17 @@ public class ResultPartitionManager implements ResultPartitionProvider {
 		final ResultSubpartitionView subpartitionView;
 		synchronized (registeredPartitions) {
 			final ResultPartition partition = registeredPartitions.get(partitionId);
-
+			System.out.println("now registeredPartitions:"+registeredPartitions);
+			System.out.println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+			for(Map.Entry<ResultPartitionID, ResultPartition> entry:registeredPartitions.entrySet()){
+				System.out.println("owingTask:"+entry.getValue().getOwningTaskName()+" resultPartitionId:"+entry.getKey()+" partition:"+entry.getValue());
+			}
+			System.out.println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 			if (partition == null) {
 				throw new PartitionNotFoundException(partitionId);
 			}
 
-			LOG.debug("Requesting subpartition {} of {}.", subpartitionIndex, partition);
+			LOG.info("Requesting subpartition {} of {}.", subpartitionIndex, partition);
 
 			subpartitionView = partition.createSubpartitionView(subpartitionIndex, availabilityListener);
 		}
@@ -81,7 +86,7 @@ public class ResultPartitionManager implements ResultPartitionProvider {
 			ResultPartition resultPartition = registeredPartitions.remove(partitionId);
 			if (resultPartition != null) {
 				resultPartition.release(cause);
-				LOG.debug("Released partition {} produced by {}.",
+				LOG.info("Released partition {} produced by {}.",
 					partitionId.getPartitionId(), partitionId.getProducerId());
 			}
 		}
@@ -110,7 +115,7 @@ public class ResultPartitionManager implements ResultPartitionProvider {
 	// ------------------------------------------------------------------------
 
 	void onConsumedPartition(ResultPartition partition) {
-		LOG.debug("Received consume notification from {}.", partition);
+		LOG.info("Received consume notification from {}.", partition);
 
 		synchronized (registeredPartitions) {
 			final ResultPartition previous = registeredPartitions.remove(partition.getPartitionId());
@@ -118,7 +123,7 @@ public class ResultPartitionManager implements ResultPartitionProvider {
 			if (partition == previous) {
 				partition.release();
 				ResultPartitionID partitionId = partition.getPartitionId();
-				LOG.debug("Released partition {} produced by {}.",
+				LOG.info("Released partition {} produced by {}.",
 					partitionId.getPartitionId(), partitionId.getProducerId());
 			}
 		}

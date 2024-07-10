@@ -27,6 +27,7 @@ import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 
@@ -55,7 +56,7 @@ public class PipelinedResultPartition extends BufferWritingResultPartition
 	/** A flag for each subpartition indicating whether it was already consumed or not,
 	 * to make releases idempotent. */
 	@GuardedBy("releaseLock")
-	private final boolean[] consumedSubpartitions;
+	private boolean[] consumedSubpartitions;
 
 	/** The total number of references to subpartitions of this result. The result partition can be
 	 * safely released, iff the reference count is zero. */
@@ -121,7 +122,7 @@ public class PipelinedResultPartition extends BufferWritingResultPartition
 			remainingUnconsumed = (--numUnconsumedSubpartitions);
 		}
 
-		LOG.debug("{}: Received consumed notification for subpartition {}.", this, subpartitionIndex);
+		LOG.info("{}: Received consumed notification for subpartition {}.", this, subpartitionIndex);
 
 		if (remainingUnconsumed == 0) {
 			partitionManager.onConsumedPartition(this);
@@ -167,6 +168,46 @@ public class PipelinedResultPartition extends BufferWritingResultPartition
 	public void finishReadRecoveredState(boolean notifyAndBlockOnCompletion) throws IOException {
 		for (ResultSubpartition subpartition : subpartitions) {
 			((CheckpointedResultSubpartition) subpartition).finishReadRecoveredState(notifyAndBlockOnCompletion);
+		}
+	}
+
+	public void modifyForRescale(int newNumSubpartitions, boolean justMark){
+		checkArgument(newNumSubpartitions != this.numSubpartitions);
+		if(justMark){
+			markedNewNumSubpartitions = newNumSubpartitions;
+		}else{
+			markedNewNumSubpartitions = UNSET_MARKED_NUM_SUB_PAR;
+			if(newNumSubpartitions > this.numSubpartitions){
+				this.consumedSubpartitions = Arrays.copyOf(consumedSubpartitions, newNumSubpartitions);
+				this.subpartitions = Arrays.copyOf(subpartitions, newNumSubpartitions);
+				this.unicastBufferBuilders = Arrays.copyOf(unicastBufferBuilders, newNumSubpartitions);
+				for(int i=this.numSubpartitions;i<newNumSubpartitions;i++){
+					subpartitions[i] = new PipelinedSubpartition(i, this);//新建subpartition
+				}
+				this.numUnconsumedSubpartitions += newNumSubpartitions - this.numSubpartitions;
+				this.bufferPool.updateForRescale(newNumSubpartitions);//每个task有自己的localBufferPool，修改bufferPool
+			}else{
+//				try {
+//					for (int i = newNumSubpartitions; i < this.numSubpartitions; i++) {
+//						System.out.println("subpartition :"+subpartitions[i].getSubpartitionInfo()+" " +i+" release");
+//						subpartitions[i].release();
+//					}
+//				}catch (Exception e){
+//					e.printStackTrace();
+//				}
+//				this.consumedSubpartitions = Arrays.copyOf(consumedSubpartitions, newNumSubpartitions);
+//				this.subpartitions = Arrays.copyOf(subpartitions, newNumSubpartitions);
+//				this.unicastBufferBuilders = Arrays.copyOf(unicastBufferBuilders, newNumSubpartitions);
+//				this.consumedSubpartitions = Arrays.copyOfRange(consumedSubpartitions, consumedSubpartitions.length - newNumSubpartitions, consumedSubpartitions.length);
+//				this.subpartitions = Arrays.copyOfRange(subpartitions, subpartitions.length - newNumSubpartitions, subpartitions.length);
+//				this.unicastBufferBuilders = Arrays.copyOfRange(unicastBufferBuilders, unicastBufferBuilders.length - newNumSubpartitions, unicastBufferBuilders.length);
+				this.consumedSubpartitions[0] = true;// TODO cut the partition
+				this.subpartitions[0] = null;// TODO cut the partition
+				this.unicastBufferBuilders[0] = null;// TODO cut the partition
+				this.bufferPool.updateForRescale(newNumSubpartitions);
+			}
+			System.out.println(this.getOwningTaskName()+" subpartitions:"+Arrays.toString(subpartitions));
+			this.numSubpartitions = newNumSubpartitions;
 		}
 	}
 }

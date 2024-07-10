@@ -237,5 +237,10 @@ public class ConsumableNotifyingResultPartitionWriterDecorator {
 				throw new IllegalStateException("This partition is not checkpointable: " + partitionWriter);
 			}
 		}
+
+		@Override
+		public int getNumberOfSubpartitionsForRescale() {
+			return partitionWriter.getNumberOfSubpartitionsForRescale();
+		}
 	}
 }

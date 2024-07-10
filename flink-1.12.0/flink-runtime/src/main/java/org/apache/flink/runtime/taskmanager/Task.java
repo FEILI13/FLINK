@@ -38,6 +38,7 @@ import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
+import org.apache.flink.runtime.event.RuntimeEvent;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.execution.ExecutionState;
@@ -52,6 +53,7 @@ import org.apache.flink.runtime.io.network.NettyShuffleEnvironment;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.PartitionProducerStateProvider;
+import org.apache.flink.runtime.io.network.partition.PipelinedResultPartition;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionConsumableNotifier;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.consumer.IndexedInputGate;
@@ -67,6 +69,9 @@ import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.operators.coordination.TaskNotRunningException;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
+import org.apache.flink.runtime.reConfig.RpcReConfigResponder;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
+import org.apache.flink.runtime.reConfig.utils.RescaleState;
 import org.apache.flink.runtime.shuffle.ShuffleEnvironment;
 import org.apache.flink.runtime.shuffle.ShuffleIOOwnerContext;
 import org.apache.flink.api.common.state.CheckpointListener;
@@ -102,6 +107,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
@@ -280,6 +286,12 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 	/** This class loader should be set as the context class loader for threads that may dynamically load user code. */
 	private UserCodeClassLoader userCodeClassLoader;
 
+	private final RpcReConfigResponder reConfigResponder;
+
+	private ShuffleIOOwnerContext taskShuffleContext;
+
+	private RescaleState rescaleState = RescaleState.NONE;
+
 	/**
 	 * <p><b>IMPORTANT:</b> This constructor may not start any work that would need to
 	 * be undone in the case of a failing task deployment.</p>
@@ -305,6 +317,42 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 		TaskManagerActions taskManagerActions,
 		InputSplitProvider inputSplitProvider,
 		CheckpointResponder checkpointResponder,
+		TaskOperatorEventGateway operatorCoordinatorEventGateway,
+		GlobalAggregateManager aggregateManager,
+		LibraryCacheManager.ClassLoaderHandle classLoaderHandle,
+		FileCache fileCache,
+		TaskManagerRuntimeInfo taskManagerConfig,
+		@Nonnull TaskMetricGroup metricGroup,
+		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
+		PartitionProducerStateChecker partitionProducerStateChecker,
+		Executor executor) {
+
+		// TODO: make it work as before
+		throw new UnsupportedOperationException();
+	}
+
+	public Task(
+		JobInformation jobInformation,
+		TaskInformation taskInformation,
+		ExecutionAttemptID executionAttemptID,
+		AllocationID slotAllocationId,
+		int subtaskIndex,
+		int attemptNumber,
+		List<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+		List<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
+		int targetSlotNumber,
+		MemoryManager memManager,
+		IOManager ioManager,
+		ShuffleEnvironment<?, ?> shuffleEnvironment,
+		KvStateService kvStateService,
+		BroadcastVariableManager bcVarManager,
+		TaskEventDispatcher taskEventDispatcher,
+		ExternalResourceInfoProvider externalResourceInfoProvider,
+		TaskStateManager taskStateManager,
+		TaskManagerActions taskManagerActions,
+		InputSplitProvider inputSplitProvider,
+		CheckpointResponder checkpointResponder,
+		RpcReConfigResponder reConfigResponder,
 		TaskOperatorEventGateway operatorCoordinatorEventGateway,
 		GlobalAggregateManager aggregateManager,
 		LibraryCacheManager.ClassLoaderHandle classLoaderHandle,
@@ -355,6 +403,7 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 
 		this.inputSplitProvider = Preconditions.checkNotNull(inputSplitProvider);
 		this.checkpointResponder = Preconditions.checkNotNull(checkpointResponder);
+		this.reConfigResponder = Preconditions.checkNotNull(reConfigResponder);
 		this.operatorCoordinatorEventGateway = Preconditions.checkNotNull(operatorCoordinatorEventGateway);
 		this.aggregateManager = Preconditions.checkNotNull(aggregateManager);
 		this.taskManagerActions = checkNotNull(taskManagerActions);
@@ -376,6 +425,8 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 
 		final ShuffleIOOwnerContext taskShuffleContext = shuffleEnvironment
 			.createShuffleIOOwnerContext(taskNameWithSubtaskAndId, executionId, metrics.getIOMetricGroup());
+
+		this.taskShuffleContext = taskShuffleContext;
 
 		// produced intermediate result partitions
 		final ResultPartitionWriter[] resultPartitionWriters = shuffleEnvironment.createResultPartitionWriters(
@@ -636,6 +687,7 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 			setupPartitionsAndGates(consumableNotifyingPartitionWriters, inputGates);
 
 			for (ResultPartitionWriter partitionWriter : consumableNotifyingPartitionWriters) {
+				System.out.println(getTaskInfo().getTaskNameWithSubtasks()+"_"+getTaskInfo().getAllocationIDAsString()+"start to register partition: "+partitionWriter.getPartitionId());
 				taskEventDispatcher.registerPartition(partitionWriter.getPartitionId());
 			}
 
@@ -685,6 +737,7 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 				inputGates,
 				taskEventDispatcher,
 				checkpointResponder,
+				reConfigResponder,
 				operatorCoordinatorEventGateway,
 				taskManagerConfig,
 				metrics,
@@ -882,7 +935,7 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 	 * has failed, is canceled, or is being canceled at the moment.
 	 */
 	private void releaseResources() {
-		LOG.debug("Release task {} network resources (state: {}).", taskNameWithSubtask, getExecutionState());
+		LOG.info("Release task {} network resources (state: {}).", taskNameWithSubtask, getExecutionState());
 
 		for (ResultPartitionWriter partitionWriter : consumableNotifyingPartitionWriters) {
 			taskEventDispatcher.unregisterPartition(partitionWriter.getPartitionId());
@@ -1297,6 +1350,148 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 	@Override
 	public String toString() {
 		return String.format("%s (%s) [%s]", taskNameWithSubtask, executionId, executionState);
+	}
+
+    public void triggerReConfig(ReConfigSignal signal) {
+		final AbstractInvokable invokable = this.invokable;
+
+		if (executionState == ExecutionState.RUNNING && invokable != null) {
+			try {
+				invokable.triggerReConfig(signal);
+			}
+			catch (RejectedExecutionException ex) {
+				// This may happen if the mailbox is closed. It means that the task is shutting down, so we just ignore it.
+				LOG.info(
+					"Triggering rescale signal {} for {} ({}) was rejected by the mailbox",
+					signal, taskNameWithSubtask, executionId);
+			}
+			catch (Throwable t) {
+				if (getExecutionState() == ExecutionState.RUNNING) {
+					failExternally(new Exception(
+						"Error while triggering rescale signal " + signal + " for " +
+							taskNameWithSubtask, t));
+				} else {
+					LOG.info("Encountered error while triggering rescale signal {} for " +
+							"{} ({}) while being not in state running.", signal,
+						taskNameWithSubtask, executionId, t);
+				}
+			}
+		}
+		else {
+			LOG.debug("Declining triggering rescale signal request for non-running task {} ({}).", taskNameWithSubtask, executionId);
+		}
+    }
+
+	public void modifyForRescaleSync(
+		List<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+		List<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
+		ShuffleEnvironment<?, ?> shuffleEnvironment,
+		RescaleState rescaleState
+	){
+		if(executionState == ExecutionState.RUNNING && this.invokable != null){
+			boolean isInCleanStage = rescaleState == RescaleState.CLEAN;
+			//this.invokable.setModify();
+			this.rescaleState = RescaleState.MODIFIED;
+			checkArgument(resultPartitionDeploymentDescriptors.size() == this.consumableNotifyingPartitionWriters.length);
+			System.out.println(this+" resultPartitionDeploymentDescriptors.size() :"+resultPartitionDeploymentDescriptors.size());
+			for(int i=0;i<resultPartitionDeploymentDescriptors.size();i++){
+				int newNumSubpartitions = resultPartitionDeploymentDescriptors.get(i).getNumberOfSubpartitions();//获取该Task的subpartition数
+				ResultPartitionWriter resultPartitionWriter = this.consumableNotifyingPartitionWriters[i];
+				int previousNumSubpartitions = resultPartitionWriter.getNumberOfSubpartitions();
+				if(previousNumSubpartitions < newNumSubpartitions){//增加
+					System.out.println(getTaskInfo() +" now previousNumSubpartitions < newNumSubpartitions");
+					checkArgument(resultPartitionWriter instanceof PipelinedResultPartition);
+					((PipelinedResultPartition)resultPartitionWriter).modifyForRescale(newNumSubpartitions, false);
+				}else if(previousNumSubpartitions > newNumSubpartitions){
+					System.out.println(getTaskInfo() + " now previousNumSubpartitions > newNumSubpartitions");
+					checkArgument(resultPartitionWriter instanceof PipelinedResultPartition);
+					((PipelinedResultPartition)resultPartitionWriter).modifyForRescale(newNumSubpartitions, !isInCleanStage);
+				}
+			}
+
+			checkArgument(inputGateDeploymentDescriptors.size()==inputGates.length);
+			System.out.println(this+" inputGateDeploymentDescriptors.size() :"+inputGateDeploymentDescriptors.size());
+			for(int i=0;i<inputGateDeploymentDescriptors.size();i++){
+				int newNumChannels = inputGateDeploymentDescriptors.get(i).getShuffleDescriptors().length;
+				InputGate inputGate = this.inputGates[i];
+				int previousNumChannels = inputGate.getNumberOfInputChannels();
+				if(previousNumChannels != newNumChannels){
+					updateInputGate(inputGateDeploymentDescriptors,
+						shuffleEnvironment,
+						inputGate,
+						previousNumChannels,
+						previousNumChannels > newNumChannels && !isInCleanStage);
+				}
+			}
+
+		}else{
+			System.out.println(this.getClass().getName()+" isnt RUNNING ERROR!!!!!!!!");
+		}
+	}
+
+	private void updateInputGate(
+		List<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
+		ShuffleEnvironment<?, ?> shuffleEnvironment,
+		InputGate inputGate,
+		int previousNumChannels,
+		boolean justMark
+	){
+		if (justMark) {
+			return;
+		}
+		shuffleEnvironment.modifyInputGateForRescale(taskShuffleContext, inputGate, inputGateDeploymentDescriptors.get(0));//创建InputChannel
+
+		// make new channels request partitions
+		final AbstractInvokable invokable = this.invokable;
+
+		// wait for the new channels to consume recovery states, then use the streamTask's mail box to request partitions of new channels
+		CompletableFuture<Void> result = new CompletableFuture<>();
+		invokable.modifyUpperStreamChannelsForRescale(//修改完Task应该修改StreamTask了
+			previousNumChannels,
+			() -> {
+				try {
+					result.complete(newChannelsRequirePartitionsAsync(inputGate, previousNumChannels));
+				}
+				catch (Exception ex) {
+					// Report the failure both via the Future result but also to the mailbox
+					result.completeExceptionally(ex);
+					throw ex;
+				}
+			},
+			"Input gate request partitions (rescale)"
+		);
+
+		// wait until the streamTask's mail box has finished the mail
+		try {
+			result.get();
+		} catch (InterruptedException | ExecutionException e) {
+			LOG.debug("Input gate request partitions (rescale) failed.");
+			e.printStackTrace();
+		}
+	}
+
+	private Void newChannelsRequirePartitionsAsync(InputGate inputGate, int previousNumChannels) {
+		inputGate.requestPartitionsForRescale(previousNumChannels);
+		//this.invokable.maybeUpdatePartitionStrategy();
+		return null;
+	}
+
+	public void notifyJobMasterRescaleDeployingCompleted(ExecutionAttemptID executionAttemptID) {
+		final AbstractInvokable invokable = this.invokable;
+		assert invokable != null;
+		invokable.getEnvironment().acknowledgeDeploymentForRescaling(executionAttemptID);
+	}
+
+	public void triggerUpdatePartitionStrategy(){
+		final AbstractInvokable invokable = this.invokable;
+		if (executionState == ExecutionState.RUNNING && invokable != null) {
+			if(this.rescaleState == RescaleState.MODIFIED){
+				System.out.println(this+" is modifing PartitionStrategy");
+				invokable.maybeUpdatePartitionStrategy();
+			}
+		}else{
+			System.out.println("gg");
+		}
 	}
 
 	@VisibleForTesting

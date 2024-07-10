@@ -154,6 +154,9 @@ public class JobDetailsHandler extends AbstractExecutionGraphHandler<JobDetailsI
 		boolean allFinished = true;
 
 		for (AccessExecutionVertex vertex : ejv.getTaskVertices()) {
+			if(vertex == null){
+				continue;
+			}
 			final ExecutionState state = vertex.getExecutionState();
 			tasksPerState[state.ordinal()]++;
 
@@ -195,6 +198,9 @@ public class JobDetailsHandler extends AbstractExecutionGraphHandler<JobDetailsI
 		MutableIOMetrics counts = new MutableIOMetrics();
 
 		for (AccessExecutionVertex vertex : ejv.getTaskVertices()) {
+			if(vertex == null){
+				continue;
+			}
 			counts.addIOMetrics(
 				vertex.getCurrentExecutionAttempt(),
 				metricFetcher,

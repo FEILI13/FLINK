@@ -109,6 +109,8 @@ public class ResourceProfile implements Serializable {
 	/** A extensible field for user specified resources from {@link ResourceSpec}. */
 	private final Map<String, Resource> extendedResources = new HashMap<>(1);
 
+	public String targetIp;
+
 	// ------------------------------------------------------------------------
 
 	/**

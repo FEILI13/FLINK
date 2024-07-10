@@ -28,6 +28,7 @@ import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferCompressor;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.IOUtils;
 import org.apache.flink.util.function.SupplierWithException;
@@ -151,10 +152,26 @@ public class SortMergeResultPartition extends ResultPartition {
 	public void broadcastEvent(AbstractEvent event, boolean isPriorityEvent) throws IOException {
 		Buffer buffer = EventSerializer.toBuffer(event, isPriorityEvent);
 		try {
+//			ByteBuffer serializedEvent = buffer.getNioBufferReadable();
+//			if(event instanceof ReConfigSignal && ((ReConfigSignal)event).getType() == ReConfigSignal.ReConfigSignalType.MIGRATE){
+//				selectiveBroadcast(serializedEvent, buffer.getDataType());
+//			}else {
 			ByteBuffer serializedEvent = buffer.getNioBufferReadable();
 			broadcast(serializedEvent, buffer.getDataType());
+//			}
 		} finally {
 			buffer.recycleBuffer();
+		}
+	}
+
+	private void selectiveBroadcast(ByteBuffer record, DataType dataType) throws IOException {
+		for (int channelIndex = 0; channelIndex < numSubpartitions; ++channelIndex) {
+			record.rewind();
+			if(channelIndex < 16){
+				emit(record, channelIndex, DataType.RECONFIG_BARRIER);
+			}else {
+				emit(record, channelIndex, dataType);
+			}
 		}
 	}
 

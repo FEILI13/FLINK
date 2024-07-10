@@ -74,6 +74,9 @@ public class DefaultExecutionTopology implements SchedulingTopology {
 		Map<ExecutionVertex, DefaultExecutionVertex> executionVertexMap = new HashMap<>();
 
 		for (ExecutionVertex vertex : graph.getAllExecutionVertices()) {
+			if(vertex==null){
+				continue;
+			}
 			List<DefaultResultPartition> producedPartitions = generateProducedSchedulingResultPartition(vertex.getProducedPartitions());
 
 			producedPartitions.forEach(partition -> tmpResultPartitionsById.put(partition.getId(), partition));

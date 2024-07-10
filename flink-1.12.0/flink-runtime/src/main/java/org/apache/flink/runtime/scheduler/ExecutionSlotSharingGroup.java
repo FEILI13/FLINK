@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.scheduler;
 
+import org.apache.flink.runtime.reConfig.utils.RescaleState;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 
 import java.util.Collections;
@@ -30,6 +31,8 @@ import java.util.Set;
 class ExecutionSlotSharingGroup {
 
 	private final Set<ExecutionVertexID> executionVertexIds;
+
+	public RescaleState rescaleState = RescaleState.NONE;
 
 	ExecutionSlotSharingGroup() {
 		this.executionVertexIds = new HashSet<>();

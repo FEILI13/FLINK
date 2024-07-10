@@ -20,6 +20,7 @@ package org.apache.flink.runtime.jobmaster.slotpool;
 
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.clusterframework.types.SlotProfile;
+import org.apache.flink.runtime.jobmanager.scheduler.Locality;
 import org.apache.flink.runtime.jobmaster.SlotRequestId;
 
 import org.slf4j.Logger;
@@ -75,6 +76,23 @@ public class PhysicalSlotProviderImpl implements PhysicalSlotProvider {
 				.stream()
 				.map(SlotSelectionStrategy.SlotInfoAndResources::fromSingleSlot)
 				.collect(Collectors.toList());
+
+		if(slotProfile.getPhysicalSlotResourceProfile().targetIp != null){
+			for(SlotSelectionStrategy.SlotInfoAndResources slotInfo : slotInfoList){
+				System.out.println("targetIp:"+slotProfile.getPhysicalSlotResourceProfile().targetIp+" slotInfo:"+slotInfo.getSlotInfo().getTaskManagerLocation().addressString());
+				if(slotInfo.getSlotInfo().getTaskManagerLocation().addressString().contains(slotProfile.getPhysicalSlotResourceProfile().targetIp)){
+					Optional<SlotSelectionStrategy.SlotInfoAndLocality> selectedAvailableSlot = Optional.of(
+						SlotSelectionStrategy.SlotInfoAndLocality.of(slotInfo.getSlotInfo(), Locality.UNCONSTRAINED));
+
+					return selectedAvailableSlot.flatMap(
+						slotInfoAndLocality -> slotPool.allocateAvailableSlot(
+							slotRequestId,
+							slotInfoAndLocality.getSlotInfo().getAllocationId())
+					);
+				}
+			}
+			return Optional.empty();
+		}
 
 		Optional<SlotSelectionStrategy.SlotInfoAndLocality> selectedAvailableSlot =
 			slotSelectionStrategy.selectBestSlotForProfile(slotInfoList, slotProfile);

@@ -98,4 +98,8 @@ public class ResultPartitionDeploymentDescriptor implements Serializable {
 						+ "ShuffleDescriptor: %s]",
 			partitionDescriptor, shuffleDescriptor);
 	}
+
+    public void changeNumberOfSubpartitions(int delta) {
+		partitionDescriptor.changeNumberOfSubpartitions(delta);
+    }
 }

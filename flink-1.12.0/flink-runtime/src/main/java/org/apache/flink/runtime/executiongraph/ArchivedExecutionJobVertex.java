@@ -44,9 +44,20 @@ public class ArchivedExecutionJobVertex implements AccessExecutionJobVertex, Ser
 	private final StringifiedAccumulatorResult[] archivedUserAccumulators;
 
 	public ArchivedExecutionJobVertex(ExecutionJobVertex jobVertex) {
-		this.taskVertices = new ArchivedExecutionVertex[jobVertex.getTaskVertices().length];
+		int num = 0;
+		for(ExecutionVertex vertex : jobVertex.getTaskVertices()){
+			if(vertex != null){
+				num++;
+			}
+		}
+		this.taskVertices = new ArchivedExecutionVertex[num];
+		int makeUp = 0;
 		for (int x = 0; x < taskVertices.length; x++) {
-			taskVertices[x] = jobVertex.getTaskVertices()[x].archive();
+			if(jobVertex.getTaskVertices()[x] == null){
+				continue;
+			}
+			taskVertices[makeUp] = jobVertex.getTaskVertices()[x].archive();
+			makeUp++;
 		}
 
 		archivedUserAccumulators = jobVertex.getAggregatedUserAccumulatorsStringified();

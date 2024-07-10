@@ -39,6 +39,7 @@ import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.entrypoint.ClusterInformation;
+import org.apache.flink.runtime.event.RuntimeEvent;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.execution.librarycache.LibraryCacheManager;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
@@ -82,6 +83,8 @@ import org.apache.flink.runtime.operators.coordination.TaskNotRunningException;
 import org.apache.flink.runtime.query.KvStateClientProxy;
 import org.apache.flink.runtime.query.KvStateRegistry;
 import org.apache.flink.runtime.query.KvStateServer;
+import org.apache.flink.runtime.reConfig.RpcReConfigResponder;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
 import org.apache.flink.runtime.registration.RegistrationConnectionListener;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
@@ -586,6 +589,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 			TaskManagerActions taskManagerActions = jobManagerConnection.getTaskManagerActions();
 			CheckpointResponder checkpointResponder = jobManagerConnection.getCheckpointResponder();
+			RpcReConfigResponder reConfigResponder = jobManagerConnection.getReConfigResponder();
 			GlobalAggregateManager aggregateManager = jobManagerConnection.getGlobalAggregateManager();
 
 			LibraryCacheManager.ClassLoaderHandle classLoaderHandle = jobManagerConnection.getClassLoaderHandle();
@@ -635,6 +639,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				taskManagerActions,
 				inputSplitProvider,
 				checkpointResponder,
+				reConfigResponder,
 				taskOperatorEventGateway,
 				aggregateManager,
 				classLoaderHandle,
@@ -1464,6 +1469,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 		CheckpointResponder checkpointResponder = new RpcCheckpointResponder(jobMasterGateway);
 		GlobalAggregateManager aggregateManager = new RpcGlobalAggregateManager(jobMasterGateway);
+		RpcReConfigResponder reConfigResponder = new RpcReConfigResponder(jobMasterGateway);
 
 		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier = new RpcResultPartitionConsumableNotifier(
 			jobMasterGateway,
@@ -1481,7 +1487,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			checkpointResponder,
 			aggregateManager,
 			resultPartitionConsumableNotifier,
-			partitionStateChecker);
+			partitionStateChecker,
+			reConfigResponder);
 	}
 
 	private void disassociateFromJobManager(JobTable.Connection jobManagerConnection, Exception cause) throws IOException {
@@ -2057,6 +2064,54 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			return new TaskExecutorJobServices(
 				classLoaderLease,
 				closeHook);
+		}
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> triggerReConfig(
+		ExecutionAttemptID attemptId,
+		JobID jobId,
+		ReConfigSignal signal) {
+		final Task task = taskSlotTable.getTask(attemptId);
+
+		if (task != null) {
+			task.triggerReConfig(signal);
+
+			return CompletableFuture.completedFuture(Acknowledge.get());
+		} else {
+			final String message = "TaskManager received a rescale signal request for unknown task " + attemptId + '.';
+
+			log.debug(message);
+			return FutureUtils.completedExceptionally(new CheckpointException(message, CheckpointFailureReason.TASK_CHECKPOINT_FAILURE));
+		}
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> modifyForRescale(
+		TaskDeploymentDescriptor tdd,
+		Time timeout) {
+		try {
+			Task task = this.taskSlotTable.getTask(tdd.getExecutionAttemptId());//获取task
+			System.out.println("Get modify request for rescale for"+task.getTaskInfo().getTaskName()+", "+tdd.getExecutionAttemptId());
+			CompletableFuture.runAsync(() -> {
+				task.modifyForRescaleSync(tdd.getProducedPartitions(), tdd.getInputGates(), taskExecutorServices.getShuffleEnvironment(), tdd.rescaleSignalType);
+			}).whenCompleteAsync(((aVoid, throwable) -> task.notifyJobMasterRescaleDeployingCompleted(tdd.getExecutionAttemptId())));
+		}catch (Exception e){
+			e.printStackTrace();
+		}
+		return CompletableFuture.completedFuture(Acknowledge.get());
+	}
+
+	@Override
+	public void triggerUpdatePartitionStrategy(ExecutionAttemptID executionAttemptID) {
+		final Task task = taskSlotTable.getTask(executionAttemptID);
+
+		if (task != null) {
+			task.triggerUpdatePartitionStrategy();
+		}else{
+			System.out.println("trigger partition error");
+			final String message = "TaskManager received a checkpoint request for unknown task " + executionAttemptID + '.';
+			log.error(message);
 		}
 	}
 }

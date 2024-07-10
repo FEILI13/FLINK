@@ -33,7 +33,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 public class ExecutionVertexID implements VertexID {
 	private final JobVertexID jobVertexId;
 
-	private final int subtaskIndex;
+	public int subtaskIndex;
 
 	public ExecutionVertexID(JobVertexID jobVertexId, int subtaskIndex) {
 		checkArgument(subtaskIndex >= 0, "subtaskIndex must be greater than or equal to 0");

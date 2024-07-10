@@ -38,6 +38,7 @@ import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptorFactory;
+import org.apache.flink.runtime.event.RuntimeEvent;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.instance.SlotSharingGroupId;
 import org.apache.flink.runtime.io.network.partition.JobMasterPartitionTracker;
@@ -57,6 +58,9 @@ import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.TaskBackPressureResponse;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.operators.coordination.TaskNotRunningException;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
+import org.apache.flink.runtime.reConfig.utils.RedisUtil;
+import org.apache.flink.runtime.reConfig.utils.RescaleState;
 import org.apache.flink.runtime.shuffle.NettyShuffleMaster;
 import org.apache.flink.runtime.shuffle.PartitionDescriptor;
 import org.apache.flink.runtime.shuffle.ProducerDescriptor;
@@ -77,6 +81,7 @@ import org.slf4j.Logger;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -103,6 +108,7 @@ import static org.apache.flink.runtime.execution.ExecutionState.FINISHED;
 import static org.apache.flink.runtime.execution.ExecutionState.RUNNING;
 import static org.apache.flink.runtime.execution.ExecutionState.SCHEDULED;
 import static org.apache.flink.runtime.scheduler.ExecutionVertexSchedulingRequirementsMapper.getPhysicalSlotResourceProfile;
+import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -310,18 +316,22 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 					if ((state == SCHEDULED || state == CREATED) && !taskManagerLocationFuture.isDone()) {
 						taskManagerLocationFuture.complete(logicalSlot.getTaskManagerLocation());
 						assignedAllocationID = logicalSlot.getAllocationId();
+						System.out.println("state = " + state + "assignedAllocationID = " + assignedAllocationID);
 						return true;
 					} else {
 						// free assigned resource and return false
 						assignedResource = null;
+						System.out.println("state = " + state + "assignedResource = " + assignedResource + "try failed");
 						return false;
 					}
 				} else {
 					assignedResource = null;
+					System.out.println("state = " + state + "assignedResource = " + assignedResource);
 					return false;
 				}
 			} else {
 				// the slot already has another slot assigned
+				System.out.println("the slot already has another slot assigned");
 				return false;
 			}
 		} else {
@@ -670,7 +680,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 	private static int getPartitionMaxParallelism(IntermediateResultPartition partition) {
 		final List<List<ExecutionEdge>> consumers = partition.getConsumers();
-		Preconditions.checkArgument(!consumers.isEmpty(), "Currently there has to be exactly one consumer in real jobs");
+		checkArgument(!consumers.isEmpty(), "Currently there has to be exactly one consumer in real jobs");
 		List<ExecutionEdge> consumer = consumers.get(0);
 		ExecutionJobVertex consumerVertex = consumer.get(0).getTarget().getJobVertex();
 		int maxParallelism = consumerVertex.getMaxParallelism();
@@ -1727,5 +1737,110 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 	private void assertRunningInJobMasterMainThread() {
 		vertex.getExecutionGraph().assertRunningInJobMasterMainThread();
+	}
+
+    public void triggerReConfig(ReConfigSignal signal) {
+		final LogicalSlot slot = assignedResource;
+
+		if (slot != null) {
+			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+
+			taskManagerGateway.triggerReConfig(attemptId, getVertex().getJobId(), signal);
+		} else {
+			LOG.debug("The execution has no slot assigned. This indicates that the execution is no longer running.");
+		}
+    }
+
+	public Map<IntermediateResultPartitionID, ResultPartitionDeploymentDescriptor> getProducedPartitions() {
+		return producedPartitions;
+	}
+
+	public void deployForRescale(RescaleState rescaleState) {
+		try{
+			final LogicalSlot slot = assignedResource;
+			final TaskDeploymentDescriptor deployment;//部署task所需的信息
+			final ComponentMainThreadExecutor jobMasterMainThreadExecutor = vertex.getExecutionGraph()
+				.getJobMasterMainThreadExecutor();
+
+			deployment = TaskDeploymentDescriptorFactory.fromExecutionVertex(vertex, attemptNumber).createDeploymentDescriptor(
+				slot.getAllocationId(),
+				slot.getPhysicalSlotNumber(),
+				taskRestore,
+				producedPartitions.values()
+			);
+
+			deployment.rescaleState = this.vertex.rescaleState;
+			deployment.rescaleSignalType = rescaleState;
+
+			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+			CompletableFuture.supplyAsync(() -> taskManagerGateway.modifyForRescale(deployment, rpcTimeout), executor)
+				.thenCompose(Function.identity())
+				.whenCompleteAsync(
+					(ack, failure) -> {
+						if (failure != null) {
+							failure.printStackTrace();
+						} else {
+//							LOG.info("deploy for rescale completed " + this.vertex.getTaskName());
+//							RescaleCoordinator rescaleCoordinator = this.vertex.getExecutionGraph().getRescaleCoordinator();
+//							if (rescaleCoordinator != null) {
+//								rescaleCoordinator.notifyRescaleDeploymentCompleted(this.vertex);
+//							}
+						}
+					},
+					jobMasterMainThreadExecutor
+				);
+		}catch (IOException e){
+			System.out.println(this.vertex.getTaskName()+" ERROR!!!");
+			e.printStackTrace();
+		}
+	}
+
+	public boolean cancelAsync(CompletableFuture<Acknowledge> cancelResult) {
+		// skip checking state
+		checkArgument(state == RUNNING);
+
+		if (transitionState(state, CANCELING)) {
+			taskManagerLocationFuture.cancel(false);
+
+			final LogicalSlot slot = assignedResource;
+
+			if (slot != null) {
+				final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+				final ComponentMainThreadExecutor jobMasterMainThreadExecutor =
+					getVertex().getExecutionGraph().getJobMasterMainThreadExecutor();
+
+				CompletableFuture<Acknowledge> cancelResultFuture = FutureUtils.retry(
+					() -> taskManagerGateway.cancelTask(attemptId, rpcTimeout),
+					NUM_CANCEL_CALL_TRIES,
+					jobMasterMainThreadExecutor);
+
+				cancelResultFuture.whenComplete(
+					(ack, failure) -> {
+						if (failure != null) {
+							fail(new Exception("Task could not be canceled.", failure));
+							cancelResult.completeExceptionally(failure);
+						} else {
+							completeCancelling();
+							cancelResult.complete(ack);
+						}
+					});
+			}
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	public void triggerUpdatePartitionStrategy(){
+		final LogicalSlot slot = assignedResource;
+
+		if (slot != null) {
+			System.out.println("+++++++++++++++++++++modify");
+			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+
+			taskManagerGateway.triggerUpdatePartitionStrategy(attemptId);
+		} else {
+			LOG.debug("The execution has no slot assigned. This indicates that the execution is no longer running.");
+		}
 	}
 }

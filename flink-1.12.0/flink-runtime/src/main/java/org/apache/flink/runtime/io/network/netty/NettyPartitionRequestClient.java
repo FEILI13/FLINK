@@ -104,7 +104,7 @@ public class NettyPartitionRequestClient implements PartitionRequestClient {
 
 		checkNotClosed();
 
-		LOG.debug("Requesting subpartition {} of partition {} with {} ms delay.",
+		LOG.info("Requesting subpartition {} of partition {} with {} ms delay.",
 				subpartitionIndex, partitionId, delayMs);
 
 		clientHandler.addInputChannel(inputChannel);
@@ -123,6 +123,9 @@ public class NettyPartitionRequestClient implements PartitionRequestClient {
 								String.format("Sending the partition request to '%s' failed.", remoteAddr),
 								future.channel().localAddress(), future.cause()
 							));
+				}else{
+					LOG.info("Partition request to '{}' for subpartition {} of partition {} succeeded.",
+						future.channel().remoteAddress(), subpartitionIndex, partitionId);
 				}
 			}
 		};

@@ -29,6 +29,7 @@ import org.apache.flink.runtime.io.network.buffer.BufferCompressor;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
 import org.apache.flink.util.function.SupplierWithException;
 
 import javax.annotation.Nullable;
@@ -53,10 +54,10 @@ import static org.apache.flink.util.Preconditions.checkState;
 public abstract class BufferWritingResultPartition extends ResultPartition {
 
 	/** The subpartitions of this partition. At least one. */
-	protected final ResultSubpartition[] subpartitions;
+	protected ResultSubpartition[] subpartitions;
 
 	/** For non-broadcast mode, each subpartition maintains a separate BufferBuilder which might be null. */
-	private final BufferBuilder[] unicastBufferBuilders;
+	protected BufferBuilder[] unicastBufferBuilders;
 
 	/** For broadcast mode, a single BufferBuilder is shared by all subpartitions. */
 	private BufferBuilder broadcastBufferBuilder;
@@ -103,6 +104,9 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 		int totalBuffers = 0;
 
 		for (ResultSubpartition subpartition : subpartitions) {
+			if(subpartition==null){
+				continue;
+			}
 			totalBuffers += subpartition.unsynchronizedGetNumberOfQueuedBuffers();
 		}
 
@@ -131,6 +135,9 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 		}
 
 		for (ResultSubpartition subpartition : subpartitions) {
+			if(subpartition==null){
+				continue;
+			}
 			subpartition.flush();
 		}
 	}
@@ -177,10 +184,23 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 		finishBroadcastBufferBuilder();
 		finishUnicastBufferBuilders();
 
-		try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event, isPriorityEvent)) {
-			for (ResultSubpartition subpartition : subpartitions) {
-				// Retain the buffer so that it can be recycled by each channel of targetPartition
-				subpartition.add(eventBufferConsumer.copy(), 0);
+		if(event instanceof ReConfigSignal && ((ReConfigSignal)event).getType()== ReConfigSignal.ReConfigSignalType.MIGRATE && getOwningTaskName().contains("upStream")) {
+			int source = ((ReConfigSignal) event).getSourceTask();
+			int target = ((ReConfigSignal) event).getTargetTask();
+
+			try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumerReConfig(event, isPriorityEvent)) {
+				subpartitions[source].add(eventBufferConsumer.copy(), 0);
+				subpartitions[target].add(eventBufferConsumer.copy(), 0);
+			}
+		}else{
+			try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event, isPriorityEvent)) {
+				for (ResultSubpartition subpartition : subpartitions) {
+					if(subpartition==null){
+						continue;
+					}
+					// Retain the buffer so that it can be recycled by each channel of targetPartition
+					subpartition.add(eventBufferConsumer.copy(), 0);
+				}
 			}
 		}
 	}
@@ -201,7 +221,7 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 		ResultSubpartition subpartition = subpartitions[subpartitionIndex];
 		ResultSubpartitionView readView = subpartition.createReadView(availabilityListener);
 
-		LOG.debug("Created {}", readView);
+		LOG.info("Created {}", readView);
 
 		return readView;
 	}
@@ -290,6 +310,9 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 	private void createBroadcastBufferConsumers(BufferBuilder buffer, int partialRecordBytes) throws IOException {
 		try (final BufferConsumer consumer = buffer.createBufferConsumerFromBeginning()) {
 			for (ResultSubpartition subpartition : subpartitions) {
+				if(subpartition==null){
+					continue;
+				}
 				subpartition.add(consumer.copy(), partialRecordBytes);
 			}
 		}

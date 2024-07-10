@@ -110,6 +110,9 @@ public class JobVertexTaskManagersHandler extends AbstractExecutionGraphHandler<
 		Map<String, String> taskManagerId2Host = new HashMap<>();
 		Map<String, List<AccessExecutionVertex>> taskManagerVertices = new HashMap<>();
 		for (AccessExecutionVertex vertex : jobVertex.getTaskVertices()) {
+			if(vertex == null){
+				continue;
+			}
 			TaskManagerLocation location = vertex.getCurrentAssignedResourceLocation();
 			String taskManagerHost = location == null ? "(unassigned)" : location.getHostname() + ':' + location.dataPort();
 			String taskmanagerId = location == null ? "(unassigned)" : location.getResourceID().toString();

@@ -28,6 +28,7 @@ import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.clusterframework.types.SlotID;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
+import org.apache.flink.runtime.event.RuntimeEvent;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
@@ -38,6 +39,7 @@ import org.apache.flink.runtime.jobmaster.JobMasterId;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.TaskBackPressureResponse;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rest.messages.LogInfo;
 import org.apache.flink.runtime.rest.messages.taskmanager.ThreadDumpInfo;
@@ -269,4 +271,16 @@ public interface TaskExecutorGateway extends RpcGateway, TaskExecutorOperatorEve
 	 * @return the {@link ThreadDumpInfo} for this TaskManager.
 	 */
 	CompletableFuture<ThreadDumpInfo> requestThreadDump(@RpcTimeout Time timeout);
+
+    default CompletableFuture<Acknowledge> triggerReConfig(ExecutionAttemptID attemptId, JobID jobId, ReConfigSignal signal){
+		throw new UnsupportedOperationException();
+	}
+
+    default CompletableFuture<Acknowledge> modifyForRescale(TaskDeploymentDescriptor tdd, Time timeout){
+		throw new UnsupportedOperationException();
+	}
+
+	default void triggerUpdatePartitionStrategy(ExecutionAttemptID executionAttemptID) throws UnsupportedOperationException{
+		throw new UnsupportedOperationException();
+	}
 }

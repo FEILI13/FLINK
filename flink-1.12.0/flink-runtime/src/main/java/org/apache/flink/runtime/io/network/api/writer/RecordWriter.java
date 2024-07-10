@@ -56,7 +56,7 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 
 	protected final ResultPartitionWriter targetPartition;
 
-	protected final int numberOfChannels;
+	protected int numberOfChannels;
 
 	protected final DataOutputSerializer serializer;
 
@@ -209,7 +209,22 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 		}
 	}
 
-	// ------------------------------------------------------------------------
+	public void updateControl(int keyGroupIndex, int targetIndex, int batch, int splitNum) {
+		System.out.println("should not reach here");
+	}
+
+	public void cleanRouting() {
+		System.out.println("should not reach here");
+	}
+
+	public int updateNumberOfChannels(){
+		int numChannels = this.targetPartition.getNumberOfSubpartitionsForRescale();
+		System.out.println("pre channel number :" + this.numberOfChannels+" after channel number :"+numChannels);
+		this.numberOfChannels = numChannels;
+		return numChannels;
+	}
+
+    // ------------------------------------------------------------------------
 
 	/**
 	 * A dedicated thread that periodically flushes the output buffers, to set upper latency bounds.
@@ -260,5 +275,9 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 	@VisibleForTesting
 	ResultPartitionWriter getTargetPartition() {
 		return targetPartition;
+	}
+
+	int getMessageCount(){
+		throw new UnsupportedOperationException();
 	}
 }

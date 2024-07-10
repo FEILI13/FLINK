@@ -108,6 +108,9 @@ public class JobVertexDetailsHandler extends AbstractExecutionGraphHandler<JobVe
 		List<SubtaskExecutionAttemptDetailsInfo> subtasks = new ArrayList<>();
 		final long now = System.currentTimeMillis();
 		for (AccessExecutionVertex vertex : jobVertex.getTaskVertices()) {
+			if(vertex == null){
+				continue;
+			}
 			final AccessExecution execution = vertex.getCurrentExecutionAttempt();
 			final JobVertexID jobVertexID = jobVertex.getJobVertexId();
 			subtasks.add(SubtaskExecutionAttemptDetailsInfo.create(execution, metricFetcher, jobID, jobVertexID));

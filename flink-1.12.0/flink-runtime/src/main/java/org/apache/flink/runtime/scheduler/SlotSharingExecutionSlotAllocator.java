@@ -27,6 +27,7 @@ import org.apache.flink.runtime.jobmaster.slotpool.PhysicalSlot;
 import org.apache.flink.runtime.jobmaster.slotpool.PhysicalSlotProvider;
 import org.apache.flink.runtime.jobmaster.slotpool.PhysicalSlotRequest;
 import org.apache.flink.runtime.jobmaster.slotpool.PhysicalSlotRequestBulkChecker;
+import org.apache.flink.runtime.reConfig.utils.RescaleState;
 import org.apache.flink.runtime.scheduler.SharedSlotProfileRetriever.SharedSlotProfileRetrieverFactory;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 import org.apache.flink.util.FlinkException;
@@ -207,6 +208,18 @@ class SlotSharingExecutionSlotAllocator implements ExecutionSlotAllocator {
 	}
 
 	private ResourceProfile getPhysicalSlotResourceProfile(ExecutionSlotSharingGroup executionSlotSharingGroup) {
+		if(executionSlotSharingGroup.rescaleState == RescaleState.NEW){
+			System.out.println("getPhysicalSlotResourceProfile: RescaleState.NEW");
+			ResourceProfile reduce = executionSlotSharingGroup
+				.getExecutionVertexIds()
+				.stream()
+				.reduce(
+					ResourceProfile.ZERO,
+					(r, e) -> r.merge(resourceProfileRetriever.apply(e)),
+					ResourceProfile::merge);
+			reduce.targetIp = "172.20.0.10";
+			return reduce;
+		}
 		return executionSlotSharingGroup
 			.getExecutionVertexIds()
 			.stream()
@@ -241,5 +254,15 @@ class SlotSharingExecutionSlotAllocator implements ExecutionSlotAllocator {
 				return null;
 			});
 		}
+	}
+
+	@Override
+	public void updateForRescale(ExecutionSlotAllocator executionSlotAllocator) {
+		this.slotSharingStrategy.updateForRescale(((SlotSharingExecutionSlotAllocator)executionSlotAllocator).slotSharingStrategy);
+	}
+
+	@Override
+	public void clean() {
+		this.slotSharingStrategy.clean();
 	}
 }

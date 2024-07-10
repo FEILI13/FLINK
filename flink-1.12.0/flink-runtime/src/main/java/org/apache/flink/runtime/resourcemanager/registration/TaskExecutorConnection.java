@@ -53,4 +53,8 @@ public class TaskExecutorConnection {
 	public TaskExecutorGateway getTaskExecutorGateway() {
 		return taskExecutorGateway;
 	}
+
+	public String getAddress() {
+		return taskExecutorGateway.getAddress();
+	}
 }

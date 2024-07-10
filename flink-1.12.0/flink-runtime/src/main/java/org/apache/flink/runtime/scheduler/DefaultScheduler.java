@@ -30,6 +30,7 @@ import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.runtime.execution.ExecutionState;
+import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.ExecutionVertex;
 import org.apache.flink.runtime.executiongraph.TaskExecutionStateTransition;
@@ -41,14 +42,18 @@ import org.apache.flink.runtime.executiongraph.restart.ThrowingRestartStrategy;
 import org.apache.flink.runtime.io.network.partition.JobMasterPartitionTracker;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.runtime.jobgraph.JobVertexID;
+import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroupDesc;
 import org.apache.flink.runtime.jobmanager.scheduler.NoResourceAvailableException;
 import org.apache.flink.runtime.jobmanager.scheduler.SlotSharingGroup;
 import org.apache.flink.runtime.jobmaster.ExecutionDeploymentTracker;
 import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.jobmaster.slotpool.ThrowingSlotProvider;
+import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.metrics.groups.JobManagerJobMetricGroup;
 import org.apache.flink.runtime.operators.coordination.OperatorCoordinator;
+import org.apache.flink.runtime.reConfig.utils.RescaleState;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.BackPressureStatsTracker;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingStrategy;
@@ -64,6 +69,7 @@ import javax.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -71,6 +77,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -80,6 +87,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static org.apache.flink.runtime.reConfig.message.ReConfigSignal.ReConfigSignalType.CLEAN;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -98,13 +106,16 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 
 	private final ScheduledExecutor delayExecutor;
 
-	private final SchedulingStrategy schedulingStrategy;
+	private SchedulingStrategy schedulingStrategy;
 
 	private final ExecutionVertexOperations executionVertexOperations;
 
 	private final Set<ExecutionVertexID> verticesWaitingForRestart;
 
 	private final Consumer<ComponentMainThreadExecutor> startUpAction;
+
+	private final SchedulingStrategyFactory schedulingStrategyFactory;
+	private final ExecutionSlotAllocatorFactory executionSlotAllocatorFactory;
 
 	DefaultScheduler(
 		final Logger log,
@@ -168,6 +179,9 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 			getSchedulingTopology(),
 			failoverStrategy,
 			restartBackoffTimeStrategy);
+		this.schedulingStrategyFactory = schedulingStrategyFactory;
+		this.executionSlotAllocatorFactory = executionSlotAllocatorFactory;
+
 		this.schedulingStrategy = schedulingStrategyFactory.createInstance(this, getSchedulingTopology());
 
 		this.executionSlotAllocator = checkNotNull(executionSlotAllocatorFactory)
@@ -566,5 +580,178 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 		public Optional<TaskManagerLocation> getStateLocation(ExecutionVertexID executionVertexId) {
 			return stateLocationRetriever.getStateLocation(executionVertexId);
 		}
+	}
+
+	@Override
+	public void changeTopo(String taskName, int newParallelism) {
+		JobVertexID jobVertexID = this.executionGraph.changeTopo(taskName, newParallelism);
+		super.schedulingTopology = executionGraph.getSchedulingTopology();
+		this.schedulingStrategy = schedulingStrategyFactory.createInstance(this, getSchedulingTopology());
+		ExecutionSlotAllocator newExecutionSlotAllocator = checkNotNull(executionSlotAllocatorFactory)
+			.createInstance(new DefaultExecutionSlotAllocationContext());
+		// TODO 修改assignedJobVerticesForGroups，executionSlotSharingGroupMap
+		this.executionSlotAllocator.updateForRescale(newExecutionSlotAllocator);
+		this.schedulingStrategy.startSchedulingForRescale();
+
+
+		ExecutionJobVertex jobVertex = executionGraph.getJobVertex(jobVertexID);
+
+		List<ExecutionVertex> tmp1 = new ArrayList<>();
+		for(ExecutionVertex ev:jobVertex.getTaskVertices()){
+//			if(ev.getTaskName().contains("upStream")){
+//				tmp1.add(ev);
+//			}
+//			if(ev.getTaskName().contains("ReConfig")){
+				tmp1.add(ev);
+//			}
+		}
+		this.executionGraph.getReConfigController().updateReConfigVertex(tmp1.toArray(new ExecutionVertex[0]));
+	}
+
+	@Override
+	public void acknowledgeDeploymentForRescaling(ExecutionAttemptID executionAttemptID) {
+		assert this.executionGraph.getReConfigController().reConfigResultCollector != null;
+		this.executionGraph.getReConfigController().reConfigResultCollector.acknowledgeDeploymentForRescaling(executionAttemptID);
+	}
+
+	@Override
+	public void rescaleClean() {
+		this.schedulingStrategy.releaseResourcesForRescale();
+		this.executionSlotAllocator.clean();
+		this.executionGraph.cleanRescaleStates();
+	}
+
+	@Override
+	public void allocateSlotsAndDeployForRescale(List<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions) {
+		//每个pipelineRegion内部的Vertex逐个调度
+		for(ExecutionVertexDeploymentOption evdo: executionVertexDeploymentOptions){
+			List<ExecutionVertexDeploymentOption> singleList = Collections.singletonList(evdo);
+			if(getExecutionVertex(evdo.getExecutionVertexId()).rescaleState == RescaleState.NEW){
+				System.out.println("now start new vertex deploy:"+getExecutionGraph().getJobVertex(evdo.getExecutionVertexId()
+					.getJobVertexId()).getName() + "_"+evdo.getExecutionVertexId().getSubtaskIndex());
+				deployNewDeploymentsAndWaitUntilDone(singleList);//部署到slot中，调用Flink原有代码
+			}
+			else{
+				System.out.println("now start modify vertex deploy:"+getExecutionGraph().getJobVertex(evdo.getExecutionVertexId()
+					.getJobVertexId()).getName() + "_"+evdo.getExecutionVertexId().getSubtaskIndex());
+				updateModifiedVertices(singleList);
+			}
+		}
+	}
+
+	public void deployNewDeploymentsAndWaitUntilDone(List<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions){
+		final Map<ExecutionVertexID, ExecutionVertexDeploymentOption> deploymentOptionsByVertex =
+			groupDeploymentOptionsByVertexId(executionVertexDeploymentOptions);
+
+		final List<ExecutionVertexID> verticesToDeploy = executionVertexDeploymentOptions.stream()
+			.map(ExecutionVertexDeploymentOption::getExecutionVertexId)
+			.collect(Collectors.toList());
+
+		final Map<ExecutionVertexID, ExecutionVertexVersion> requiredVersionByVertex =
+			executionVertexVersioner.recordVertexModifications(verticesToDeploy);
+
+		transitionToScheduled(verticesToDeploy);//Execution生命周期至SCHEDULED（CREATED->SCHEDULED）
+
+		final List<SlotExecutionVertexAssignment> slotExecutionVertexAssignments =
+			allocateSlots(executionVertexDeploymentOptions);
+
+		final List<DeploymentHandle> deploymentHandles = createDeploymentHandles(
+			requiredVersionByVertex,
+			deploymentOptionsByVertex,
+			slotExecutionVertexAssignments);
+
+		waitForAllSlotsAndDeployToBeDone(deploymentHandles);
+	}
+
+//	private void updateModifiedVertices(List<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions){
+//		List<ExecutionVertex> deployingExecutionVertices = new ArrayList<>();
+//
+//		executionVertexDeploymentOptions.forEach(executionVertexDeploymentOption -> {
+//			ExecutionVertex ev = getExecutionVertex(executionVertexDeploymentOption.getExecutionVertexId());
+//			if(ev.rescaleState == RescaleState.MODIFIED){
+//				getExecutionVertex(executionVertexDeploymentOption.getExecutionVertexId())
+//					.getCurrentExecutionAttempt()
+//					.deployForRescale();
+//				deployingExecutionVertices.add(ev);
+//			}
+//		});
+//
+////		if(!deployingExecutionVertices.isEmpty()){
+////			try {
+////				CompletableFuture<Acknowledge> future = getExecutionGraph().getReConfigController().notifyStartAsyncDeploymentForRescale(deployingExecutionVertices);
+////				future.get();
+////			}catch (InterruptedException | ExecutionException e){
+////				e.printStackTrace();
+////			}
+////		}
+//	}
+
+	private void updateModifiedVertices(List<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions){
+		updateModifiedVertices(executionVertexDeploymentOptions, RescaleState.NONE);
+	}
+
+	private void updateModifiedVertices(List<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions, RescaleState rescaleState) {
+		List<ExecutionVertex> deployingExecutionVertices = new ArrayList<>();
+
+		System.out.println("call updateModifiedVertices "+rescaleState);
+		executionVertexDeploymentOptions.forEach(executionVertexDeploymentOption -> {
+			ExecutionVertex ev = getExecutionVertex(executionVertexDeploymentOption.getExecutionVertexId());
+			System.out.println(ev+" rescaleState: "+ev.rescaleState);
+			if (ev.rescaleState == RescaleState.MODIFIED) {
+				getExecutionVertex(executionVertexDeploymentOption.getExecutionVertexId())
+					.getCurrentExecutionAttempt()
+					.deployForRescale(rescaleState);
+				deployingExecutionVertices.add(ev);
+			}
+		});
+		if (!deployingExecutionVertices.isEmpty()) {
+			checkNotNull(executionGraph.getReConfigController());
+			try {
+				CompletableFuture<Acknowledge> future = executionGraph.getReConfigController().reConfigResultCollector.notifyStartAsyncDeploymentForRescale(deployingExecutionVertices);
+				future.get();
+			} catch (InterruptedException | ExecutionException e) {
+				e.printStackTrace();
+			}
+		}
+
+		System.out.println("update modified vertices");
+	}
+
+	private void waitForAllSlotsAndDeployToBeDone(final List<DeploymentHandle> deploymentHandles){
+		CompletableFuture<Void> future = assignAllResources(deploymentHandles).handle(deployAll(deploymentHandles));
+		try {
+			future.get();
+		}catch (InterruptedException | ExecutionException e){
+			e.printStackTrace();
+		}
+	}
+
+	@Override
+	public void cancelTasksAndChannelsForRescale(List<ExecutionVertexDeploymentOption> savedExecutionVertexDeploymentOptionsForRescale) {
+		// cancel the removed vertices
+		List<ExecutionVertex> removedExecutionVertices = this.executionGraph.removeExecutionVertices;
+		int numRemovedExecutionVertices = removedExecutionVertices.size();
+		CompletableFuture<?>[] cancelResultFutures = new CompletableFuture<?>[numRemovedExecutionVertices];
+		for (int i = 0; i < numRemovedExecutionVertices; i++) {
+			ExecutionVertex ev = removedExecutionVertices.get(i);
+			CompletableFuture<Acknowledge> cancelResultFuture = new CompletableFuture<>();
+			boolean sendRpcCallSuccess = ev.getCurrentExecutionAttempt().cancelAsync(cancelResultFuture);
+			if (sendRpcCallSuccess) {
+				System.out.println("remove vertex: " + ev + " state:"+ev.rescaleState);
+				cancelResultFutures[i] = cancelResultFuture;
+			} else {
+				log.error("Cannot send cancel call of {}.", ev);
+				log.info("Cannot send cancel call of {}.", ev);
+			}
+		}
+
+		// wait for the cancels to be completed
+		CompletableFuture<Void> all = cancelResultFutures.length == 0 ? CompletableFuture.completedFuture(null) : CompletableFuture.allOf(cancelResultFutures);
+		all.join();
+//		all.whenComplete((v, throwable) -> {
+			// cancel channels
+			updateModifiedVertices(savedExecutionVertexDeploymentOptionsForRescale, RescaleState.CLEAN);
+//		});
+
 	}
 }

@@ -44,4 +44,6 @@ public interface CheckpointableInput {
 	void checkpointStopped(long cancelledCheckpointId);
 
 	int getInputGateIndex();
+
+	default void block(long barrierId){throw new UnsupportedOperationException();}
 }

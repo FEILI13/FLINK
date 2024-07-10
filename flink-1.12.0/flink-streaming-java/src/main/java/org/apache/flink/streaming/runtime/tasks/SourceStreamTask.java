@@ -35,6 +35,7 @@ import org.apache.flink.util.Preconditions;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
+import java.util.concurrent.locks.LockSupport;
 
 /**
  * {@link StreamTask} for executing a {@link StreamSource}.

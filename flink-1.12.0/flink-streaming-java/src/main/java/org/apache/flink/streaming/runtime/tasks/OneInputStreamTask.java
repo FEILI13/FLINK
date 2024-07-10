@@ -89,6 +89,7 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 
 		if (numberOfInputs > 0) {
 			CheckpointedInputGate inputGate = createCheckpointedInputGate();
+			inputGate.setStreamTask(this);
 			Counter numRecordsIn = setupNumRecordsInCounter(mainOperator);
 			DataOutput<IN> output = createDataOutput(numRecordsIn);
 			StreamTaskInput<IN> input = createTaskInput(inputGate);

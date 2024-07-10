@@ -85,7 +85,7 @@ public abstract class ResultPartition implements ResultPartitionWriter {
 
 	protected final ResultPartitionManager partitionManager;
 
-	protected final int numSubpartitions;
+	protected int numSubpartitions;
 
 	private final int numTargetKeyGroups;
 
@@ -108,6 +108,9 @@ public abstract class ResultPartition implements ResultPartitionWriter {
 	protected Counter numBytesOut = new SimpleCounter();
 
 	protected Counter numBuffersOut = new SimpleCounter();
+
+	static final int UNSET_MARKED_NUM_SUB_PAR = -1;
+	int markedNewNumSubpartitions = UNSET_MARKED_NUM_SUB_PAR;
 
 	public ResultPartition(
 		String owningTaskName,
@@ -314,5 +317,10 @@ public abstract class ResultPartition implements ResultPartitionWriter {
 	 */
 	protected boolean canBeCompressed(Buffer buffer) {
 		return bufferCompressor != null && buffer.isBuffer() && buffer.readableBytes() > 0;
+	}
+
+	@Override
+	public int getNumberOfSubpartitionsForRescale() {
+		return markedNewNumSubpartitions == -1 ? numSubpartitions : markedNewNumSubpartitions;
 	}
 }

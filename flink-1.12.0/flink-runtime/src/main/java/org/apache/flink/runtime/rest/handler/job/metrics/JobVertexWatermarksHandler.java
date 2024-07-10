@@ -87,6 +87,9 @@ public class JobVertexWatermarksHandler extends AbstractJobVertexHandler<MetricC
 		List<Metric> metrics = new ArrayList<>(taskVertices.length);
 
 		for (AccessExecutionVertex taskVertex : taskVertices) {
+			if(taskVertex == null){
+				continue;
+			}
 			String id = taskVertex.getParallelSubtaskIndex() + "." + MetricNames.IO_CURRENT_INPUT_WATERMARK;
 			String watermarkValue = taskMetricStore.getMetric(id);
 			if (watermarkValue != null) {

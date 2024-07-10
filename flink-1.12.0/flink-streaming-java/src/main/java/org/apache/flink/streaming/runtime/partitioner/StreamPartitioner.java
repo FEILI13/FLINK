@@ -76,4 +76,9 @@ public abstract class StreamPartitioner<T> implements
 	 * Defines the behavior of this partitioner, when downstream rescaled during recovery of in-flight data.
 	 */
 	public abstract SubtaskStateMapper getDownstreamSubtaskStateMapper();
+
+	@Override
+	public void updateControl(int keyGroupIndex, int targetIndex, int batch, int splitNum) {
+		ChannelSelector.super.updateControl(keyGroupIndex, targetIndex, batch, splitNum);
+	}
 }

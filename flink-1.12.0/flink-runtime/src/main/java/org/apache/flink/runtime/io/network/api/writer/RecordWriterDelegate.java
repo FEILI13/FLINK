@@ -43,4 +43,14 @@ public interface RecordWriterDelegate<T extends IOReadableWritable> extends Avai
 	 * @param outputIndex the index respective to the record writer instance.
 	 */
 	RecordWriter<T> getRecordWriter(int outputIndex);
+
+	default int getMessageCount(){
+		throw new UnsupportedOperationException();
+	}
+
+	void updateControl(int keyGroupIndex, int targetIndex, int batch, int splitNum);
+
+	void cleanRouting();
+
+    int updatePartitionStrategy();
 }

@@ -60,6 +60,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.apache.flink.util.Preconditions.checkState;
@@ -627,5 +628,35 @@ public abstract class AbstractStreamOperator<OUT>
 
 	protected Optional<InternalTimeServiceManager<?>> getTimeServiceManager() {
 		return Optional.ofNullable(timeServiceManager);
+	}
+
+	@Override
+	public void migrate(long version, int keyGroupIndex, int batch, int splitNum) {
+		stateHandler.migrate(version, keyGroupIndex, batch, splitNum);
+	}
+
+	@Override
+	public void fetchState(long version, int keyGroupIndex, int batch, int splitNum) {
+		stateHandler.fetchState(version, keyGroupIndex, batch, splitNum);
+	}
+
+	@Override
+	public Map<Integer, Integer> getFrequencyWindowInfo() {
+		return stateHandler.getFrequencyWindowInfo();
+	}
+
+	@Override
+	public Map<Integer, Long> getSizeWindowInfo(boolean isALL) {
+		return stateHandler.getSizeWindowInfo(isALL);
+	}
+
+	@Override
+	public void cleanStateWindow() {
+		stateHandler.cleanStateWindow();
+	}
+
+	@Override
+	public void cleanState() {
+		stateHandler.cleanState();
 	}
 }

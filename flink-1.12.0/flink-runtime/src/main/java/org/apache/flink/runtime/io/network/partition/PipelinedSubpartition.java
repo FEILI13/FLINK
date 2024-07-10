@@ -248,7 +248,7 @@ public class PipelinedSubpartition extends ResultSubpartition
 			isReleased = true;
 		}
 
-		LOG.debug("{}: Released {}.", parent.getOwningTaskName(), this);
+		LOG.info("{}: Released {}.", parent.getOwningTaskName(), this);
 
 		if (view != null) {
 			view.releaseAllResources();
@@ -340,7 +340,9 @@ public class PipelinedSubpartition extends ResultSubpartition
 				getSubPartitionIndex(),
 				parent.getPartitionId());
 
-			LOG.debug("{}: Creating read view for subpartition {} of partition {}.",
+			System.out.println(parent.getOwningTaskName()+" "+getSubpartitionInfo()+" readview is not null");
+
+			LOG.info("{}: Creating read view for subpartition {} of partition {}.",
 				parent.getOwningTaskName(), getSubPartitionIndex(), parent.getPartitionId());
 
 			readView = new PipelinedSubpartitionView(this, availabilityListener);

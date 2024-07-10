@@ -24,6 +24,7 @@ import org.apache.flink.core.memory.MemorySegmentFactory;
 import org.apache.flink.core.memory.MemorySegmentProvider;
 import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
+import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.execution.CancelTaskException;
@@ -135,7 +136,7 @@ public class SingleInputGate extends IndexedInputGate {
 	private final int consumedSubpartitionIndex;
 
 	/** The number of input channels (equivalent to the number of consumed partitions). */
-	private final int numberOfInputChannels;
+	private int numberOfInputChannels;
 
 	/**
 	 * Input channels. There is a one input channel for each consumed intermediate result partition.
@@ -144,7 +145,7 @@ public class SingleInputGate extends IndexedInputGate {
 	private final Map<IntermediateResultPartitionID, InputChannel> inputChannels;
 
 	@GuardedBy("requestLock")
-	private final InputChannel[] channels;
+	private InputChannel[] channels;
 
 	/** Channels, which notified this input gate about available data. */
 	private final PrioritizedDeque<InputChannel> inputChannelsWithData = new PrioritizedDeque<>();
@@ -889,4 +890,108 @@ public class SingleInputGate extends IndexedInputGate {
 	public Map<IntermediateResultPartitionID, InputChannel> getInputChannels() {
 		return inputChannels;
 	}
+
+	@Override
+	public void modifyForRescale(InputGateDeploymentDescriptor inputGateDeploymentDescriptor) {
+		int newNumChannles = inputGateDeploymentDescriptor.getShuffleDescriptors().length;
+		if (newNumChannles > this.numberOfInputChannels) {
+			this.numberOfInputChannels = newNumChannles;
+//			this.inputChannels = new HashMap<>(numberOfInputChannels);
+			this.channels = Arrays.copyOf(channels, newNumChannles);
+//			this.channelsWithEndOfPartitionEvents = new BitSet(numberOfInputChannels);
+//			this.enqueuedInputChannelsWithData = new BitSet(numberOfInputChannels);
+			this.lastPrioritySequenceNumber = Arrays.copyOf(lastPrioritySequenceNumber, newNumChannles);
+		} else {
+			this.numberOfInputChannels = newNumChannles;
+//			for (int i = newNumChannles; i < this.channels.length; i++) {
+//				this.inputChannels.remove(this.channels[i].getPartitionId().getPartitionId());
+//				this.channelsWithEndOfPartitionEvents.clear(i);
+//				this.enqueuedInputChannelsWithData.clear(i);
+//			}
+//			this.channels = Arrays.copyOf(channels, newNumChannles);
+//			this.lastPrioritySequenceNumber = Arrays.copyOf(lastPrioritySequenceNumber, newNumChannles);
+			for (int i = 0; i < this.channels.length - newNumChannles; i++) {
+				this.inputChannels.remove(this.channels[i].getPartitionId().getPartitionId());
+				this.channelsWithEndOfPartitionEvents.clear(i);
+				this.enqueuedInputChannelsWithData.clear(i);
+			}
+//			this.channels = Arrays.copyOfRange(channels, channels.length - newNumChannles, channels.length);
+//			this.lastPrioritySequenceNumber = Arrays.copyOfRange(lastPrioritySequenceNumber, lastPrioritySequenceNumber.length - newNumChannles, lastPrioritySequenceNumber.length);
+			this.channels[0] = null;
+			this.lastPrioritySequenceNumber[0] = Integer.MIN_VALUE;
+		}
+	}
+
+	void appendInputChannels(
+		int previousNumChannels,
+		InputChannel... channels) {
+		synchronized (requestLock) {
+			System.arraycopy(channels, 0, this.channels, previousNumChannels, numberOfInputChannels - previousNumChannels);
+			for (InputChannel inputChannel : channels) {
+				IntermediateResultPartitionID partitionId = inputChannel.getPartitionId().getPartitionId();
+				if (inputChannels.put(partitionId, inputChannel) == null
+					&& inputChannel instanceof UnknownInputChannel) {
+
+					numberOfUninitializedChannels++;
+				}
+			}
+		}
+	}
+
+	@Override
+	public void requestPartitionsForRescale(int previousNumChannels) {
+		synchronized (requestLock) {
+			if (closeFuture.isDone()) {
+				throw new IllegalStateException("Already released.");
+			}
+
+			// Sanity checks
+			if (numberOfInputChannels != inputChannels.size()) {
+				throw new IllegalStateException(String.format(
+					"Bug in input gate setup logic: mismatch between " +
+						"number of total input channels [%s] and the currently set number of input " +
+						"channels [%s].",
+					inputChannels.size(),
+					numberOfInputChannels));
+			}
+
+			convertRecoveredInputChannelsForRescale();
+			internalRequestPartitionsForRescale(previousNumChannels);
+
+		}
+	}
+
+	void convertRecoveredInputChannelsForRescale() {
+		for (Map.Entry<IntermediateResultPartitionID, InputChannel> entry : inputChannels.entrySet()) {
+			System.out.println("inputChannels.entrySet()"+entry.getValue());
+			InputChannel inputChannel = entry.getValue();
+			if (inputChannel instanceof RecoveredInputChannel) {
+				System.out.println("!!!inputChannel instanceof RecoveredInputChannel!!!");
+				try {
+					InputChannel realInputChannel = ((RecoveredInputChannel) inputChannel).completeStateConsumedFutureAndConvertToInputChannel();
+					inputChannel.releaseAllResources();
+					entry.setValue(realInputChannel);
+					channels[inputChannel.getChannelIndex()] = realInputChannel;//更新RecoveredInputChannel为新的inputChannel
+				} catch (Throwable t) {
+					inputChannel.setError(t);
+					return;
+				}
+			}
+		}
+	}
+
+	private void internalRequestPartitionsForRescale(int previousNumChannels) {
+		// only trigger the newly added channels
+		for (int i = previousNumChannels; i < channels.length; i++) {
+			InputChannel inputChannel = channels[i];
+			try {
+				System.out.println("consumedSubpartitionIndex is :"+consumedSubpartitionIndex);
+				inputChannel.requestSubpartition(consumedSubpartitionIndex);
+			} catch (Throwable t) {
+				inputChannel.setError(t);
+				return;
+			}
+		}
+	}
+
 }

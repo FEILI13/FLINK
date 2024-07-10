@@ -56,6 +56,8 @@ public class PipelinedRegionSchedulingStrategy implements SchedulingStrategy {
 
 	private final Map<SchedulingPipelinedRegion, List<ExecutionVertexID>> regionVerticesSorted = new IdentityHashMap<>();
 
+	private List<ExecutionVertexDeploymentOption> savedExecutionVertexDeploymentOptionsForRescale;
+
 	public PipelinedRegionSchedulingStrategy(
 			final SchedulerOperations schedulerOperations,
 			final SchedulingTopology schedulingTopology) {
@@ -89,6 +91,11 @@ public class PipelinedRegionSchedulingStrategy implements SchedulingStrategy {
 			.filter(region -> !region.getConsumedResults().iterator().hasNext())
 			.collect(Collectors.toSet());
 		maybeScheduleRegions(sourceRegions);
+	}
+
+	@Override
+	public void releaseResourcesForRescale() {
+		this.schedulerOperations.cancelTasksAndChannelsForRescale(savedExecutionVertexDeploymentOptionsForRescale);
 	}
 
 	@Override
@@ -170,5 +177,40 @@ public class PipelinedRegionSchedulingStrategy implements SchedulingStrategy {
 				final SchedulingTopology schedulingTopology) {
 			return new PipelinedRegionSchedulingStrategy(schedulerOperations, schedulingTopology);
 		}
+	}
+
+	@Override
+	public void startSchedulingForRescale() {
+		final Set<SchedulingPipelinedRegion> sourceRegions = IterableUtils
+			.toStream(schedulingTopology.getAllPipelinedRegions())
+			.filter(region -> !region.getConsumedResults().iterator().hasNext())
+			.collect(Collectors.toSet());
+		maybeScheduleRegionsForRescale(sourceRegions);//对pipelinedRegion进行调度
+	}
+
+	private void maybeScheduleRegionsForRescale(final  Set<SchedulingPipelinedRegion> regions){
+		final List<SchedulingPipelinedRegion> regionsSorted =
+			SchedulingStrategyUtils.sortPipelinedRegionsInTopologicalOrder(schedulingTopology, regions);
+		for (SchedulingPipelinedRegion region : regionsSorted) {
+			maybeScheduleRegionForRescale(region);
+		}
+	}
+
+	private void maybeScheduleRegionForRescale(final SchedulingPipelinedRegion region){
+		System.out.println("now is :"+getClass().getName()+" maybeScheduleRegionForRescale() 1");
+		if (!areRegionInputsAllConsumable(region)) {
+			return;
+		}
+		System.out.println("now is :"+getClass().getName()+" maybeScheduleRegionForRescale() 2");
+//		checkState(areRegionVerticesAllInCreatedState(region), "BUG: trying to schedule a region which is not in CREATED state");
+
+		final List<ExecutionVertexDeploymentOption> vertexDeploymentOptions =
+			SchedulingStrategyUtils.createExecutionVertexDeploymentOptions(
+				regionVerticesSorted.get(region),
+				id -> deploymentOption);
+		System.out.println("now is :"+getClass().getName()+" maybeScheduleRegionForRescale() 3");
+		schedulerOperations.allocateSlotsAndDeployForRescale(vertexDeploymentOptions);
+
+		savedExecutionVertexDeploymentOptionsForRescale = vertexDeploymentOptions;
 	}
 }

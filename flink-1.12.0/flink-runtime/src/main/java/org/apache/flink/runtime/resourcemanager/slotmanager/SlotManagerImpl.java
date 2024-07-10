@@ -631,6 +631,17 @@ public class SlotManagerImpl implements SlotManager {
 	 * if there is no such slot available.
 	 */
 	private Optional<TaskManagerSlot> findMatchingSlot(ResourceProfile requestResourceProfile) {
+
+		if(requestResourceProfile.targetIp!=null){
+			for(TaskManagerSlot slot:freeSlots.values()){
+				System.out.println("requestResourceProfile.targetIp: "+requestResourceProfile.targetIp+" slot.getTaskManagerConnection().getAddress(): "+slot.getTaskManagerConnection().getAddress());
+				if(slot.getTaskManagerConnection().getAddress().contains(requestResourceProfile.targetIp)){
+					freeSlots.remove(slot.getSlotId());
+					return Optional.of(slot);
+				}
+			}
+		}
+
 		final Optional<TaskManagerSlot> optionalMatchingSlot = slotMatchingStrategy.findMatchingSlot(
 			requestResourceProfile,
 			freeSlots.values(),

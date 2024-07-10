@@ -26,6 +26,7 @@ import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.JobInformation;
 import org.apache.flink.runtime.executiongraph.TaskInformation;
+import org.apache.flink.runtime.reConfig.utils.RescaleState;
 import org.apache.flink.util.FileUtils;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
@@ -43,6 +44,9 @@ import java.util.List;
 public final class TaskDeploymentDescriptor implements Serializable {
 
 	private static final long serialVersionUID = -3233562176034358530L;
+
+	public RescaleState rescaleState = RescaleState.NONE;
+	public RescaleState rescaleSignalType = RescaleState.NONE;
 
 	/**
 	 * Wrapper class for serialized values which may be offloaded to the {@link

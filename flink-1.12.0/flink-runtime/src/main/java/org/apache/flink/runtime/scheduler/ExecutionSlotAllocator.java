@@ -42,4 +42,12 @@ public interface ExecutionSlotAllocator {
 	 * @param executionVertexId identifying which slot request should be canceled.
 	 */
 	void cancel(ExecutionVertexID executionVertexId);
+
+	default void updateForRescale(ExecutionSlotAllocator executionSlotAllocator){
+		throw new UnsupportedOperationException();
+	}
+
+	default void clean(){
+		throw new UnsupportedOperationException();
+	}
 }

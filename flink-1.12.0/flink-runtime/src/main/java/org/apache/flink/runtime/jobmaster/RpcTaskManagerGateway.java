@@ -23,6 +23,7 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
+import org.apache.flink.runtime.event.RuntimeEvent;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
@@ -31,6 +32,7 @@ import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.TaskBackPressureResponse;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
@@ -121,5 +123,25 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 		OperatorID operator,
 		SerializedValue<OperatorEvent> evt) {
 		return taskExecutorGateway.sendOperatorEventToTask(task, operator, evt);
+	}
+
+	@Override
+	public void triggerReConfig(ExecutionAttemptID attemptId, JobID jobId, ReConfigSignal signal) {
+		taskExecutorGateway.triggerReConfig(
+			attemptId,
+			jobId,
+			signal);
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> modifyForRescale(
+		TaskDeploymentDescriptor tdd,
+		Time timeout) {
+		return taskExecutorGateway.modifyForRescale(tdd, timeout);
+	}
+
+	@Override
+	public void triggerUpdatePartitionStrategy(ExecutionAttemptID executionAttemptID) {
+		taskExecutorGateway.triggerUpdatePartitionStrategy(executionAttemptID);
 	}
 }

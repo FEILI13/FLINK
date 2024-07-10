@@ -124,7 +124,7 @@ public abstract class RecoveredInputChannel extends InputChannel implements Chan
 	}
 
 	public void finishReadRecoveredState() throws IOException {
-		onRecoveredStateBuffer(EventSerializer.toBuffer(EndOfChannelStateEvent.INSTANCE, false));
+		onRecoveredStateBuffer(EventSerializer.toBuffer(EndOfChannelStateEvent.INSTANCE, false));// TODO 检查点恢复时可能需要修改，重放ReConfig事件
 		bufferManager.releaseFloatingBuffers();
 		LOG.debug("{}/{} finished recovering input.", inputGate.getOwningTaskName(), channelInfo);
 	}
@@ -227,5 +227,10 @@ public abstract class RecoveredInputChannel extends InputChannel implements Chan
 			exclusiveBuffersAssigned = true;
 		}
 		return bufferManager.requestBufferBlocking();
+	}
+
+	public final InputChannel completeStateConsumedFutureAndConvertToInputChannel() throws IOException {
+		stateConsumedFuture.complete(null);
+		return toInputChannelInternal();
 	}
 }

@@ -80,4 +80,17 @@ public class UnalignedController implements CheckpointBarrierBehaviourController
 			InputChannelInfo channelInfo,
 			CheckpointBarrier barrier) {
 	}
+
+	@Override
+	public CheckpointableInput[] getInputs() {
+		return inputs;
+	}
+
+	@Override
+	public void blockConsumption(long barrierId) {
+		System.out.println("UnalignedController block!");
+		for (final CheckpointableInput input : inputs) {
+			input.block(barrierId);
+		}
+	}
 }

@@ -354,6 +354,11 @@ public class ExecutionGraphBuilder {
 				completedCheckpoints,
 				rootBackend,
 				checkpointStatsTracker);
+			executionGraph.enableReConfig(
+				triggerVertices,
+				ackVertices,
+				confirmVertices
+			);
 		}
 
 		// create all the metrics for the Execution Graph
@@ -367,7 +372,7 @@ public class ExecutionGraphBuilder {
 		return executionGraph;
 	}
 
-	private static List<ExecutionJobVertex> idToVertex(
+	public static List<ExecutionJobVertex> idToVertex(
 			List<JobVertexID> jobVertices, ExecutionGraph executionGraph) throws IllegalArgumentException {
 
 		List<ExecutionJobVertex> result = new ArrayList<>(jobVertices.size());

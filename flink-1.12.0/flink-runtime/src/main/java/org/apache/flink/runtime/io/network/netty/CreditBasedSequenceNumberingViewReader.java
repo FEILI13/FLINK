@@ -84,6 +84,7 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 				// schedule a separate task at the event loop that will
 				// start consuming this. Otherwise the reference to the
 				// view cannot be available in getNextBuffer().
+				System.out.println("create subpartition view, resultPartitionId:"+resultPartitionId+" partitionProvider:"+partitionProvider);
 				this.subpartitionView = partitionProvider.createSubpartitionView(
 					resultPartitionId,
 					subPartitionIndex,

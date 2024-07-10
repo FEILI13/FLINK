@@ -51,6 +51,7 @@ import org.apache.flink.runtime.metrics.MetricRegistryImpl;
 import org.apache.flink.runtime.metrics.ReporterSetup;
 import org.apache.flink.runtime.metrics.groups.ProcessMetricGroup;
 import org.apache.flink.runtime.metrics.util.MetricUtils;
+import org.apache.flink.runtime.reConfig.utils.NetworkMetricStarter;
 import org.apache.flink.runtime.resourcemanager.ResourceManager;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
@@ -161,6 +162,10 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
 
 	public void startCluster() throws ClusterEntrypointException {
 		LOG.info("Starting {}.", getClass().getSimpleName());
+
+//		LOG.warn("start network detect");
+//		NetworkMetricStarter server = new NetworkMetricStarter("/home/ftcl/reConfig/flink-1.12.0/bin/JobManagerNet.py");
+//		new Thread(server).start();
 
 		try {
 			replaceGracefulExitWithHaltIfConfigured(configuration);

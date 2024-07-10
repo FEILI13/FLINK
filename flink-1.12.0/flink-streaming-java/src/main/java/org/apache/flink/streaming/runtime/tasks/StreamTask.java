@@ -30,8 +30,10 @@ import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetricsBuilder;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
+import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.checkpoint.channel.SequentialChannelStateReader;
 import org.apache.flink.runtime.concurrent.FutureUtils;
+import org.apache.flink.runtime.event.RuntimeEvent;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
@@ -49,6 +51,10 @@ import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
+import org.apache.flink.runtime.reConfig.utils.InstanceState;
+import org.apache.flink.runtime.reConfig.message.MigrateSignal;
+import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
+import org.apache.flink.runtime.reConfig.message.ReConfigStage;
 import org.apache.flink.runtime.state.CheckpointStorageWorkerView;
 import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.runtime.state.StateBackendLoader;
@@ -91,8 +97,12 @@ import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
@@ -228,6 +238,12 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	private Long syncSavepointId = null;
 
 	private long latestAsyncCheckpointStartDelayNanos;
+
+	private long version = 0;// ReconfigSingal的version,防止重复处理
+
+	private int numChannelsToWait = -1;
+
+	private Set<Integer> receivedChannelsAtCurrentStage = new HashSet<>();
 
 	// ------------------------------------------------------------------------
 
@@ -523,6 +539,13 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		});
 
 		isRunning = true;
+		if(getEnvironment().getTaskInfo().getTaskName().contains("ReConfig") || getEnvironment().getTaskInfo().getTaskName().contains("upStream")){
+			ReConfigSignal signal = new ReConfigSignal(ReConfigSignal.ReConfigSignalType.INIT, -1L);
+			signal.putProperties("taskName", getEnvironment().getTaskInfo().getTaskName());
+			signal.putProperties("taskIndex", getEnvironment().getTaskInfo().getIndexOfThisSubtask());
+			signal.putProperties("maxParallelism", getEnvironment().getTaskInfo().getMaxNumberOfParallelSubtasks());
+			notifyJobMaster(signal);// 初始化，向Controller注册
+		}
 	}
 
 	@Override
@@ -1216,5 +1239,230 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	protected long getAsyncCheckpointStartDelayNanos() {
 		return latestAsyncCheckpointStartDelayNanos;
+	}
+
+	@Override
+	public void triggerReConfig(ReConfigSignal signal) {// 源算子，相同version事件只处理一次，广播一次
+		/** 广播发送到下游算子，发送完之后handleRescaleSignalInternal函数处理 */
+		mainMailboxExecutor.execute(
+			() -> {
+				if (signal.getVersion() > version) {
+					version = signal.getVersion();
+					sendReConfigSignalDownStream(signal);
+					handleReConfigSignalInternal(signal);
+				}
+			},
+			"triggerReConfig");
+	}
+
+	private void sendReConfigSignalDownStream(ReConfigSignal reConfigSignal){
+		try {
+			recordWriter.broadcastEvent(reConfigSignal);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	private void handleReConfigSignalInternal(ReConfigSignal signal){
+		//System.out.println("receive ReConfigSignal:"+getTaskNameWithSubtaskAndId());
+		if(signal.getType() == ReConfigSignal.ReConfigSignalType.PERIOD_DETECT) {
+			if (getName().contains("ReConfig")) {
+				//int[] array = getDetectPriorities();
+				Map<Integer, Integer> frequencyWindowInfo = getFrequencyWindowInfo();
+				//System.out.println("getFrequencyWindowInfo");
+				Map<Integer, Long> sizeWindowInfo = getSizeWindowInfo(false);
+				ReConfigSignal stateInfo = new ReConfigSignal(ReConfigSignal.ReConfigSignalType.PERIOD_RESULT, signal.getVersion());
+				stateInfo.putProperties("taskIndex", getEnvironment().getTaskInfo().getIndexOfThisSubtask());
+				stateInfo.putProperties("frequencyWindowInfo", frequencyWindowInfo);
+//				System.out.println("stream task frequencyWindowInfo");
+//				for(Map.Entry<Integer, Integer> entry:frequencyWindowInfo.entrySet()){
+//					System.out.println("keyGroup:"+entry.getKey()+" fre:"+entry.getValue());
+//				}
+				stateInfo.putProperties("sizeWindowInfo", sizeWindowInfo);
+				stateInfo.putProperties("executionId", getEnvironment().getExecutionId());
+				notifyJobMaster(stateInfo);// 通知Controller收到的记录数量
+			}
+		}else if (signal.getType()== ReConfigSignal.ReConfigSignalType.MIGRATE) {
+			if(getName().contains("upStream")){
+				updateRouting(
+					signal.getSourceTask(),
+					signal.getKeyGroupIndex(),
+					signal.getTargetTask(),
+					signal.getBatch(),
+					signal.getSplitNum()
+				);
+			}else if(getName().contains("ReConfig") && signal.getSourceTask() == getEnvironment().getTaskInfo().getIndexOfThisSubtask()){
+				migrate(
+					signal.getVersion(),
+					signal.getKeyGroupIndex(),
+					signal.getBatch(),
+					signal.getSplitNum()
+				);
+				ReConfigSignal result = new ReConfigSignal(ReConfigSignal.ReConfigSignalType.MIGRATE_COMPLETE, signal.getVersion());
+				result.putProperties("executionId", getEnvironment().getExecutionId());
+				notifyJobMaster(result);
+			} else if (getName().contains("ReConfig") && signal.getTargetTask() == getEnvironment().getTaskInfo().getIndexOfThisSubtask()) {
+				//this.inputProcessor.block();
+				fetchState(
+					signal.getVersion(),
+					signal.getKeyGroupIndex(),
+					signal.getBatch(),
+					signal.getSplitNum()
+				);
+				//this.inputProcessor.unBlock();
+				ReConfigSignal result = new ReConfigSignal(ReConfigSignal.ReConfigSignalType.MIGRATE_COMPLETE, signal.getVersion());
+				result.putProperties("executionId", getEnvironment().getExecutionId());
+				notifyJobMaster(result);
+				//notifyJobMaster(ReConfigStage.MIGRATED);
+			}
+		}else if(signal.getType() == ReConfigSignal.ReConfigSignalType.CLEAN){
+			if(getName().contains("upStream")){
+				cleanRouting();
+				ReConfigSignal reConfigSignal = new ReConfigSignal(ReConfigSignal.ReConfigSignalType.CLEAN_COMPLETE, signal.getVersion());
+				reConfigSignal.putProperties("executionId", getEnvironment().getExecutionId());
+				notifyJobMaster(reConfigSignal);
+			}else if(getName().contains("ReConfig")){
+				cleanState();
+				cleanStateWindow();
+				ReConfigSignal reConfigSignal = new ReConfigSignal(ReConfigSignal.ReConfigSignalType.CLEAN_COMPLETE, signal.getVersion());
+				reConfigSignal.putProperties("executionId", getEnvironment().getExecutionId());
+				notifyJobMaster(reConfigSignal);
+			}
+		}else if(getName().contains("ReConfig") && signal.getType() == ReConfigSignal.ReConfigSignalType.INCREASE_STATE){
+			Map<Integer, Long> sizeWindowInfo = getSizeWindowInfo(true);
+			ReConfigSignal stateInfo = new ReConfigSignal(ReConfigSignal.ReConfigSignalType.INCREASE_RESULT, signal.getVersion());
+			stateInfo.putProperties("taskIndex", getEnvironment().getTaskInfo().getIndexOfThisSubtask());
+			stateInfo.putProperties("sizeWindowInfo", sizeWindowInfo);
+			stateInfo.putProperties("executionId", getEnvironment().getExecutionId());
+			notifyJobMaster(stateInfo);// 通知Controller收到的记录数量
+		}
+	}
+
+	private void updateRouting(int sourceIndex, int keyGroupIndex, int targetIndex, int batch, int splitNum){
+		List<StreamEdge> outEdgesInOrder = configuration.getOutEdgesInOrder(this.getEnvironment().getUserCodeClassLoader().asClassLoader());
+		//System.out.println("outEdgesInOrder.size() is :"+outEdgesInOrder.size());
+		for(int i = 0; i < outEdgesInOrder.size(); i++) {
+			this.recordWriter.updateControl(keyGroupIndex, targetIndex, batch, splitNum);
+		}
+	}
+
+	private void cleanRouting(){
+		List<StreamEdge> outEdgesInOrder = configuration.getOutEdgesInOrder(this.getEnvironment().getUserCodeClassLoader().asClassLoader());
+		//System.out.println("outEdgesInOrder.size() is :"+outEdgesInOrder.size());
+		for(int i = 0; i < outEdgesInOrder.size(); i++) {
+			this.recordWriter.cleanRouting();
+		}
+	}
+
+	public void handleReConfigSignal(
+		ReConfigSignal signal,
+		InputChannelInfo channelInfo) {
+		System.out.println(getName()+" "+signal);
+		if (signal.getVersion() > version) {
+			version = signal.getVersion();
+			System.out.println(getIndexInSubtaskGroup()+" sync1");
+			sendReConfigSignalDownStream(signal);
+			handleReConfigSignalInternal(signal);
+			System.out.println(getIndexInSubtaskGroup()+" sync2");
+		}
+	}
+
+	private void notifyJobMaster(ReConfigStage stage){
+		Environment env = getEnvironment();
+		env.acknowledgeReConfig(
+			env.getJobID(),
+			env.getExecutionId(),
+			env.getTaskInfo().getTaskNameWithSubtasks(),
+			stage
+		);
+	}
+
+	private void notifyJobMaster(InstanceState state){
+		Environment env = getEnvironment();
+		env.acknowledgeReConfig(
+			env.getJobID(),
+			env.getExecutionId(),
+			env.getTaskInfo().getTaskNameWithSubtasks(),
+			state
+		);
+	}
+
+	private void notifyJobMaster(ReConfigSignal signal){
+		Environment env = getEnvironment();
+		env.acknowledgeReConfig(
+			env.getJobID(),
+			env.getExecutionId(),
+			env.getTaskInfo().getTaskNameWithSubtasks(),
+			signal
+		);
+	}
+
+	/**
+	 * 获取这段时间窗口内的访问次数
+	 * @return	Map，key为键组，value为访问次数
+	 */
+	private Map<Integer, Integer> getFrequencyWindowInfo(){
+		return this.mainOperator.getFrequencyWindowInfo();
+	}
+
+	/**
+	 * 获取这段时间窗口内的访问次数
+	 * @param isALL	是否获取全部状态数据
+	 * @return	Map，key为键组，value为访问次数
+	 */
+	private Map<Integer, Long> getSizeWindowInfo(boolean isALL){
+		return this.mainOperator.getSizeWindowInfo(isALL);
+	}
+
+	/**
+	 * 清空窗口数据，重新统计
+	 */
+	private void cleanStateWindow(){
+		this.mainOperator.cleanStateWindow();
+	}
+
+	private void migrate(long version, int keyGroupIndex, int batch, int splitNum){
+		this.mainOperator.migrate(version, keyGroupIndex, batch, splitNum);
+	}
+
+	private void fetchState(long version, int keyGroupIndex, int batch, int splitNum){
+		this.mainOperator.fetchState(version, keyGroupIndex, batch, splitNum);
+	}
+
+	private void cleanState(){
+		this.mainOperator.cleanState();
+	}
+
+	@Override
+	public void modifyUpperStreamChannelsForRescale(
+		int previousNumChannels,
+		ThrowingRunnable<? extends Exception> command,
+		String description) {
+		final Environment env = getEnvironment();
+		final ChannelStateWriter channelStateWriter = subtaskCheckpointCoordinator.getChannelStateWriter();
+		for (final InputGate gate : env.getAllInputGates()) {
+			gate.setChannelStateWriterForNewChannels(channelStateWriter, previousNumChannels);//为新channel设置与其他channel相同的channelStateWriter
+		}
+
+		Preconditions.checkNotNull(inputProcessor);
+		inputProcessor.updateForRescale(getEnvironment().getIOManager());//增加输入的反序列化处理器
+
+		this.mainMailboxExecutor.execute(command, description);
+	}
+
+	@Override
+	public void processReConfigSignal(ReConfigSignal receivedBarrier) {
+		handleReConfigSignalInternal(receivedBarrier);
+	}
+
+	@Override
+	public void maybeUpdatePartitionStrategy() {
+		System.out.println(this.getName() + "updates partition strategy");
+
+		List<StreamEdge> outEdgesInOrder = configuration.getOutEdgesInOrder(this.getEnvironment().getUserCodeClassLoader().asClassLoader());
+		System.out.println("outEdgesInOrder.size() is :"+outEdgesInOrder.size());
+		for (int i = 0; i < outEdgesInOrder.size(); i++) {
+			this.recordWriter.updatePartitionStrategy();
+		}
 	}
 }

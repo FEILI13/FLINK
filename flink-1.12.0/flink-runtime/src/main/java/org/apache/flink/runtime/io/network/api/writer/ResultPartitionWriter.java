@@ -121,4 +121,8 @@ public interface ResultPartitionWriter extends AutoCloseable, AvailabilityProvid
 	 * Closes the partition writer which releases the allocated resource, for example the buffer pool.
 	 */
 	void close() throws Exception;
+
+	default int getNumberOfSubpartitionsForRescale() {
+		throw new UnsupportedOperationException();
+	}
 }

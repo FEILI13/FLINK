@@ -37,6 +37,7 @@ import org.apache.flink.util.Preconditions;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -365,4 +366,48 @@ public abstract class AbstractKeyedStateBackend<K> implements
 		return false;
 	}
 
+	@Override
+	public void migrate(long version, int keyGroupIndex, int batch, int splitNum) {
+		if(lastState!=null){
+			this.lastState.migrate(version, keyGroupIndex, batch, splitNum);
+		}
+	}
+
+	@Override
+	public void fetchState(long version, int keyGroupIndex, int batch, int splitNum) {
+		if(lastState!=null){
+			this.lastState.fetchState(version, keyGroupIndex, batch, splitNum);
+		}
+	}
+
+	@Override
+	public Map<Integer, Integer> getFrequencyWindowInfo() {
+		if(lastState!=null){
+			return this.lastState.getFrequencyWindowInfo();
+		}
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public Map<Integer, Long> getSizeWindowInfo(boolean isALL) {
+		if(lastState!=null){
+			return this.lastState.getSizeWindowInfo(isALL);
+		}
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public void cleanStateWindow() {
+		if(lastState!=null){
+			lastState.cleanStateWindow();
+		}
+		//throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public void cleanState() {
+		if(lastState!=null){
+			this.lastState.cleanState();
+		}
+	}
 }

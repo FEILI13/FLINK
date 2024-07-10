@@ -23,6 +23,7 @@ import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationConstraintDesc;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroupDesc;
 import org.apache.flink.runtime.jobmanager.scheduler.SlotSharingGroup;
+import org.apache.flink.runtime.reConfig.utils.RescaleState;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingExecutionVertex;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingResultPartition;
@@ -95,7 +96,7 @@ class LocalInputPreferredSlotSharingStrategy implements SlotSharingStrategy {
 
 		final Map<SlotSharingGroupId, List<ExecutionSlotSharingGroup>> executionSlotSharingGroups;
 
-		private final Map<ExecutionSlotSharingGroup, Set<JobVertexID>> assignedJobVerticesForGroups;
+		final Map<ExecutionSlotSharingGroup, Set<JobVertexID>> assignedJobVerticesForGroups;
 
 		private ExecutionSlotSharingGroupBuilder(
 				final SchedulingTopology topology,
@@ -292,6 +293,29 @@ class LocalInputPreferredSlotSharingStrategy implements SlotSharingStrategy {
 						executionSlotSharingGroupMap.get(executionVertexId));
 				}
 			}
+		}
+	}
+
+	@Override
+	public void updateForRescale(SlotSharingStrategy slotSharingStrategy) {
+		Map<ExecutionVertexID, ExecutionSlotSharingGroup> newMap = ((LocalInputPreferredSlotSharingStrategy)slotSharingStrategy).executionSlotSharingGroupMap;
+		for(ExecutionVertexID executionVertexID : newMap.keySet()){
+			if(!this.executionSlotSharingGroupMap.containsKey(executionVertexID)){
+				//this.executionSlotSharingGroupMap.put(executionVertexID, newMap.get(executionVertexID));
+				//assignedJobVerticesForGroups，executionSlotSharingGroupMap
+				// TODO 新增的slot直接新建一个共享组，然后去进行调度，实际上在上游并行度大于reconfig算子并行度时是有问题的，导致无法和上游算子放到同一个slot中，应该修改逻辑
+				ExecutionSlotSharingGroup sharingGroup = new ExecutionSlotSharingGroup();
+				sharingGroup.addVertex(executionVertexID);
+				sharingGroup.rescaleState = RescaleState.NEW;
+				this.executionSlotSharingGroupMap.put(executionVertexID, sharingGroup);
+			}
+		}
+	}
+
+	@Override
+	public void clean() {
+		for(ExecutionSlotSharingGroup group:executionSlotSharingGroupMap.values()){
+			group.rescaleState = RescaleState.NONE;
 		}
 	}
 }

@@ -516,6 +516,20 @@ public class RemoteInputChannel extends InputChannel {
 		}
 	}
 
+	@Override
+	public void block(long barrierId) {
+		try {
+			synchronized (receivedBuffers) {
+				System.out.println("remoteinputchannel block");
+				channelStatePersister.startPersisting(
+					barrierId,
+					getInflightBuffersUnsafe(barrierId));
+			}
+		}catch (Exception e){
+			e.printStackTrace();
+		}
+	}
+
 	public void checkpointStopped(long checkpointId) {
 		synchronized (receivedBuffers) {
 			channelStatePersister.stopPersisting(checkpointId);

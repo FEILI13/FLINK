@@ -24,6 +24,7 @@ import org.apache.flink.runtime.execution.librarycache.LibraryCacheManager;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionConsumableNotifier;
 import org.apache.flink.runtime.jobmaster.JobMasterGateway;
 import org.apache.flink.runtime.jobmaster.JobMasterId;
+import org.apache.flink.runtime.reConfig.RpcReConfigResponder;
 import org.apache.flink.runtime.taskmanager.CheckpointResponder;
 import org.apache.flink.runtime.taskmanager.TaskManagerActions;
 import org.apache.flink.util.Preconditions;
@@ -188,6 +189,11 @@ public final class DefaultJobTable implements JobTable {
 		}
 
 		@Override
+		public RpcReConfigResponder getReConfigResponder() {
+			return verifyContainsEstablishedConnection().getReConfigResponder();
+		}
+
+		@Override
 		public Optional<JobTable.Connection> asConnection() {
 			verifyJobIsNotClosed();
 			if (connection != null) {
@@ -205,7 +211,8 @@ public final class DefaultJobTable implements JobTable {
 				CheckpointResponder checkpointResponder,
 				GlobalAggregateManager aggregateManager,
 				ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
-				PartitionProducerStateChecker partitionStateChecker) {
+				PartitionProducerStateChecker partitionStateChecker,
+				RpcReConfigResponder reConfigResponder) {
 			verifyJobIsNotClosed();
 			Preconditions.checkState(connection == null);
 
@@ -216,7 +223,8 @@ public final class DefaultJobTable implements JobTable {
 				checkpointResponder,
 				aggregateManager,
 				resultPartitionConsumableNotifier,
-				partitionStateChecker);
+				partitionStateChecker,
+				reConfigResponder);
 			resourceIdJobIdIndex.put(resourceId, jobId);
 
 			return this;
@@ -270,6 +278,8 @@ public final class DefaultJobTable implements JobTable {
 		// Partition state checker for the specific job manager
 		private final PartitionProducerStateChecker partitionStateChecker;
 
+		private final RpcReConfigResponder reConfigResponder;
+
 		private EstablishedConnection(
 			ResourceID resourceID,
 			JobMasterGateway jobMasterGateway,
@@ -277,7 +287,8 @@ public final class DefaultJobTable implements JobTable {
 			CheckpointResponder checkpointResponder,
 			GlobalAggregateManager globalAggregateManager,
 			ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
-			PartitionProducerStateChecker partitionStateChecker) {
+			PartitionProducerStateChecker partitionStateChecker,
+			RpcReConfigResponder reConfigResponder) {
 			this.resourceID = Preconditions.checkNotNull(resourceID);
 			this.jobMasterGateway = Preconditions.checkNotNull(jobMasterGateway);
 			this.taskManagerActions = Preconditions.checkNotNull(taskManagerActions);
@@ -285,6 +296,7 @@ public final class DefaultJobTable implements JobTable {
 			this.globalAggregateManager = Preconditions.checkNotNull(globalAggregateManager);
 			this.resultPartitionConsumableNotifier = Preconditions.checkNotNull(resultPartitionConsumableNotifier);
 			this.partitionStateChecker = Preconditions.checkNotNull(partitionStateChecker);
+			this.reConfigResponder = Preconditions.checkNotNull(reConfigResponder);
 		}
 
 		public ResourceID getResourceID() {
@@ -317,6 +329,10 @@ public final class DefaultJobTable implements JobTable {
 
 		public PartitionProducerStateChecker getPartitionStateChecker() {
 			return partitionStateChecker;
+		}
+
+		public RpcReConfigResponder getReConfigResponder() {
+			return reConfigResponder;
 		}
 	}
 }

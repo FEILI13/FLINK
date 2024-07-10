@@ -64,4 +64,24 @@ public class SingleRecordWriter<T extends IOReadableWritable> implements RecordW
 	public void close() {
 		recordWriter.close();
 	}
+
+	@Override
+	public int getMessageCount() {
+		return recordWriter.getMessageCount();
+	}
+
+	@Override
+	public void updateControl(int keyGroupIndex, int targetIndex, int batch, int splitNum) {
+		this.recordWriter.updateControl(keyGroupIndex, targetIndex, batch, splitNum);
+	}
+
+	@Override
+	public void cleanRouting() {
+		this.recordWriter.cleanRouting();
+	}
+
+	@Override
+	public int updatePartitionStrategy() {
+		return this.recordWriter.updateNumberOfChannels();
+	}
 }

@@ -54,6 +54,7 @@ import javax.annotation.Nullable;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.apache.flink.util.Preconditions.checkState;
@@ -313,6 +314,75 @@ public class StreamOperatorStateHandler {
 
 	public Optional<KeyedStateStore> getKeyedStateStore() {
 		return Optional.ofNullable(keyedStateStore);
+	}
+
+    public void migrate(long version, int keyGroupIndex, int batch, int splitNum) {
+		if(keyedStateBackend != null){
+			try {
+				CheckpointableKeyedStateBackend rawBackend = keyedStateBackend;
+				rawBackend.migrate(version, keyGroupIndex, batch, splitNum);
+			}catch (Exception e){
+				e.printStackTrace();
+				throw new RuntimeException(e.getMessage());
+			}
+		}
+    }
+
+	public void fetchState(long version, int keyGroupIndex, int batch, int splitNum) {
+		if(keyedStateBackend != null){
+			try {
+				CheckpointableKeyedStateBackend rawBackend = keyedStateBackend;
+				rawBackend.fetchState(version, keyGroupIndex, batch, splitNum);
+			}catch (Exception e){
+				throw new RuntimeException("Exception occur in get migrate state");
+			}
+		}
+	}
+
+	public Map<Integer, Integer> getFrequencyWindowInfo(){
+		if(keyedStateBackend != null){
+			try {
+				CheckpointableKeyedStateBackend rawBackend = keyedStateBackend;
+				return rawBackend.getFrequencyWindowInfo();
+			}catch (Exception e){
+				e.printStackTrace();
+			}
+		}
+		throw new UnsupportedOperationException();
+	}
+
+	public Map<Integer, Long> getSizeWindowInfo(boolean isALL){
+		if(keyedStateBackend != null){
+			try {
+				CheckpointableKeyedStateBackend rawBackend = keyedStateBackend;
+				return rawBackend.getSizeWindowInfo(isALL);
+			}catch (Exception e){
+				e.printStackTrace();
+			}
+		}
+		throw new UnsupportedOperationException();
+	}
+
+	public void cleanStateWindow(){
+		if(keyedStateBackend != null){
+			try {
+				CheckpointableKeyedStateBackend rawBackend = keyedStateBackend;
+				rawBackend.cleanStateWindow();
+			}catch (Exception e){
+				e.printStackTrace();
+			}
+		}
+	}
+
+	public void cleanState() {
+		if(keyedStateBackend != null){
+			try {
+				CheckpointableKeyedStateBackend rawBackend = keyedStateBackend;
+				rawBackend.cleanState();
+			}catch (Exception e){
+				throw new RuntimeException("Exception occur in get migrate state");
+			}
+		}
 	}
 
 	/**

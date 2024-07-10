@@ -35,6 +35,14 @@ interface SlotSharingStrategy {
 
 	Set<ExecutionSlotSharingGroup> getExecutionSlotSharingGroups();
 
+    default void updateForRescale(SlotSharingStrategy slotSharingStrategy){
+		throw new UnsupportedOperationException();
+	}
+
+	default void clean(){
+		throw new UnsupportedOperationException();
+	}
+
 	@FunctionalInterface
 	interface Factory {
 		SlotSharingStrategy create(

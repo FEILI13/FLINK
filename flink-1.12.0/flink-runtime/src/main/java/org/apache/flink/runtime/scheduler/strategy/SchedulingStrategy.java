@@ -58,4 +58,12 @@ public interface SchedulingStrategy {
 	 * @param resultPartitionId The id of the result partition
 	 */
 	void onPartitionConsumable(IntermediateResultPartitionID resultPartitionId);
+
+	default void startSchedulingForRescale(){
+		throw new UnsupportedOperationException();
+	}
+
+	default void releaseResourcesForRescale() throws UnsupportedOperationException {
+		throw new UnsupportedOperationException("startSchedulingForRescale not implemented for " + this.getClass());
+	}
 }

@@ -20,6 +20,7 @@ package org.apache.flink.runtime.executiongraph;
 
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
+import org.apache.flink.runtime.reConfig.utils.RescaleState;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,6 +41,8 @@ public class IntermediateResultPartition {
 	 * Whether this partition has produced some data.
 	 */
 	private boolean hasDataProduced = false;
+
+	public RescaleState rescaleState = RescaleState.NONE;
 
 	public IntermediateResultPartition(IntermediateResult totalResult, ExecutionVertex producer, int partitionNumber) {
 		this.totalResult = totalResult;
@@ -130,5 +133,26 @@ public class IntermediateResultPartition {
 		}
 
 		return false;
+	}
+
+	public void removeConsumer(ExecutionEdge edge, int consumerNumber) {
+		consumers.get(consumerNumber).remove(edge);
+	}
+
+	boolean containsEdge(ExecutionEdge edge){
+		for(ExecutionEdge e : consumers.get(0)){
+			if(e.getTarget().getID().equals(edge.getTarget().getID()))
+				return true;
+		}
+		return false;
+	}
+
+	void removeEdge(ExecutionEdge edge){
+		for(int i=0;i<consumers.get(0).size();i++){
+			if(consumers.get(0).get(i).getTarget().getID().equals(edge.getTarget().getID())){
+				consumers.get(0).remove(i);
+				return;
+			}
+		}
 	}
 }
