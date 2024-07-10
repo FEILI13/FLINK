@@ -384,11 +384,14 @@ public class SlotManagerImpl implements SlotManager {
 	public boolean registerSlotRequest(SlotRequest slotRequest) throws ResourceManagerException {
 		checkInit();
 
+		LOG.info("registerSlotRequest {}",slotRequest.toString());
 		if (checkDuplicateRequest(slotRequest.getAllocationId())) {
 			LOG.debug("Ignoring a duplicate slot request with allocation id {}.", slotRequest.getAllocationId());
 
 			return false;
 		} else {
+
+			LOG.info("PendingSlotRequest pendingSlotRequest = new PendingSlotRequest(slotRequest); {}",slotRequest);
 			PendingSlotRequest pendingSlotRequest = new PendingSlotRequest(slotRequest);
 
 			pendingSlotRequests.put(slotRequest.getAllocationId(), pendingSlotRequest);
@@ -631,10 +634,14 @@ public class SlotManagerImpl implements SlotManager {
 	 * if there is no such slot available.
 	 */
 	private Optional<TaskManagerSlot> findMatchingSlot(ResourceProfile requestResourceProfile) {
+
+		LOG.info("findMatchingSlot:{ }",requestResourceProfile.toString());
 		final Optional<TaskManagerSlot> optionalMatchingSlot = slotMatchingStrategy.findMatchingSlot(
 			requestResourceProfile,
 			freeSlots.values(),
 			this::getNumberRegisteredSlotsOf);
+
+		LOG.info("freeSlots.length()qian {}",freeSlots.size());
 
 		optionalMatchingSlot.ifPresent(taskManagerSlot -> {
 			// sanity check
@@ -645,6 +652,8 @@ public class SlotManagerImpl implements SlotManager {
 
 			freeSlots.remove(taskManagerSlot.getSlotId());
 		});
+
+		LOG.info("freeSlots.length()hou {}",freeSlots.size());
 
 		return optionalMatchingSlot;
 	}

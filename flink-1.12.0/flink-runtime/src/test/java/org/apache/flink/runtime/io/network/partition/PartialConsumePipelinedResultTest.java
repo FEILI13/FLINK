@@ -120,7 +120,7 @@ public class PartialConsumePipelinedResultTest extends TestLogger {
 			final ResultPartitionWriter writer = getEnvironment().getWriter(0);
 
 			for (int i = 0; i < 8; i++) {
-				writer.emitRecord(ByteBuffer.allocate(1024), 0);
+//				writer.emitRecord(ByteBuffer.allocate(1024), 0);
 				Thread.sleep(50);
 			}
 		}

@@ -68,6 +68,11 @@ import static org.apache.flink.util.Preconditions.checkState;
 @Internal
 public class StateAssignmentOperation {
 
+	public static enum Operation { //todo 新加的
+		RESTORE_STATE,
+		DISPATCH_STATE_TO_STANDBY_TASK
+	}
+
 	private static final Logger LOG = LoggerFactory.getLogger(StateAssignmentOperation.class);
 
 	private final Set<ExecutionJobVertex> tasks;
@@ -76,23 +81,29 @@ public class StateAssignmentOperation {
 	private final long restoreCheckpointId;
 	private final boolean allowNonRestoredState;
 
+	public final Operation operation;//todo 新加的
 	/** The state assignments for each ExecutionJobVertex that will be filled in multiple passes. */
 	private final Map<ExecutionJobVertex, TaskStateAssignment> vertexAssignments;
 	/** Stores the assignment of a consumer. {@link IntermediateResult} only allows to traverse producer. */
 	private final Map<IntermediateDataSetID, TaskStateAssignment> consumerAssignment = new HashMap<>();
 
+
 	public StateAssignmentOperation(
-			long restoreCheckpointId,
-			Set<ExecutionJobVertex> tasks,
-			Map<OperatorID, OperatorState> operatorStates,
-			boolean allowNonRestoredState) {
+		long restoreCheckpointId,
+		Set<ExecutionJobVertex> tasks,
+		Map<OperatorID, OperatorState> operatorStates,
+		boolean allowNonRestoredState,
+		Operation operation) {
 
 		this.restoreCheckpointId = restoreCheckpointId;
 		this.tasks = Preconditions.checkNotNull(tasks);
 		this.operatorStates = Preconditions.checkNotNull(operatorStates);
 		this.allowNonRestoredState = allowNonRestoredState;
 		vertexAssignments = new HashMap<>(tasks.size());
+		this.operation = operation;
 	}
+
+
 
 	public void assignStates() {
 		Map<OperatorID, OperatorState> localOperators = new HashMap<>(operatorStates);
@@ -203,8 +214,24 @@ public class StateAssignmentOperation {
 		 */
 		for (int subTaskIndex = 0; subTaskIndex < newParallelism; subTaskIndex++) {
 
-			Execution currentExecutionAttempt = executionJobVertex.getTaskVertices()[subTaskIndex]
-				.getCurrentExecutionAttempt();
+			//todo for循环内部新加的
+			Execution executionAttempt = null;
+			if (operation == Operation.RESTORE_STATE) {
+				executionAttempt = executionJobVertex.getTaskVertices()[subTaskIndex]
+					.getCurrentExecutionAttempt();
+			} else if (operation == Operation.DISPATCH_STATE_TO_STANDBY_TASK) {
+				ArrayList<Execution> standbyExecutions = executionJobVertex.getTaskVertices()
+					[subTaskIndex].getStandbyExecutions();
+				if (standbyExecutions.isEmpty())
+					continue; //If task does not have standby, we may be recovering only a subtask
+				executionAttempt = standbyExecutions.get(0);
+			} else {
+				throw new IllegalStateException("Unknown state assignment operation " + operation + '.');
+			}
+			//todo 到这里
+
+//			Execution currentExecutionAttempt = executionJobVertex.getTaskVertices()[subTaskIndex]
+//				.getCurrentExecutionAttempt();
 
 			TaskStateSnapshot taskState = new TaskStateSnapshot(operatorIDs.size());
 			boolean statelessTask = true;
@@ -222,10 +249,31 @@ public class StateAssignmentOperation {
 				taskState.putSubtaskStateByOperatorID(operatorID.getGeneratedOperatorID(), operatorSubtaskState);
 			}
 
-			if (!statelessTask) {
-				JobManagerTaskRestore taskRestore = new JobManagerTaskRestore(restoreCheckpointId, taskState);
-				currentExecutionAttempt.setInitialState(taskRestore);
+//			if (!statelessTask) {
+//				JobManagerTaskRestore taskRestore = new JobManagerTaskRestore(restoreCheckpointId, taskState);
+//				currentExecutionAttempt.setInitialState(taskRestore);
+//			}
+
+			//todo for循环内部新加的
+			if (!statelessTask || operation == Operation.DISPATCH_STATE_TO_STANDBY_TASK) {
+				//该类封装来自作业管理器的数据以恢复任务。
+				JobManagerTaskRestore taskRestore;
+				if(statelessTask)
+					taskRestore = new JobManagerTaskRestore(restoreCheckpointId,new TaskStateSnapshot());
+				else
+					taskRestore = new JobManagerTaskRestore(restoreCheckpointId, taskState);
+
+				try {
+					executionAttempt.setInitialState(taskRestore);
+				} catch (IllegalStateException e) {
+					// For DISPATCH_STATE_TO_STANDBY_TASKS do nothing.
+					// The standby execution that is the recipient of the state may not be in place yet.
+					if (operation == Operation.RESTORE_STATE) {
+						throw e;
+					}
+				}
 			}
+			//todo 到这里
 		}
 	}
 

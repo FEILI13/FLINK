@@ -36,6 +36,8 @@ public class NoOpFailoverStrategy extends FailoverStrategy {
 
 	@Override
 	public void notifyNewVertices(final List<ExecutionJobVertex> newJobVerticesTopological) {
+
+		System.out.println("noop");
 	}
 
 	@Override

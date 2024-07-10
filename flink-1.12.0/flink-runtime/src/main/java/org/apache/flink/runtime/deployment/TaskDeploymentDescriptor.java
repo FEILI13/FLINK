@@ -122,7 +122,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	private final JobID jobId;
 
 	/** The ID referencing the attempt to execute the task. */
-	private final ExecutionAttemptID executionId;
+	private ExecutionAttemptID executionId;
 
 	/** The allocation ID of the slot in which the task shall be run. */
 	private final AllocationID allocationId;
@@ -145,6 +145,8 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	/** Information to restore the task. This can be null if there is no state to restore. */
 	@Nullable
 	private final JobManagerTaskRestore taskRestore;
+
+	public  boolean isStandby = false;
 
 	public TaskDeploymentDescriptor(
 		JobID jobId,
@@ -180,6 +182,33 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 		this.producedPartitions = Preconditions.checkNotNull(resultPartitionDeploymentDescriptors);
 		this.inputGates = Preconditions.checkNotNull(inputGateDeploymentDescriptors);
+	}
+
+	public TaskDeploymentDescriptor(
+		JobID jobId,
+		MaybeOffloaded<JobInformation> serializedJobInformation,
+		MaybeOffloaded<TaskInformation> serializedTaskInformation,
+		ExecutionAttemptID executionAttemptId,
+		AllocationID allocationId,
+		int subtaskIndex,
+		int attemptNumber,
+		int targetSlotNumber,
+		@Nullable JobManagerTaskRestore taskRestore,
+		List<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+		List<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
+		boolean isStandby){
+		this(jobId,serializedJobInformation,
+			serializedTaskInformation,
+			executionAttemptId,
+			allocationId,
+			subtaskIndex,
+			attemptNumber,
+			targetSlotNumber,
+			taskRestore,
+			resultPartitionDeploymentDescriptors,
+			inputGateDeploymentDescriptors);
+		this.isStandby = isStandby;
+
 	}
 
 	/**
@@ -229,6 +258,11 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 	public ExecutionAttemptID getExecutionAttemptId() {
 		return executionId;
+	}
+
+	//for test
+	public void setExecutionAttemptId(ExecutionAttemptID executionId) {
+		 this.executionId = executionId;
 	}
 
 	/**

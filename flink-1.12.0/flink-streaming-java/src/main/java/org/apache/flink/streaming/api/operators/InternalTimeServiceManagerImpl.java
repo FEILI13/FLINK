@@ -156,6 +156,7 @@ public class InternalTimeServiceManagerImpl<K> implements InternalTimeServiceMan
 		if (timerService == null) {
 
 			timerService = new InternalTimerServiceImpl<>(
+				name,
 				localKeyGroupRange,
 				keyContext,
 				processingTimeService,

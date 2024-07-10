@@ -26,6 +26,8 @@ import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
+import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 
 import java.io.Closeable;
@@ -43,10 +45,12 @@ public abstract class CheckpointBarrierHandler implements Closeable {
 	private static final long OUTSIDE_OF_ALIGNMENT = Long.MIN_VALUE;
 
 	/** The listener to be notified on complete checkpoints. */
-	private final AbstractInvokable toNotifyOnCheckpoint;
+	public final AbstractInvokable toNotifyOnCheckpoint;
+
+	public InputGate inputGate;
 
 	/** The time (in nanoseconds) that the latest alignment took. */
-	private CompletableFuture<Long> latestAlignmentDurationNanos = new CompletableFuture<>();
+	public CompletableFuture<Long> latestAlignmentDurationNanos = new CompletableFuture<>();
 
 	/**
 	 * The time (in nanoseconds) between creation of the checkpoint's first checkpoint barrier
@@ -55,7 +59,7 @@ public abstract class CheckpointBarrierHandler implements Closeable {
 	private long latestCheckpointStartDelayNanos;
 
 	/** The timestamp as in {@link System#nanoTime()} at which the last alignment started. */
-	private long startOfAlignmentTimestamp = OUTSIDE_OF_ALIGNMENT;
+	public long startOfAlignmentTimestamp = OUTSIDE_OF_ALIGNMENT;
 
 	/**
 	 * Cumulative counter of bytes processed during alignment. Once we complete alignment, we will
@@ -67,6 +71,13 @@ public abstract class CheckpointBarrierHandler implements Closeable {
 	public CheckpointBarrierHandler(AbstractInvokable toNotifyOnCheckpoint) {
 		this.toNotifyOnCheckpoint = checkNotNull(toNotifyOnCheckpoint);
 	}
+
+
+	public void setInputGate(InputGate inputGate){
+		this.inputGate = inputGate;
+		System.out.println("CheckpointBarrierHandler:inputagate:  "+this.inputGate);
+	}
+
 
 	@Override
 	public void close() throws IOException {
@@ -84,6 +95,8 @@ public abstract class CheckpointBarrierHandler implements Closeable {
 	public abstract void processEndOfPartition() throws IOException;
 
 	public abstract long getLatestCheckpointId();
+
+	public abstract void ignoreCheckpoint(long checkpointID) throws IOException;
 
 	public long getAlignmentDurationNanos() {
 		if (isDuringAlignment()) {
@@ -152,7 +165,7 @@ public abstract class CheckpointBarrierHandler implements Closeable {
 		bytesProcessedDuringAlignment = 0;
 	}
 
-	private void resetAlignment() {
+	public void resetAlignment() {
 		markAlignmentEnd(0);
 		latestAlignmentDurationNanos = new CompletableFuture<>();
 		latestBytesProcessedDuringAlignment = new CompletableFuture<>();
@@ -168,5 +181,16 @@ public abstract class CheckpointBarrierHandler implements Closeable {
 
 	private boolean isDuringAlignment() {
 		return startOfAlignmentTimestamp > OUTSIDE_OF_ALIGNMENT;
+	}
+
+	abstract BufferOrEvent getNextNonBlocked(BufferOrEvent inputGate) throws Exception;
+
+
+	public void unblockChannelIfBlocked(int absoluteChannelIndex) {
+
+	}
+
+	public int getTotalNumberOfInputChannels() {
+		return 0;
 	}
 }

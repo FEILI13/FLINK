@@ -53,4 +53,6 @@ public abstract class IndexedInputGate extends InputGate implements Checkpointab
 	public void blockConsumption(InputChannelInfo channelInfo) {
 		// Unused. Network stack is blocking consumption automatically by revoking credits.
 	}
+
+	public abstract SingleInputGate get();
 }

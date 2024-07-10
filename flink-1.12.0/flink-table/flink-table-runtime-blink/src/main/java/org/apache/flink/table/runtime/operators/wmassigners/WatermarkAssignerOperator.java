@@ -20,6 +20,7 @@ package org.apache.flink.table.runtime.operators.wmassigners;
 
 import org.apache.flink.api.common.functions.util.FunctionUtils;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
@@ -153,6 +154,11 @@ public class WatermarkAssignerOperator
 		long now = getProcessingTimeService().getCurrentProcessingTime();
 		getProcessingTimeService().registerTimer(now + watermarkInterval, this);
 	}
+
+//	@Override
+//	public ProcessingTimeCallbackID getID() {
+//		return new ProcessingTimeCallbackID(ProcessingTimeCallbackID.Type.WATERMARK);
+//	}
 
 	/**
 	 * Override the base implementation to completely ignore watermarks propagated from

@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.scheduler;
 
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
+import org.apache.flink.runtime.topology.VertexID;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -35,6 +36,7 @@ public class ExecutionVertexDeploymentOption {
 		this.executionVertexId = checkNotNull(executionVertexId);
 		this.deploymentOption = checkNotNull(deploymentOption);
 	}
+
 
 	public ExecutionVertexID getExecutionVertexId() {
 		return executionVertexId;

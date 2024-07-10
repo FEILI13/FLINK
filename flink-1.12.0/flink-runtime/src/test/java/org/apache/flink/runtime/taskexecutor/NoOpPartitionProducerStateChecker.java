@@ -22,6 +22,7 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.runtime.messages.Acknowledge;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -34,6 +35,14 @@ public class NoOpPartitionProducerStateChecker implements PartitionProducerState
 	public CompletableFuture<ExecutionState> requestPartitionProducerState(
 			JobID jobId, IntermediateDataSetID intermediateDataSetId, ResultPartitionID r) {
 
+		return null;
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> triggerFailProducer(
+		IntermediateDataSetID intermediateDataSetId,
+		ResultPartitionID resultPartitionId,
+		Throwable cause) {
 		return null;
 	}
 }

@@ -22,6 +22,7 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.runtime.messages.Acknowledge;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -49,5 +50,20 @@ public interface PartitionProducerStateChecker {
 			JobID jobId,
 			IntermediateDataSetID intermediateDataSetId,
 			ResultPartitionID resultPartitionId);
+
+
+	/**todo 赫明萱加
+	 * Requests to fail the execution producing a result partition.
+	 *
+	 * @param intermediateDataSetId ID of the parent intermediate data set.
+	 * @param resultPartitionId ID of the result partition that
+	 * identifies the producing execution to fail.
+	 *
+	 * @return Future holding the acknowledgement of the operation.
+	 */
+	CompletableFuture<Acknowledge> triggerFailProducer(
+		final IntermediateDataSetID intermediateDataSetId,
+		final ResultPartitionID resultPartitionId,
+		final Throwable cause);
 
 }

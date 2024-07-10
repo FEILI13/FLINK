@@ -276,4 +276,8 @@ public final class PrioritizedDeque<T> implements Iterable<T> {
 	public Stream<T> stream() {
 		return StreamSupport.stream(spliterator(), false);
 	}
+
+	public Deque<T> getDeque(){
+		return deque;
+	}
 }

@@ -22,11 +22,15 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
 import org.apache.flink.core.memory.MemorySegmentProvider;
+import org.apache.flink.runtime.causal.recovery.RecoveryManager;
 import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.execution.CancelTaskException;
+import org.apache.flink.runtime.io.network.ConnectionID;
+import org.apache.flink.runtime.io.network.NettyShuffleEnvironment;
+import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
@@ -41,6 +45,7 @@ import org.apache.flink.runtime.io.network.partition.consumer.InputChannel.Buffe
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
+import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.runtime.shuffle.NettyShuffleDescriptor;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.function.SupplierWithException;
@@ -193,6 +198,22 @@ public class SingleInputGate extends IndexedInputGate {
 
 	/** The segment to read data from file region of bounded blocking partition by local input channel. */
 	private final MemorySegment unpooledSegment;
+
+
+/*
+todo 赫明萱加
+ */
+	private final Map<IntermediateResultPartitionID, List<ConnectionID>> releasedRemoteChannels = new HashMap<>();
+
+
+	private InputChannel[] inputChannelArray;
+
+	private RecoveryManager recoveryManager;
+
+	public void setRecoveryManager(RecoveryManager recoveryManager){
+		this.recoveryManager = recoveryManager;
+	}
+
 
 	public SingleInputGate(
 		String owningTaskName,
@@ -888,5 +909,198 @@ public class SingleInputGate extends IndexedInputGate {
 
 	public Map<IntermediateResultPartitionID, InputChannel> getInputChannels() {
 		return inputChannels;
+	}
+
+	/*
+	todo 赫明萱加
+	 */
+	public void updateInputChannel(
+		ResourceID localLocation,
+		NettyShuffleDescriptor shuffleDescriptor,
+		boolean updateConsumersOnFailover,
+		NettyShuffleEnvironment nettyShuffleEnvironment,
+		TaskIOMetricGroup metrics) throws IOException, InterruptedException {
+		synchronized (requestLock) {
+			if (closeFuture.isDone()) {
+				// There was a race with a task failure/cancel
+				return;
+			}
+
+			IntermediateResultPartitionID partitionId = shuffleDescriptor.getResultPartitionID().getPartitionId();
+
+			InputChannel current = inputChannels.get(partitionId);
+
+			if (current instanceof UnknownInputChannel) {
+				UnknownInputChannel unknownChannel = (UnknownInputChannel) current;
+				boolean isLocal = shuffleDescriptor.isLocalTo(localLocation);
+				InputChannel newChannel;
+				if (isLocal) {
+					newChannel = unknownChannel.toLocalInputChannel();
+				} else {
+					RemoteInputChannel remoteInputChannel =
+						unknownChannel.toRemoteInputChannel(shuffleDescriptor.getConnectionId());
+					remoteInputChannel.setup();
+					newChannel = remoteInputChannel;
+				}
+				LOG.debug("{}: Updated unknown input channel to {}.", owningTaskName, newChannel);
+
+				inputChannels.put(partitionId, newChannel);
+				channels[current.getChannelIndex()] = newChannel;
+
+				if (requestedPartitionsFlag) {
+					newChannel.requestSubpartition(consumedSubpartitionIndex);
+				}
+
+				for (TaskEvent event : pendingEvents) {
+					newChannel.sendTaskEvent(event);
+				}
+
+				if (--numberOfUninitializedChannels == 0) {
+					pendingEvents.clear();
+				}
+			} else if (updateConsumersOnFailover) {
+				InputChannel newChannel;
+				ConnectionID connectionId = shuffleDescriptor.getConnectionId();
+				ResultPartitionID newPartitionId = shuffleDescriptor.getResultPartitionID();
+
+				if (current instanceof LocalInputChannel) {
+					LocalInputChannel localChannel = (LocalInputChannel) current;
+					boolean isLocal = shuffleDescriptor.isLocalTo(localLocation);
+					LOG.debug("{}: Update local input channel {} to {}.",
+						owningTaskName, localChannel, connectionId);
+
+					if (isLocal) {
+//						newChannel = localChannel.toNewLocalInputChannel(newPartitionId,
+//							networkEnvironment.getResultPartitionManager(),
+//							networkEnvironment.getTaskEventDispatcher(),
+//							networkEnvironment.getPartitionRequestInitialBackoff(),
+//							networkEnvironment.getPartitionRequestMaxBackoff(),
+//							metrics);
+
+						newChannel = localChannel.toNewLocalInputChannel(newPartitionId,
+							nettyShuffleEnvironment.getResultPartitionManager(),
+							(TaskEventDispatcher) nettyShuffleEnvironment.singleInputGateFactory.taskEventPublisher,
+							nettyShuffleEnvironment.getConfiguration().partitionRequestInitialBackoff(),
+							nettyShuffleEnvironment.getConfiguration().partitionRequestMaxBackoff(),
+							metrics);
+					} else {
+						if (newChannelIsReleased(partitionId, connectionId)) {
+							return;
+						}
+
+//						newChannel = localChannel.toNewRemoteInputChannel(newPartitionId,
+//							newPartitionLocation.getConnectionId(),
+//							networkEnvironment.getConnectionManager(),
+//							networkEnvironment.getPartitionRequestInitialBackoff(),
+//							networkEnvironment.getPartitionRequestMaxBackoff(),
+//							metrics);
+
+						newChannel = localChannel.toNewRemoteInputChannel(newPartitionId,
+							connectionId,
+							nettyShuffleEnvironment.getConnectionManager(),
+							nettyShuffleEnvironment.getConfiguration().partitionRequestInitialBackoff(),
+							nettyShuffleEnvironment.getConfiguration().partitionRequestMaxBackoff(),
+							nettyShuffleEnvironment.getConfiguration().networkBuffersPerChannel(),
+							metrics);
+					}
+				} else if (current instanceof RemoteInputChannel) {
+					RemoteInputChannel remoteChannel = (RemoteInputChannel) current;
+					boolean isLocal = shuffleDescriptor.isLocalTo(localLocation);
+					LOG.debug("{}: Update remote input channel {} to {}.",
+						owningTaskName, remoteChannel, connectionId);
+
+					if (isLocal) {
+						newChannel = remoteChannel.toNewLocalInputChannel(newPartitionId,
+							nettyShuffleEnvironment.getResultPartitionManager(),
+							(TaskEventDispatcher) nettyShuffleEnvironment.singleInputGateFactory.taskEventPublisher,
+							nettyShuffleEnvironment.getConfiguration().partitionRequestInitialBackoff(),
+							nettyShuffleEnvironment.getConfiguration().partitionRequestMaxBackoff(),
+							metrics);
+					} else {
+						if (newChannelIsReleased(partitionId, connectionId)) {
+							return;
+						}
+
+						newChannel = remoteChannel.toNewRemoteInputChannel(newPartitionId,
+							connectionId,
+							nettyShuffleEnvironment.getConnectionManager(),
+							nettyShuffleEnvironment.getConfiguration().partitionRequestInitialBackoff(),
+							nettyShuffleEnvironment.getConfiguration().partitionRequestMaxBackoff(),
+							nettyShuffleEnvironment.getConfiguration().networkBuffersPerChannel(),
+							metrics);
+					}
+
+					List<ConnectionID> connectionIds = releasedRemoteChannels.get(partitionId);
+					if (connectionIds == null) {
+						connectionIds = new ArrayList<ConnectionID>();
+					}
+					connectionIds.add(remoteChannel.getConnectionId());
+					releasedRemoteChannels.put(partitionId, connectionIds);
+				} else {
+					throw new IllegalStateException("Tried to update local/remote channel with unknown channel.");
+				}
+
+				// Remove the old channel from the list of enqueued channels with available data.
+				synchronized(inputChannelsWithData) {
+				//	inputChannelsWithData.remove(current);
+					inputChannelsWithData.getDeque().remove(current);
+					enqueuedInputChannelsWithData.clear(current.getChannelIndex());
+				}
+
+				LOG.debug("{}: Input channel {} has been updated to {}.", owningTaskName, current, newChannel);
+
+				inputChannels.put(partitionId, newChannel);
+				inputChannelArray[newChannel.getChannelIndex()] = newChannel;
+
+				try {
+					newChannel.requestSubpartition(consumedSubpartitionIndex);
+					requestedPartitionsFlag=true;
+					int numberOfBuffersRemoved = (current instanceof RemoteInputChannel ? ((RemoteInputChannel) current).getNumberOfBuffersRemoved() : 0);
+					recoveryManager.notifyNewInputChannel(newChannel, consumedSubpartitionIndex, numberOfBuffersRemoved);
+				} catch (IOException e) {
+					LOG.error("{}: Request subpartition or send task event for input channel {} failed. Ignoring failure and sending fail trigger for producer (chances are it is dead).",
+						owningTaskName, newChannel, e);
+					//用于判断producer是否还在，可用可不用
+					triggerFailProducer(newPartitionId, e);
+				} catch (IllegalStateException e) {
+					LOG.error("{}: Send task event for input channel {} failed.",
+						owningTaskName, newChannel, e);
+				}
+
+			}
+		}
+	}
+
+	private boolean newChannelIsReleased(IntermediateResultPartitionID partitionId, ConnectionID connectionId) {
+		List<ConnectionID> connectionIds = releasedRemoteChannels.get(partitionId);
+		if (connectionIds != null && connectionIds.contains(connectionId)) {
+			LOG.debug("{}: DO NOT update input channel to {} because it was released in the past.", owningTaskName, connectionId);
+			return true;
+		}
+		return false;
+	}
+
+	void triggerFailProducer(ResultPartitionID partitionId, Throwable cause) {
+		partitionProducerStateProvider.triggerFailProducer(consumedResultId, partitionId, cause);
+	}
+
+	public int getAbsoluteChannelIndex(InputGate gate, int channelIndex) {
+		if(gate==this)
+			return channelIndex;
+		else
+			return -1;
+	}
+
+	public SingleInputGate[] getInputGates() {
+		return new SingleInputGate[] {this};
+	}
+
+
+	public int getConsumedSubpartitionIndex() {
+		return consumedSubpartitionIndex;
+	}
+
+	public SingleInputGate get(){
+		return this;
 	}
 }

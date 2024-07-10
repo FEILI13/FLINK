@@ -24,6 +24,9 @@ import org.apache.flink.runtime.scheduler.DeploymentOption;
 import org.apache.flink.runtime.scheduler.ExecutionVertexDeploymentOption;
 import org.apache.flink.runtime.scheduler.SchedulerOperations;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.List;
 import java.util.Set;
 
@@ -33,6 +36,8 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * {@link SchedulingStrategy} instance for streaming job which will schedule all tasks at the same time.
  */
 public class EagerSchedulingStrategy implements SchedulingStrategy {
+
+	private static final Logger LOG = LoggerFactory.getLogger(EagerSchedulingStrategy.class);
 
 	private final SchedulerOperations schedulerOperations;
 
@@ -68,6 +73,8 @@ public class EagerSchedulingStrategy implements SchedulingStrategy {
 	}
 
 	private void allocateSlotsAndDeploy(final Set<ExecutionVertexID> verticesToDeploy) {
+
+		LOG.info("eager");
 		final List<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions =
 			SchedulingStrategyUtils.createExecutionVertexDeploymentOptionsInTopologicalOrder(
 				schedulingTopology,

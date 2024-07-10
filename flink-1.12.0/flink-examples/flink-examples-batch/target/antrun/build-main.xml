@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<project name="maven-antrun-" default="main"  >
+<target name="main">
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-batch/target/flink-examples-batch_2.11-1.12.0-KMeans.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-batch/target/KMeans.jar"/>
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-batch/target/flink-examples-batch_2.11-1.12.0-ConnectedComponents.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-batch/target/ConnectedComponents.jar"/>
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-batch/target/flink-examples-batch_2.11-1.12.0-EnumTriangles.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-batch/target/EnumTriangles.jar"/>
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-batch/target/flink-examples-batch_2.11-1.12.0-PageRank.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-batch/target/PageRank.jar"/>
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-batch/target/flink-examples-batch_2.11-1.12.0-TransitiveClosure.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-batch/target/TransitiveClosure.jar"/>
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-batch/target/flink-examples-batch_2.11-1.12.0-WebLogAnalysis.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-batch/target/WebLogAnalysis.jar"/>
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-batch/target/flink-examples-batch_2.11-1.12.0-WordCount.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-batch/target/WordCount.jar"/>
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-batch/target/flink-examples-batch_2.11-1.12.0-DistCp.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-batch/target/DistCp.jar"/>
+</target>
+</project>

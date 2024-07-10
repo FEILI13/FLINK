@@ -35,6 +35,7 @@ import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.operators.sort.ExternalSorter;
 import org.apache.flink.runtime.operators.sort.PushSorter;
 import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.runtime.io.CheckpointedInputGate;
 import org.apache.flink.streaming.runtime.io.StreamTaskInput;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -125,11 +126,21 @@ public final class SortingDataInput<T, K> implements StreamTaskInput<T> {
 	}
 
 	@Override
+	public void recordDeserializers(int index) {
+
+	}
+
+	@Override
 	public CompletableFuture<Void> prepareSnapshot(
 			ChannelStateWriter channelStateWriter,
 			long checkpointId) {
 		throw new UnsupportedOperationException("Checkpoints are not supported with sorted inputs" +
 			" in the BATCH runtime.");
+	}
+
+	@Override
+	public CheckpointedInputGate getCheckpointedInputGate() {
+		return null;
 	}
 
 	@Override

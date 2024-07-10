@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.14">
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\api\java\hadoop\common\HadoopInputFormatCommonBase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\api\java\hadoop\common\HadoopOutputFormatCommonBase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\api\java\hadoop\mapred\HadoopInputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\api\java\hadoop\mapred\HadoopInputFormatBase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\api\java\hadoop\mapred\HadoopOutputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\api\java\hadoop\mapred\HadoopOutputFormatBase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\api\java\hadoop\mapred\utils\HadoopUtils.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\api\java\hadoop\mapred\wrapper\HadoopDummyProgressable.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\api\java\hadoop\mapred\wrapper\HadoopDummyReporter.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\api\java\hadoop\mapred\wrapper\HadoopInputSplit.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\api\java\hadoop\mapreduce\HadoopInputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\api\java\hadoop\mapreduce\HadoopInputFormatBase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\api\java\hadoop\mapreduce\HadoopOutputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\api\java\hadoop\mapreduce\HadoopOutputFormatBase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\api\java\hadoop\mapreduce\utils\HadoopUtils.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\api\java\hadoop\mapreduce\wrapper\HadoopInputSplit.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\api\java\typeutils\runtime\WritableComparator.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\api\java\typeutils\runtime\WritableSerializer.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\api\java\typeutils\WritableTypeInfo.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\hadoopcompatibility\HadoopInputs.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\hadoopcompatibility\HadoopUtils.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\hadoopcompatibility\mapred\HadoopMapFunction.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\hadoopcompatibility\mapred\HadoopReduceCombineFunction.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\hadoopcompatibility\mapred\HadoopReduceFunction.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\hadoopcompatibility\mapred\wrapper\HadoopOutputCollector.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\main\java\org\apache\flink\hadoopcompatibility\mapred\wrapper\HadoopTupleUnwrappingIterator.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\api\java\hadoop\mapred\HadoopInputFormatTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\api\java\hadoop\mapred\HadoopOutputFormatTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\api\java\hadoop\mapred\wrapper\HadoopInputSplitTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\api\java\hadoop\mapreduce\HadoopInputFormatTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\api\java\hadoop\mapreduce\HadoopOutputFormatTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\api\java\typeutils\runtime\StringArrayWritable.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\api\java\typeutils\runtime\WritableComparatorTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\api\java\typeutils\runtime\WritableComparatorUUIDTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\api\java\typeutils\runtime\WritableID.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\api\java\typeutils\runtime\WritableSerializerTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\api\java\typeutils\runtime\WritableSerializerUpgradeTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\api\java\typeutils\runtime\WritableSerializerUUIDTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\api\java\typeutils\WritableExtractionTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\api\java\typeutils\WritableTypeInfoTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\hadoopcompatibility\HadoopUtilsTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\test\hadoopcompatibility\mapred\example\HadoopMapredCompatWordCount.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\test\hadoopcompatibility\mapred\HadoopIOFormatsITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\test\hadoopcompatibility\mapred\HadoopMapFunctionITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\test\hadoopcompatibility\mapred\HadoopMapredITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\test\hadoopcompatibility\mapred\HadoopReduceCombineFunctionITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\test\hadoopcompatibility\mapred\HadoopReduceFunctionITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\test\hadoopcompatibility\mapred\HadoopTestData.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\test\hadoopcompatibility\mapred\WordCountMapredITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\test\hadoopcompatibility\mapred\wrapper\HadoopTupleUnwrappingIteratorTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\test\hadoopcompatibility\mapreduce\example\WordCount.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\test\hadoopcompatibility\mapreduce\HadoopInputOutputITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\java\org\apache\flink\test\hadoopcompatibility\mapreduce\WordCountMapreduceITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-hadoop-compatibility\src\test\resources\log4j2-test.properties">
+</file>
+</checkstyle>

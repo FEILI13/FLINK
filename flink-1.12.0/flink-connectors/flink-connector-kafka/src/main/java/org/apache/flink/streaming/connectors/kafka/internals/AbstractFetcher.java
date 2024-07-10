@@ -24,6 +24,7 @@ import org.apache.flink.api.common.eventtime.WatermarkOutputMultiplexer;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.metrics.Gauge;
 import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.streaming.api.functions.source.SourceFunction.SourceContext;
 import org.apache.flink.streaming.connectors.kafka.config.OffsetCommitMode;
 import org.apache.flink.streaming.connectors.kafka.internals.metrics.KafkaConsumerMetricConstants;
@@ -525,7 +526,7 @@ public abstract class AbstractFetcher<T, KPH> {
 	 * The periodic watermark emitter. In its given interval, it checks all partitions for
 	 * the current event time watermark, and possibly emits the next watermark.
 	 */
-	private static class PeriodicWatermarkEmitter<T, KPH> implements ProcessingTimeCallback {
+	public static class PeriodicWatermarkEmitter<T, KPH> implements ProcessingTimeCallback {
 
 		private final Object checkpointLock;
 
@@ -536,6 +537,8 @@ public abstract class AbstractFetcher<T, KPH> {
 		private final ProcessingTimeService timerService;
 
 		private final long interval;
+
+		private final ProcessingTimeCallbackID id  = new ProcessingTimeCallbackID(ProcessingTimeCallbackID.Type.WATERMARK);
 
 		//-------------------------------------------------
 
@@ -572,5 +575,9 @@ public abstract class AbstractFetcher<T, KPH> {
 			// schedule the next watermark
 			timerService.registerTimer(timerService.getCurrentProcessingTime() + interval, this);
 		}
+
+//		public ProcessingTimeCallbackID getID() {
+//			return id;
+//		}
 	}
 }

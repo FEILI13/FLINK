@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.14">
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-end-to-end-tests\flink-parent-child-classloading-test-lib-package\src\main\java\org\apache\flink\streaming\tests\ParentChildTestingVehicle.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-end-to-end-tests\flink-parent-child-classloading-test-lib-package\src\main\resources\parent-child-test.properties">
+</file>
+</checkstyle>

@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.shuffle;
 
 import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
@@ -175,4 +176,6 @@ public interface ShuffleEnvironment<P extends ResultPartitionWriter, G extends I
 	boolean updatePartitionInfo(
 		ExecutionAttemptID consumerID,
 		PartitionInfo partitionInfo) throws IOException, InterruptedException;
+
+	public CausalLogManager getCausalLogManager() ;
 }

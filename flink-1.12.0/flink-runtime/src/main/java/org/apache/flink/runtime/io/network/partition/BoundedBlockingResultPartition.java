@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.io.network.partition;
 
+import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.buffer.BufferCompressor;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.util.function.SupplierWithException;
@@ -68,6 +69,11 @@ public class BoundedBlockingResultPartition extends BufferWritingResultPartition
 	}
 
 	@Override
+	public ResultPartitionWriter getResult() {
+		return this;
+	}
+
+	@Override
 	public void flushAll() {
 		flushAllSubpartitions(true);
 	}
@@ -75,5 +81,10 @@ public class BoundedBlockingResultPartition extends BufferWritingResultPartition
 	private static ResultPartitionType checkResultPartitionType(ResultPartitionType type) {
 		checkArgument(type == ResultPartitionType.BLOCKING || type == ResultPartitionType.BLOCKING_PERSISTENT);
 		return type;
+	}
+
+	@Override
+	public ResultSubpartition[] getResultSubpartitions() {
+		return subpartitions;
 	}
 }

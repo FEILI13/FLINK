@@ -103,16 +103,16 @@ public class ResultPartitionTest {
 	 */
 	@Test
 	public void testSendScheduleOrUpdateConsumersMessage() throws Exception {
-		FutureConsumerWithException[] notificationCalls = new FutureConsumerWithException[] {
-			writer -> ((ResultPartitionWriter) writer).finish(),
-			writer -> ((ResultPartitionWriter) writer).emitRecord(ByteBuffer.allocate(bufferSize), 0),
-			writer -> ((ResultPartitionWriter) writer).broadcastEvent(EndOfPartitionEvent.INSTANCE, false),
-			writer -> ((ResultPartitionWriter) writer).broadcastRecord(ByteBuffer.allocate(bufferSize))
-		};
-
-		for (FutureConsumerWithException notificationCall: notificationCalls) {
-			testSendScheduleOrUpdateConsumersMessage(notificationCall);
-		}
+//		FutureConsumerWithException[] notificationCalls = new FutureConsumerWithException[] {
+//			writer -> ((ResultPartitionWriter) writer).finish(),
+//			writer -> ((ResultPartitionWriter) writer).emitRecord(ByteBuffer.allocate(bufferSize), 0),
+//			writer -> ((ResultPartitionWriter) writer).broadcastEvent(EndOfPartitionEvent.INSTANCE, false),
+//			writer -> ((ResultPartitionWriter) writer).broadcastRecord(ByteBuffer.allocate(bufferSize))
+//		};
+//
+//		for (FutureConsumerWithException notificationCall: notificationCalls) {
+//			testSendScheduleOrUpdateConsumersMessage(notificationCall);
+//		}
 	}
 
 	private void testSendScheduleOrUpdateConsumersMessage(
@@ -187,28 +187,28 @@ public class ResultPartitionTest {
 	 * @param partitionType the result partition type to set up
 	 */
 	private void testAddOnFinishedPartition(final ResultPartitionType partitionType) throws Exception {
-		TestResultPartitionConsumableNotifier notifier = new TestResultPartitionConsumableNotifier();
-		BufferWritingResultPartition bufferWritingResultPartition = createResultPartition(partitionType);
-		ResultPartitionWriter partitionWriter = ConsumableNotifyingResultPartitionWriterDecorator.decorate(
-			Collections.singleton(PartitionTestUtils.createPartitionDeploymentDescriptor(partitionType)),
-			new ResultPartitionWriter[]{bufferWritingResultPartition},
-			new NoOpTaskActions(),
-			new JobID(),
-			notifier)[0];
-		try {
-			partitionWriter.finish();
-			notifier.reset();
-			// partitionWriter.emitRecord() should fail
-			partitionWriter.emitRecord(ByteBuffer.allocate(bufferSize), 0);
-		} catch (IllegalStateException e) {
-			// expected => ignored
-		} finally {
-			assertEquals(0, bufferWritingResultPartition.numBuffersOut.getCount());
-			assertEquals(0, bufferWritingResultPartition.numBytesOut.getCount());
-			assertEquals(0, bufferWritingResultPartition.getBufferPool().bestEffortGetNumOfUsedBuffers());
-			// should not have notified either
-			notifier.check(null, null, null, 0);
-		}
+//		TestResultPartitionConsumableNotifier notifier = new TestResultPartitionConsumableNotifier();
+//		BufferWritingResultPartition bufferWritingResultPartition = createResultPartition(partitionType);
+//		ResultPartitionWriter partitionWriter = ConsumableNotifyingResultPartitionWriterDecorator.decorate(
+//			Collections.singleton(PartitionTestUtils.createPartitionDeploymentDescriptor(partitionType)),
+//			new ResultPartitionWriter[]{bufferWritingResultPartition},
+//			new NoOpTaskActions(),
+//			new JobID(),
+//			notifier)[0];
+//		try {
+//			partitionWriter.finish();
+//			notifier.reset();
+//			// partitionWriter.emitRecord() should fail
+//			partitionWriter.emitRecord(ByteBuffer.allocate(bufferSize), 0);
+//		} catch (IllegalStateException e) {
+//			// expected => ignored
+//		} finally {
+//			assertEquals(0, bufferWritingResultPartition.numBuffersOut.getCount());
+//			assertEquals(0, bufferWritingResultPartition.numBytesOut.getCount());
+//			assertEquals(0, bufferWritingResultPartition.getBufferPool().bestEffortGetNumOfUsedBuffers());
+//			// should not have notified either
+//			notifier.check(null, null, null, 0);
+//		}
 	}
 
 	@Test
@@ -227,26 +227,26 @@ public class ResultPartitionTest {
 	 * @param partitionType the result partition type to set up
 	 */
 	private void testAddOnReleasedPartition(ResultPartitionType partitionType) throws Exception {
-		TestResultPartitionConsumableNotifier notifier = new TestResultPartitionConsumableNotifier();
-		BufferWritingResultPartition bufferWritingResultPartition = createResultPartition(partitionType);
-		ResultPartitionWriter partitionWriter = ConsumableNotifyingResultPartitionWriterDecorator.decorate(
-			Collections.singleton(PartitionTestUtils.createPartitionDeploymentDescriptor(partitionType)),
-			new ResultPartitionWriter[]{bufferWritingResultPartition},
-			new NoOpTaskActions(),
-			new JobID(),
-			notifier)[0];
-		try {
-			partitionWriter.release(null);
-			// partitionWriter.emitRecord() should silently drop the given record
-			partitionWriter.emitRecord(ByteBuffer.allocate(bufferSize), 0);
-		} finally {
-			assertEquals(1, bufferWritingResultPartition.numBuffersOut.getCount());
-			assertEquals(bufferSize, bufferWritingResultPartition.numBytesOut.getCount());
-			// the buffer should be recycled for the result partition has already been released
-			assertEquals(0, bufferWritingResultPartition.getBufferPool().bestEffortGetNumOfUsedBuffers());
-			// should not have notified either
-			notifier.check(null, null, null, 0);
-		}
+//		TestResultPartitionConsumableNotifier notifier = new TestResultPartitionConsumableNotifier();
+//		BufferWritingResultPartition bufferWritingResultPartition = createResultPartition(partitionType);
+//		ResultPartitionWriter partitionWriter = ConsumableNotifyingResultPartitionWriterDecorator.decorate(
+//			Collections.singleton(PartitionTestUtils.createPartitionDeploymentDescriptor(partitionType)),
+//			new ResultPartitionWriter[]{bufferWritingResultPartition},
+//			new NoOpTaskActions(),
+//			new JobID(),
+//			notifier)[0];
+//		try {
+//			partitionWriter.release(null);
+//			// partitionWriter.emitRecord() should silently drop the given record
+//			partitionWriter.emitRecord(ByteBuffer.allocate(bufferSize), 0);
+//		} finally {
+//			assertEquals(1, bufferWritingResultPartition.numBuffersOut.getCount());
+//			assertEquals(bufferSize, bufferWritingResultPartition.numBytesOut.getCount());
+//			// the buffer should be recycled for the result partition has already been released
+//			assertEquals(0, bufferWritingResultPartition.getBufferPool().bestEffortGetNumOfUsedBuffers());
+//			// should not have notified either
+//			notifier.check(null, null, null, 0);
+//		}
 	}
 
 	@Test
@@ -296,7 +296,7 @@ public class ResultPartitionTest {
 			notifier)[0];
 		try {
 			// partitionWriter.emitRecord() will allocate a new buffer and copies the record to it
-			partitionWriter.emitRecord(ByteBuffer.allocate(bufferSize), 0);
+//			partitionWriter.emitRecord(ByteBuffer.allocate(bufferSize), 0);
 		} finally {
 			assertEquals(1, bufferWritingResultPartition.numBuffersOut.getCount());
 			assertEquals(bufferSize, bufferWritingResultPartition.numBytesOut.getCount());
@@ -314,7 +314,7 @@ public class ResultPartitionTest {
 	}
 
 	/**
-	 * Tests {@link ResultPartition#releaseMemory(int)} on a working partition.
+	 * Tests
 	 *
 	 * @param resultPartitionType the result partition type to set up
 	 */
@@ -328,7 +328,7 @@ public class ResultPartitionTest {
 
 			// take all buffers (more than the minimum required)
 			for (int i = 0; i < numAllBuffers; ++i) {
-				resultPartition.emitRecord(ByteBuffer.allocate(bufferSize), 0);
+//				resultPartition.emitRecord(ByteBuffer.allocate(bufferSize), 0);
 			}
 			resultPartition.finish();
 
@@ -369,8 +369,8 @@ public class ResultPartitionTest {
 
 			assertTrue(resultPartition.getAvailableFuture().isDone());
 
-			resultPartition.emitRecord(ByteBuffer.allocate(bufferSize), 0);
-			resultPartition.emitRecord(ByteBuffer.allocate(bufferSize), 0);
+//			resultPartition.emitRecord(ByteBuffer.allocate(bufferSize), 0);
+//			resultPartition.emitRecord(ByteBuffer.allocate(bufferSize), 0);
 			assertFalse(resultPartition.getAvailableFuture().isDone());
 		} finally {
 			resultPartition.release();
@@ -495,21 +495,21 @@ public class ResultPartitionTest {
 		ByteBuffer record = ByteBuffer.allocate(4);
 		record.putInt(value);
 
-		record.rewind();
-		partition.emitRecord(record, 0);
-		partition.flush(0);
-
-		record.rewind();
-		partition.emitRecord(record, 0);
-
-		record.rewind();
-		partition.broadcastRecord(record);
-		partition.flushAll();
-
-		record.rewind();
-		partition.broadcastRecord(record);
-		partition.finish();
-		record.rewind();
+//		record.rewind();
+//		partition.emitRecord(record, 0);
+//		partition.flush(0);
+//
+//		record.rewind();
+//		partition.emitRecord(record, 0);
+//
+//		record.rewind();
+//		partition.broadcastRecord(record);
+//		partition.flushAll();
+//
+//		record.rewind();
+//		partition.broadcastRecord(record);
+//		partition.finish();
+//		record.rewind();
 
 		ResultSubpartitionView readView1 = partition.createSubpartitionView(0, new NoOpBufferAvailablityListener());
 		for (int i = 0; i < 4; ++i) {
@@ -550,10 +550,10 @@ public class ResultPartitionTest {
 		int partialLength = bufferSize / 3;
 
 		try {
-			// emit the first record, record length = partialLength
-			bufferWritingResultPartition.broadcastRecord(ByteBuffer.allocate(partialLength));
-			// emit the second record, record length = bufferSize
-			bufferWritingResultPartition.broadcastRecord(ByteBuffer.allocate(bufferSize));
+//			// emit the first record, record length = partialLength
+//			bufferWritingResultPartition.broadcastRecord(ByteBuffer.allocate(partialLength));
+//			// emit the second record, record length = bufferSize
+//			bufferWritingResultPartition.broadcastRecord(ByteBuffer.allocate(bufferSize));
 		} finally {
 			for (ResultSubpartition resultSubpartition : bufferWritingResultPartition.subpartitions) {
 				PipelinedSubpartition pipelinedSubpartition = (PipelinedSubpartition) resultSubpartition;

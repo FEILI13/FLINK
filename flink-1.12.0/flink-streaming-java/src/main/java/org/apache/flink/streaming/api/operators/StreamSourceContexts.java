@@ -17,6 +17,7 @@
 
 package org.apache.flink.streaming.api.operators;
 
+import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
@@ -231,6 +232,8 @@ public class StreamSourceContexts {
 			private final Object lock;
 			private final Output<StreamRecord<T>> output;
 
+			private final ProcessingTimeCallbackID id = new ProcessingTimeCallbackID(ProcessingTimeCallbackID.Type.WATERMARK);
+
 			private WatermarkEmittingTask(
 					ProcessingTimeService timeService,
 					Object checkpointLock,
@@ -271,6 +274,11 @@ public class StreamSourceContexts {
 				nextWatermarkTimer = this.timeService.registerTimer(
 						nextWatermark, new WatermarkEmittingTask(this.timeService, lock, output));
 			}
+
+//			@Override
+//			public ProcessingTimeCallbackID getID() {
+//				return id;
+//			}
 		}
 	}
 
@@ -282,7 +290,7 @@ public class StreamSourceContexts {
 	 * <p>Streaming topologies can use timestamp assigner functions to override the timestamps
 	 * assigned here.
 	 */
-	private static class ManualWatermarkContext<T> extends WatermarkContext<T> {
+	public static class ManualWatermarkContext<T> extends WatermarkContext<T> {
 
 		private final Output<StreamRecord<T>> output;
 		private final StreamRecord<T> reuse;
@@ -336,7 +344,7 @@ public class StreamSourceContexts {
 	 * toggles the status. ACTIVE status resumes as soon as some record or watermark is collected
 	 * again.
 	 */
-	private abstract static class WatermarkContext<T> implements SourceFunction.SourceContext<T> {
+	public abstract static class WatermarkContext<T> implements SourceFunction.SourceContext<T> {
 
 		protected final ProcessingTimeService timeService;
 		protected final Object checkpointLock;
@@ -444,7 +452,9 @@ public class StreamSourceContexts {
 			cancelNextIdleDetectionTask();
 		}
 
-		private class IdlenessDetectionTask implements ProcessingTimeCallback {
+		public class IdlenessDetectionTask implements ProcessingTimeCallback {
+
+			private final ProcessingTimeCallbackID id = new ProcessingTimeCallbackID(ProcessingTimeCallbackID.Type.IDLE);
 			@Override
 			public void onProcessingTime(long timestamp) throws Exception {
 				synchronized (checkpointLock) {
@@ -460,6 +470,11 @@ public class StreamSourceContexts {
 					}
 				}
 			}
+
+//			@Override
+//			public ProcessingTimeCallbackID getID() {
+//				return id;
+//			}
 		}
 
 		private void scheduleNextIdleDetectionTask() {

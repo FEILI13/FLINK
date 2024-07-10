@@ -74,6 +74,8 @@ class SlotSharingExecutionSlotAllocator implements ExecutionSlotAllocator {
 
 	private final Function<ExecutionVertexID, ResourceProfile> resourceProfileRetriever;
 
+	int count = 0;
+
 	SlotSharingExecutionSlotAllocator(
 			PhysicalSlotProvider slotProvider,
 			boolean slotWillBeOccupiedIndefinitely,
@@ -113,10 +115,14 @@ class SlotSharingExecutionSlotAllocator implements ExecutionSlotAllocator {
 	@Override
 	public List<SlotExecutionVertexAssignment> allocateSlotsFor(
 			List<ExecutionVertexSchedulingRequirements> executionVertexSchedulingRequirements) {
+
+		LOG.info("allocateSlotsFor(");
 		List<ExecutionVertexID> executionVertexIds = executionVertexSchedulingRequirements
 			.stream()
 			.map(ExecutionVertexSchedulingRequirements::getExecutionVertexId)
 			.collect(Collectors.toList());
+
+		LOG.info("List<ExecutionVertexID> executionVertexIds {}",executionVertexIds.size());
 
 		SharedSlotProfileRetriever sharedSlotProfileRetriever = sharedSlotProfileRetrieverFactory
 			.createFromBulk(new HashSet<>(executionVertexIds));
@@ -126,7 +132,7 @@ class SlotSharingExecutionSlotAllocator implements ExecutionSlotAllocator {
 		Map<ExecutionVertexID, SlotExecutionVertexAssignment> assignments =
 			allocateLogicalSlotsFromSharedSlots(sharedSlotProfileRetriever, executionsByGroup);
 
-		bulkChecker.schedulePendingRequestBulkTimeoutCheck(createBulk(executionsByGroup), allocationTimeout);
+		//bulkChecker.schedulePendingRequestBulkTimeoutCheck(createBulk(executionsByGroup), allocationTimeout);
 
 		return executionVertexIds.stream().map(assignments::get).collect(Collectors.toList());
 	}
@@ -156,12 +162,18 @@ class SlotSharingExecutionSlotAllocator implements ExecutionSlotAllocator {
 
 		Map<ExecutionVertexID, SlotExecutionVertexAssignment> assignments = new HashMap<>();
 
+		LOG.info("Map<ExecutionVertexID, SlotExecutionVertexAssignment> allocateLogicalSlotsFromSharedSlots(");
 		for (Map.Entry<ExecutionSlotSharingGroup, List<ExecutionVertexID>> entry : executionsByGroup.entrySet()) {
 			ExecutionSlotSharingGroup group = entry.getKey();
 			List<ExecutionVertexID> executionIds = entry.getValue();
-			SharedSlot sharedSlot = getOrAllocateSharedSlot(group, sharedSlotProfileRetriever);
 
+			LOG.info("executionIds.length {}",executionIds.size());
+			LOG.info("ExecutionSlotSharingGroup.length {}",group.getExecutionVertexIds().size());
+			SharedSlot sharedSlot = getOrAllocateSharedSlot(group, sharedSlotProfileRetriever);
+			LOG.info("sharedSlot hash {}",sharedSlot.hashCode());
 			for (ExecutionVertexID executionId : executionIds) {
+				LOG.info("ExecutionVertexID executionId : executionIds");
+				LOG.info("executionIds {}",executionId.toString());
 				CompletableFuture<LogicalSlot> logicalSlotFuture = sharedSlot.allocateLogicalSlot(executionId);
 				SlotExecutionVertexAssignment assignment = new SlotExecutionVertexAssignment(executionId, logicalSlotFuture);
 				assignments.put(executionId, assignment);
@@ -174,24 +186,47 @@ class SlotSharingExecutionSlotAllocator implements ExecutionSlotAllocator {
 	private SharedSlot getOrAllocateSharedSlot(
 			ExecutionSlotSharingGroup executionSlotSharingGroup,
 			SharedSlotProfileRetriever sharedSlotProfileRetriever) {
-		return sharedSlots
-			.computeIfAbsent(executionSlotSharingGroup, group -> {
-				SlotRequestId physicalSlotRequestId = new SlotRequestId();
-				ResourceProfile physicalSlotResourceProfile = getPhysicalSlotResourceProfile(group);
-				SlotProfile slotProfile = sharedSlotProfileRetriever.getSlotProfile(group, physicalSlotResourceProfile);
-				PhysicalSlotRequest physicalSlotRequest =
-					new PhysicalSlotRequest(physicalSlotRequestId, slotProfile, slotWillBeOccupiedIndefinitely);
-				CompletableFuture<PhysicalSlot> physicalSlotFuture = slotProvider
-					.allocatePhysicalSlot(physicalSlotRequest)
-					.thenApply(PhysicalSlotRequest.Result::getPhysicalSlot);
-				return new SharedSlot(
-					physicalSlotRequestId,
-					physicalSlotResourceProfile,
-					group,
-					physicalSlotFuture,
-					slotWillBeOccupiedIndefinitely,
-					this::releaseSharedSlot);
-			});
+
+		LOG.info("SharedSlot getOrAllocateSharedSlot(");
+//		return sharedSlots
+//			.computeIfAbsent(executionSlotSharingGroup, group -> {
+//				count++;
+//				LOG.info("count {}",count);
+//				SlotRequestId physicalSlotRequestId = new SlotRequestId();
+//				ResourceProfile physicalSlotResourceProfile = getPhysicalSlotResourceProfile(group);
+//				SlotProfile slotProfile = sharedSlotProfileRetriever.getSlotProfile(group, physicalSlotResourceProfile);
+//				PhysicalSlotRequest physicalSlotRequest =
+//					new PhysicalSlotRequest(physicalSlotRequestId, slotProfile, slotWillBeOccupiedIndefinitely);
+//				CompletableFuture<PhysicalSlot> physicalSlotFuture = slotProvider
+//					.allocatePhysicalSlot(physicalSlotRequest)
+//					.thenApply(PhysicalSlotRequest.Result::getPhysicalSlot);
+//				return new SharedSlot(
+//					physicalSlotRequestId,
+//					physicalSlotResourceProfile,
+//					group,
+//					physicalSlotFuture,
+//					slotWillBeOccupiedIndefinitely,
+//					this::releaseSharedSlot);
+//			});
+
+
+		count++;
+		LOG.info("count {}",count);
+		SlotRequestId physicalSlotRequestId = new SlotRequestId();
+		ResourceProfile physicalSlotResourceProfile = getPhysicalSlotResourceProfile(executionSlotSharingGroup);
+		SlotProfile slotProfile = sharedSlotProfileRetriever.getSlotProfile(executionSlotSharingGroup, physicalSlotResourceProfile);
+		PhysicalSlotRequest physicalSlotRequest =
+			new PhysicalSlotRequest(physicalSlotRequestId, slotProfile, slotWillBeOccupiedIndefinitely);
+		CompletableFuture<PhysicalSlot> physicalSlotFuture = slotProvider
+			.allocatePhysicalSlot(physicalSlotRequest)
+			.thenApply(PhysicalSlotRequest.Result::getPhysicalSlot);
+		return new SharedSlot(
+			physicalSlotRequestId,
+			physicalSlotResourceProfile,
+			executionSlotSharingGroup,
+			physicalSlotFuture,
+			slotWillBeOccupiedIndefinitely,
+			this::releaseSharedSlot);
 	}
 
 	private void releaseSharedSlot(ExecutionSlotSharingGroup executionSlotSharingGroup) {

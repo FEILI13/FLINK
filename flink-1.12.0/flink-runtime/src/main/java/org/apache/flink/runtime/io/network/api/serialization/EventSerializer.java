@@ -297,6 +297,14 @@ public class EventSerializer {
 		return new BufferConsumer(data, FreeingBufferRecycler.INSTANCE, getDataType(event, hasPriority));
 	}
 
+	public static BufferConsumer toBufferConsumer(AbstractEvent event, boolean hasPriority,long checkpointID) throws IOException {
+		final ByteBuffer serializedEvent = EventSerializer.toSerializedEvent(event);
+
+		MemorySegment data = MemorySegmentFactory.wrap(serializedEvent.array());
+
+		return new BufferConsumer(data, FreeingBufferRecycler.INSTANCE, getDataType(event, hasPriority),checkpointID);
+	}
+
 	public static AbstractEvent fromBuffer(Buffer buffer, ClassLoader classLoader) throws IOException {
 		return fromSerializedEvent(buffer.getNioBufferReadable(), classLoader);
 	}

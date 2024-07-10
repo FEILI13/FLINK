@@ -21,6 +21,9 @@ package org.apache.flink.runtime.io.network.buffer;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.io.network.buffer.BufferBuilder.PositionMarker;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import javax.annotation.concurrent.NotThreadSafe;
 
 import java.io.Closeable;
@@ -40,11 +43,15 @@ import static org.apache.flink.util.Preconditions.checkState;
  */
 @NotThreadSafe
 public class BufferConsumer implements Closeable {
+	private static final Logger LOG = LoggerFactory.getLogger(BufferConsumer.class);
+
 	private final Buffer buffer;
 
 	private final CachedPositionMarker writerPosition;
 
 	private int currentReaderPosition;
+
+	public  long checkpointID;
 
 	/**
 	 * Constructs {@link BufferConsumer} instance with the initial reader position.
@@ -53,36 +60,45 @@ public class BufferConsumer implements Closeable {
 			MemorySegment memorySegment,
 			BufferRecycler recycler,
 			PositionMarker currentWriterPosition,
-			int currentReaderPosition) {
+			int currentReaderPosition,long checkpointID) {
 		this(
 			new NetworkBuffer(checkNotNull(memorySegment), checkNotNull(recycler)),
 			currentWriterPosition,
-			currentReaderPosition);
+			currentReaderPosition,checkpointID);
 	}
 
 	/**
 	 * Constructs {@link BufferConsumer} instance with static content.
 	 */
 	public BufferConsumer(MemorySegment memorySegment, BufferRecycler recycler, Buffer.DataType dataType) {
-		this(memorySegment, recycler, memorySegment.size(), dataType);
+		this(memorySegment, recycler, memorySegment.size(), dataType,0);
+	}
+
+	public BufferConsumer(MemorySegment memorySegment, BufferRecycler recycler, Buffer.DataType dataType,long checkpointID) {
+		this(memorySegment, recycler, memorySegment.size(), dataType,checkpointID);
 	}
 
 	/**
 	 * Constructs {@link BufferConsumer} instance with static content of a certain size.
 	 */
-	public BufferConsumer(MemorySegment memorySegment, BufferRecycler recycler, int size, Buffer.DataType dataType) {
+	public BufferConsumer(MemorySegment memorySegment, BufferRecycler recycler, int size, Buffer.DataType dataType,long checkpointID) {
 		this(new NetworkBuffer(checkNotNull(memorySegment), checkNotNull(recycler), dataType),
 				() -> -size,
-				0);
+				0,checkpointID);
 		checkState(memorySegment.size() > 0);
 		checkState(isFinished(), "BufferConsumer with static size must be finished after construction!");
 	}
 
-	private BufferConsumer(Buffer buffer, BufferBuilder.PositionMarker currentWriterPosition, int currentReaderPosition) {
+	private BufferConsumer(Buffer buffer, BufferBuilder.PositionMarker currentWriterPosition, int currentReaderPosition,long checkpointID) {
 		this.buffer = checkNotNull(buffer);
 		this.writerPosition = new CachedPositionMarker(checkNotNull(currentWriterPosition));
 		checkArgument(currentReaderPosition <= writerPosition.getCached(), "Reader position larger than writer position");
 		this.currentReaderPosition = currentReaderPosition;
+		this.checkpointID = checkpointID;
+	}
+
+	public long getCheckpointID() {
+		return checkpointID;
 	}
 
 	/**
@@ -109,6 +125,17 @@ public class BufferConsumer implements Closeable {
 		return slice.retainBuffer();
 	}
 
+	public Buffer build(int size) {
+		writerPosition.update();
+		checkState(writerPosition.getCached() - currentReaderPosition >= size);
+		LOG.debug("Build buffer of size {} with writerPosition: {}, readerPosition: {}", size, writerPosition.getCached(), currentReaderPosition);
+
+		Buffer slice = buffer.readOnlySlice(currentReaderPosition, size);
+
+		currentReaderPosition += size;
+		return slice.retainBuffer();
+	}
+
 	/**
 	 * @param bytesToSkip number of bytes to skip from currentReaderPosition
 	 */
@@ -129,7 +156,7 @@ public class BufferConsumer implements Closeable {
 	 * @return a retained copy of self with separate indexes
 	 */
 	public BufferConsumer copy() {
-		return new BufferConsumer(buffer.retainBuffer(), writerPosition.positionMarker, currentReaderPosition);
+		return new BufferConsumer(buffer.retainBuffer(), writerPosition.positionMarker, currentReaderPosition, checkpointID);
 	}
 
 	/**
@@ -141,7 +168,7 @@ public class BufferConsumer implements Closeable {
 	 * @return a retained copy of self with separate indexes
 	 */
 	public BufferConsumer copyWithReaderPosition(int readerPosition) {
-		return new BufferConsumer(buffer.retainBuffer(), writerPosition.positionMarker, readerPosition);
+		return new BufferConsumer(buffer.retainBuffer(), writerPosition.positionMarker, readerPosition,checkpointID);
 	}
 
 	public boolean isBuffer() {
@@ -184,6 +211,11 @@ public class BufferConsumer implements Closeable {
 	 */
 	public boolean isDataAvailable() {
 		return currentReaderPosition < writerPosition.getLatest();
+	}
+
+	public int getUnreadBytes() {
+		writerPosition.update();
+		return writerPosition.getCached() - currentReaderPosition;
 	}
 
 	/**

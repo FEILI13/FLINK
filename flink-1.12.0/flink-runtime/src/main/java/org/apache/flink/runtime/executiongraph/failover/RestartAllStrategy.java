@@ -22,6 +22,9 @@ import org.apache.flink.runtime.executiongraph.Execution;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.List;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -31,6 +34,8 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * execution graph, via {@link ExecutionGraph#failGlobal(Throwable)}.
  */
 public class RestartAllStrategy extends FailoverStrategy {
+
+	private static final Logger LOG = LoggerFactory.getLogger(RestartAllStrategy.class);
 
 	/** The execution graph to recover */
 	private final ExecutionGraph executionGraph;
@@ -50,11 +55,14 @@ public class RestartAllStrategy extends FailoverStrategy {
 	@Override
 	public void onTaskFailure(Execution taskExecution, Throwable cause) {
 		// this strategy makes every task failure a global failure
+		LOG.info("RestartAllStrategy :onTaskFailure");
 		executionGraph.failGlobal(cause);
 	}
 
 	@Override
 	public void notifyNewVertices(List<ExecutionJobVertex> newJobVerticesTopological) {
+
+		LOG.info("restart");
 		// nothing to do
 	}
 

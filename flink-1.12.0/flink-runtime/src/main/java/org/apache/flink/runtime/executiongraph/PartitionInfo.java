@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.executiongraph;
 
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
 
 import java.io.Serializable;
@@ -35,6 +36,10 @@ public class PartitionInfo implements Serializable {
 	private final IntermediateDataSetID intermediateDataSetID;
 
 	private final ShuffleDescriptor shuffleDescriptor;
+
+	public boolean updateConsumersOnFailover = false;
+
+	public TaskIOMetricGroup metric;
 
 	public PartitionInfo(
 			IntermediateDataSetID intermediateResultPartitionID,

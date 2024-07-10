@@ -133,6 +133,11 @@ public class StreamTaskSourceInput<T> implements StreamTaskInput<T>, Checkpointa
 	}
 
 	@Override
+	public void recordDeserializers(int index) {
+
+	}
+
+	@Override
 	public void close() {
 		// SourceOperator is closed via OperatorChain
 	}
@@ -142,6 +147,11 @@ public class StreamTaskSourceInput<T> implements StreamTaskInput<T>, Checkpointa
 			ChannelStateWriter channelStateWriter,
 			long checkpointId) {
 		return CompletableFuture.completedFuture(null);
+	}
+
+	@Override
+	public CheckpointedInputGate getCheckpointedInputGate() {
+		return null;
 	}
 
 	public OperatorID getOperatorID() {

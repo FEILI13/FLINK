@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.14">
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-filesystems\flink-oss-fs-hadoop\src\main\java\org\apache\flink\fs\osshadoop\OSSFileSystemFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-filesystems\flink-oss-fs-hadoop\src\test\java\org\apache\flink\fs\osshadoop\HadoopOSSFileSystemBehaviorITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-filesystems\flink-oss-fs-hadoop\src\test\java\org\apache\flink\fs\osshadoop\HadoopOSSFileSystemITCase.java">
+</file>
+</checkstyle>

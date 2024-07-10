@@ -25,6 +25,8 @@ import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.BufferAvailabilityListener;
 import org.apache.flink.runtime.io.network.partition.CheckpointedResultPartition;
 import org.apache.flink.runtime.io.network.partition.CheckpointedResultSubpartition;
+import org.apache.flink.runtime.io.network.partition.PipelinedResultPartition;
+import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionConsumableNotifier;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartitionView;
@@ -85,7 +87,7 @@ public class ConsumableNotifyingResultPartitionWriterDecorator {
 	//  wrapper class to send notification
 	// ------------------------------------------------------------------------
 
-	private static final class ConsumableNotifyingResultPartitionWriter implements ResultPartitionWriter, CheckpointedResultPartition {
+	public static final class ConsumableNotifyingResultPartitionWriter implements ResultPartitionWriter, CheckpointedResultPartition {
 
 		private final TaskActions taskActions;
 
@@ -129,15 +131,15 @@ public class ConsumableNotifyingResultPartitionWriterDecorator {
 		}
 
 		@Override
-		public void emitRecord(ByteBuffer record, int targetSubpartition) throws IOException {
-			partitionWriter.emitRecord(record, targetSubpartition);
+		public void emitRecord(ByteBuffer record, int targetSubpartition,long checkp) throws IOException {
+			partitionWriter.emitRecord(record, targetSubpartition,checkp);
 
 			notifyPipelinedConsumers();
 		}
 
-		@Override
-		public void broadcastRecord(ByteBuffer record) throws IOException {
-			partitionWriter.broadcastRecord(record);
+
+		public void broadcastRecord(ByteBuffer record,long check) throws IOException {
+			partitionWriter.broadcastRecord(record,check);
 
 			notifyPipelinedConsumers();
 		}
@@ -145,6 +147,12 @@ public class ConsumableNotifyingResultPartitionWriterDecorator {
 		@Override
 		public void broadcastEvent(AbstractEvent event, boolean isPriorityEvent) throws IOException {
 			partitionWriter.broadcastEvent(event, isPriorityEvent);
+
+			notifyPipelinedConsumers();
+		}
+
+		public void broadcastEvent(AbstractEvent event, boolean isPriorityEvent,long checkpointID) throws IOException {
+			partitionWriter.broadcastEvent(event, isPriorityEvent,checkpointID);
 
 			notifyPipelinedConsumers();
 		}
@@ -233,6 +241,14 @@ public class ConsumableNotifyingResultPartitionWriterDecorator {
 		private CheckpointedResultPartition getCheckpointablePartition() {
 			if (partitionWriter instanceof CheckpointedResultPartition) {
 				return (CheckpointedResultPartition) partitionWriter;
+			} else {
+				throw new IllegalStateException("This partition is not checkpointable: " + partitionWriter);
+			}
+		}
+
+		public ResultPartition getResult() {
+			if (partitionWriter instanceof ResultPartition) {
+				return (ResultPartition) partitionWriter;
 			} else {
 				throw new IllegalStateException("This partition is not checkpointable: " + partitionWriter);
 			}

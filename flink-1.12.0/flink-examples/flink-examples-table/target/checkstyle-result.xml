@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.14">
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table\src\main\java\org\apache\flink\table\examples\java\basics\GettingStartedExample.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table\src\main\java\org\apache\flink\table\examples\java\basics\StreamSQLExample.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table\src\main\java\org\apache\flink\table\examples\java\basics\StreamWindowSQLExample.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table\src\main\java\org\apache\flink\table\examples\java\basics\UpdatingTopCityExample.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table\src\main\java\org\apache\flink\table\examples\java\basics\WordCountSQL.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table\src\main\java\org\apache\flink\table\examples\java\basics\WordCountTable.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table\src\main\java\org\apache\flink\table\examples\java\connectors\ChangelogCsvDeserializer.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table\src\main\java\org\apache\flink\table\examples\java\connectors\ChangelogCsvFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table\src\main\java\org\apache\flink\table\examples\java\connectors\ChangelogCsvFormatFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table\src\main\java\org\apache\flink\table\examples\java\connectors\ChangelogSocketExample.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table\src\main\java\org\apache\flink\table\examples\java\connectors\SocketDynamicTableFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table\src\main\java\org\apache\flink\table\examples\java\connectors\SocketDynamicTableSource.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table\src\main\java\org\apache\flink\table\examples\java\connectors\SocketSourceFunction.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table\src\test\java\org\apache\flink\table\examples\java\basics\GettingStartedExampleITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table\src\test\java\org\apache\flink\table\examples\java\basics\UpdatingTopCityExampleITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table\src\test\java\org\apache\flink\table\examples\scala\basics\GettingStartedExampleITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table\src\test\java\org\apache\flink\table\examples\utils\ExampleOutputTestBase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table\src\main\resources\log4j2.properties">
+</file>
+</checkstyle>

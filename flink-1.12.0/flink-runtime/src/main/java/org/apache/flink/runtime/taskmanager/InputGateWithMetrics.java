@@ -26,9 +26,11 @@ import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.IndexedInputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 
 import java.io.IOException;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
@@ -133,4 +135,19 @@ public class InputGateWithMetrics extends IndexedInputGate {
 		numBytesIn.inc(bufferOrEvent.getSize());
 		return bufferOrEvent;
 	}
+
+
+	public int getAbsoluteChannelIndex(InputGate gate, int channelIndex) {
+		return -1;
+	}
+
+	public SingleInputGate[] getInputGates() {
+		return null;
+	}
+
+	public SingleInputGate get(){
+		return (SingleInputGate) inputGate;
+	}
+
+
 }

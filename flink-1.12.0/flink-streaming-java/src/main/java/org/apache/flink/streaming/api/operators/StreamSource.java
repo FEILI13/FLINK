@@ -20,6 +20,7 @@ package org.apache.flink.streaming.api.operators;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.MetricOptions;
+import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
@@ -170,7 +171,7 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>> extends Abstract
 		return canceledOrStopped;
 	}
 
-	private static class LatencyMarksEmitter<OUT> {
+	public static class LatencyMarksEmitter<OUT> {
 		private final ScheduledFuture<?> latencyMarkTimer;
 
 		public LatencyMarksEmitter(
@@ -182,6 +183,9 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>> extends Abstract
 
 			latencyMarkTimer = processingTimeService.scheduleWithFixedDelay(
 				new ProcessingTimeCallback() {
+
+
+					ProcessingTimeCallbackID id = new ProcessingTimeCallbackID(ProcessingTimeCallbackID.Type.LATENCY);
 					@Override
 					public void onProcessingTime(long timestamp) throws Exception {
 						try {
@@ -193,6 +197,11 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>> extends Abstract
 							LOG.warn("Error while emitting latency marker.", t);
 						}
 					}
+
+//					@Override
+//					public ProcessingTimeCallbackID getID() {
+//						return id;
+//					}
 				},
 				0L,
 				latencyTrackingInterval);

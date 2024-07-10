@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.14">
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\HiveDDLUtils.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlAddHivePartitions.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlAlterHiveDatabase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlAlterHiveDatabaseLocation.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlAlterHiveDatabaseOwner.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlAlterHiveDatabaseProps.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlAlterHivePartitionRename.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlAlterHiveTable.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlAlterHiveTableAddReplaceColumn.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlAlterHiveTableChangeColumn.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlAlterHiveTableFileFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlAlterHiveTableLocation.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlAlterHiveTableProps.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlAlterHiveTableSerDe.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlAlterHiveViewProperties.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlCreateHiveDatabase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlCreateHiveTable.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlCreateHiveView.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlDescribeHiveTable.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlHiveConstraintEnable.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlHiveConstraintRely.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlHiveConstraintTrait.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\ddl\SqlHiveConstraintValidate.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\dml\RichSqlHiveInsert.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\package-info.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\main\java\org\apache\flink\sql\parser\hive\type\ExtendedHiveStructTypeNameSpec.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser-hive\src\test\java\org\apache\flink\sql\parser\hive\FlinkHiveSqlParserImplTest.java">
+</file>
+</checkstyle>

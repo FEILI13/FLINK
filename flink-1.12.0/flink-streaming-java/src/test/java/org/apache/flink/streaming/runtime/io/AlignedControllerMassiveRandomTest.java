@@ -27,6 +27,8 @@ import org.apache.flink.runtime.io.network.buffer.NetworkBufferPool;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.IndexedInputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.operators.testutils.DummyCheckpointInvokable;
 import org.apache.flink.streaming.api.operators.SyncMailboxExecutor;
 
@@ -240,6 +242,16 @@ public class AlignedControllerMassiveRandomTest {
 		}
 
 		@Override
+		public int getAbsoluteChannelIndex(InputGate gate, int channelIndex) {
+			return 0;
+		}
+
+		@Override
+		public SingleInputGate[] getInputGates() {
+			return new SingleInputGate[0];
+		}
+
+		@Override
 		public void requestPartitions() {
 		}
 
@@ -250,6 +262,11 @@ public class AlignedControllerMassiveRandomTest {
 		@Override
 		public int getGateIndex() {
 			return 0;
+		}
+
+		@Override
+		public SingleInputGate get() {
+			return null;
 		}
 	}
 }

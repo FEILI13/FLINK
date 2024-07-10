@@ -20,10 +20,13 @@ package org.apache.flink.runtime.jobgraph.tasks;
 
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.causal.log.job.JobCausalLog;
+import org.apache.flink.runtime.causal.recovery.RecoveryManager;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetricsBuilder;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.execution.Environment;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.util.FlinkException;
@@ -64,7 +67,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 public abstract class AbstractInvokable {
 
 	/** The environment assigned to this invokable. */
-	private final Environment environment;
+	public final Environment environment;
 
 	/** Flag whether cancellation should interrupt the executing thread. */
 	private volatile boolean shouldInterruptOnCancel = true;
@@ -276,5 +279,52 @@ public abstract class AbstractInvokable {
 
 	public void dispatchOperatorEvent(OperatorID operator, SerializedValue<OperatorEvent> event) throws FlinkException {
 		throw new UnsupportedOperationException("dispatchOperatorEvent not supported by " + getClass().getName());
+	}
+
+	/*
+	todo 赫明萱加
+	 */
+	public void ignoreCheckpoint(long checkpointId){
+		throw new UnsupportedOperationException(String.format("ignoreCheckpoint not supported by %s", this.getClass().getName()));
+	}
+
+	public void switchStandbyToRunning() throws Exception {
+
+	}
+
+	public void notifyStartedRestoringCheckpoint(long checkpointId){
+
+	}
+
+
+	public void initializeState() throws Exception {
+
+	}
+
+	public void notifyCompletedRestoringCheckpoint(long checkpointId){
+
+	}
+
+	public JobCausalLog getJobCausalLog(){
+		return null;
+	}
+
+
+	public RecoveryManager getRecoveryManager() {
+		return null;
+	}
+
+
+	/**
+	 * Gets the lock object on which all operations that involve data and state mutation have to lock.
+	 *
+	 * @return The checkpoint lock object.
+	 */
+	public Object getCheckpointLock() {
+		return null;
+	}
+
+	public void resetInputChannelDeserializer(InputGate gate, int channelIndex){
+		throw new UnsupportedOperationException(String.format("resetInputChannelDeserializer not supported by %s", this.getClass().getName()));
 	}
 }

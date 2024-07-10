@@ -54,7 +54,7 @@ public interface ResultPartitionWriter extends AutoCloseable, AvailabilityProvid
 	/**
 	 * Writes the given serialized record to the target subpartition.
 	 */
-	void emitRecord(ByteBuffer record, int targetSubpartition) throws IOException;
+	void emitRecord(ByteBuffer record, int targetSubpartition,long checkpointID) throws IOException;
 
 	/**
 	 * Writes the given serialized record to all subpartitions. One can also achieve the same effect by emitting
@@ -62,12 +62,14 @@ public interface ResultPartitionWriter extends AutoCloseable, AvailabilityProvid
 	 * underlying implementation can do some optimizations, for example coping the given serialized record only
 	 * once to a shared channel which can be consumed by all subpartitions.
 	 */
-	void broadcastRecord(ByteBuffer record) throws IOException;
+	void broadcastRecord(ByteBuffer record,long checkp) throws IOException;
 
 	/**
 	 * Writes the given {@link AbstractEvent} to all channels.
 	 */
 	void broadcastEvent(AbstractEvent event, boolean isPriorityEvent) throws IOException;
+
+	void broadcastEvent(AbstractEvent event, boolean isPriorityEvent,long checkpointID) throws IOException;
 
 	/**
 	 * Sets the metric group for the {@link ResultPartitionWriter}.
@@ -121,4 +123,6 @@ public interface ResultPartitionWriter extends AutoCloseable, AvailabilityProvid
 	 * Closes the partition writer which releases the allocated resource, for example the buffer pool.
 	 */
 	void close() throws Exception;
+
+	public ResultPartitionWriter getResult();
 }

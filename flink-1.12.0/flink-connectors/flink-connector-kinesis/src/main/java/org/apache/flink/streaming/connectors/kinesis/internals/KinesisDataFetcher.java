@@ -22,6 +22,7 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.api.common.serialization.RuntimeContextInitializationContextAdapters;
 import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
@@ -1030,7 +1031,7 @@ public class KinesisDataFetcher<T> {
 	 * The periodic watermark emitter. In its given interval, it checks all shards for the current
 	 * event time watermark, and possibly emits the next watermark.
 	 */
-	private class PeriodicWatermarkEmitter implements ProcessingTimeCallback {
+	public class PeriodicWatermarkEmitter implements ProcessingTimeCallback {
 
 		private final ProcessingTimeService timerService;
 		private final long interval;
@@ -1051,6 +1052,13 @@ public class KinesisDataFetcher<T> {
 			// schedule the next watermark
 			timerService.registerTimer(timerService.getCurrentProcessingTime() + interval, this);
 		}
+
+//		@Override
+//		public ProcessingTimeCallbackID getID() {
+//			return  new ProcessingTimeCallbackID(ProcessingTimeCallbackID.Type.WATERMARK);
+//		}
+
+
 	}
 
 	/** Timer task to update shared watermark state. */
@@ -1127,6 +1135,11 @@ public class KinesisDataFetcher<T> {
 			// schedule next callback
 			timerService.registerTimer(timerService.getCurrentProcessingTime() + interval, this);
 		}
+
+//		@Override
+//		public ProcessingTimeCallbackID getID() {
+//			return new ProcessingTimeCallbackID(ProcessingTimeCallbackID.Type.WATERMARK);
+//		}
 	}
 
 	/**

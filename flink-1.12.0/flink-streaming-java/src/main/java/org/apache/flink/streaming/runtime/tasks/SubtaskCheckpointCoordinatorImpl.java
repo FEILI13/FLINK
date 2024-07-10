@@ -243,6 +243,7 @@ class SubtaskCheckpointCoordinatorImpl implements SubtaskCheckpointCoordinator {
 			return;
 		}
 
+
 		// Step (1): Prepare the checkpoint, allow operators to do some pre-barrier work.
 		//           The pre-barrier work should be nothing or minimal in the common case.
 		operatorChain.prepareSnapshotPreBarrier(metadata.getCheckpointId());
@@ -313,6 +314,8 @@ class SubtaskCheckpointCoordinatorImpl implements SubtaskCheckpointCoordinator {
 					previousException = e;
 				}
 			}
+
+
 
 		} else {
 			LOG.debug("Ignoring notification of aborted checkpoint for not-running task {}", taskName);

@@ -39,7 +39,7 @@ class ExecutionSlotSharingGroup {
 		executionVertexIds.add(executionVertexId);
 	}
 
-	Set<ExecutionVertexID> getExecutionVertexIds() {
+	public Set<ExecutionVertexID> getExecutionVertexIds() {
 		return Collections.unmodifiableSet(executionVertexIds);
 	}
 }

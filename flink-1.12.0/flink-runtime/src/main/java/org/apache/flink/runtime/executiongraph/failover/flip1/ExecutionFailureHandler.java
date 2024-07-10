@@ -19,6 +19,7 @@ package org.apache.flink.runtime.executiongraph.failover.flip1;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.runtime.JobException;
+import org.apache.flink.runtime.executiongraph.failover.RunStandbyTaskStrategy;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingExecutionVertex;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingTopology;
@@ -75,7 +76,13 @@ public class ExecutionFailureHandler {
 	 * @return result of the failure handling
 	 */
 	public FailureHandlingResult getFailureHandlingResult(ExecutionVertexID failedTask, Throwable cause) {
-		return handleFailure(cause, failoverStrategy.getTasksNeedingRestart(failedTask, cause), false);
+			return handleFailure(cause, failoverStrategy.getTasksNeedingRestart(failedTask, cause), false);
+
+	}
+
+
+	public FailoverStrategy getFailoverStrategy(){
+		return failoverStrategy;
 	}
 
 	/**

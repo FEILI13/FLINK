@@ -21,6 +21,7 @@ package org.apache.flink.runtime.state;
 import org.apache.flink.api.common.state.CheckpointListener;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
+import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.checkpoint.PrioritizedOperatorSubtaskState;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.checkpoint.channel.SequentialChannelStateReader;
@@ -73,4 +74,11 @@ public interface TaskStateManager extends CheckpointListener, AutoCloseable {
 	LocalRecoveryConfig createLocalRecoveryConfig();
 
 	SequentialChannelStateReader getSequentialChannelStateReader();
+
+
+	/**
+	 * Receive the latest checkpointed state of running task.
+	 * Only applies to a standby task in STANDBY state.
+	 */
+	void setTaskRestore(JobManagerTaskRestore taskRestore);
 }

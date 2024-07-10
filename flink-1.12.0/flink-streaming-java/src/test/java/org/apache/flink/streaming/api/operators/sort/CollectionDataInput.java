@@ -21,6 +21,7 @@ package org.apache.flink.streaming.api.operators.sort;
 import org.apache.flink.core.io.InputStatus;
 import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
 import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.runtime.io.CheckpointedInputGate;
 import org.apache.flink.streaming.runtime.io.StreamTaskInput;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -69,9 +70,19 @@ final class CollectionDataInput<E> implements StreamTaskInput<E> {
 	}
 
 	@Override
+	public void recordDeserializers(int index) {
+
+	}
+
+	@Override
 	public CompletableFuture<Void> prepareSnapshot(
 		ChannelStateWriter channelStateWriter,
 		long checkpointId) throws IOException {
+		return null;
+	}
+
+	@Override
+	public CheckpointedInputGate getCheckpointedInputGate() {
 		return null;
 	}
 

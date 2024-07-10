@@ -372,4 +372,12 @@ public class TestingJobMasterGateway implements JobMasterGateway {
 	public CompletableFuture<CoordinationResponse> deliverCoordinationRequestToCoordinator(OperatorID operatorId, SerializedValue<CoordinationRequest> serializedRequest, Time timeout) {
 		return deliverCoordinationRequestFunction.apply(operatorId, serializedRequest);
 	}
+
+	@Override
+	public CompletableFuture<Acknowledge> requestFailProducer(
+		IntermediateDataSetID intermediateResultId,
+		ResultPartitionID partitionId,
+		Throwable cause) {
+		return null;
+	}
 }
