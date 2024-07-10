@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.14">
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\main\java\org\apache\flink\addons\hbase1\TableInputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\main\java\org\apache\flink\connector\hbase1\HBase1DynamicTableFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\main\java\org\apache\flink\connector\hbase1\HBase1TableFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\main\java\org\apache\flink\connector\hbase1\HBaseValidator.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\main\java\org\apache\flink\connector\hbase1\options\HBaseOptions.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\main\java\org\apache\flink\connector\hbase1\sink\HBaseDynamicTableSink.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\main\java\org\apache\flink\connector\hbase1\sink\HBaseUpsertTableSink.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\main\java\org\apache\flink\connector\hbase1\source\AbstractTableInputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\main\java\org\apache\flink\connector\hbase1\source\HBaseDynamicTableSource.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\main\java\org\apache\flink\connector\hbase1\source\HBaseInputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\main\java\org\apache\flink\connector\hbase1\source\HBaseRowDataInputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\main\java\org\apache\flink\connector\hbase1\source\HBaseRowInputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\main\java\org\apache\flink\connector\hbase1\source\HBaseTableSource.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\test\java\org\apache\flink\connector\hbase1\example\HBaseWriteExample.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\test\java\org\apache\flink\connector\hbase1\example\HBaseWriteStreamExample.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\test\java\org\apache\flink\connector\hbase1\HBaseConnectorITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\test\java\org\apache\flink\connector\hbase1\HBaseDescriptorTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\test\java\org\apache\flink\connector\hbase1\HBaseDynamicTableFactoryTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\test\java\org\apache\flink\connector\hbase1\HBaseTableFactoryTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\test\java\org\apache\flink\connector\hbase1\HBaseTablePlanTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\test\java\org\apache\flink\connector\hbase1\util\HBaseTestBase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\test\java\org\apache\flink\connector\hbase1\util\HBaseTestingClusterAutoStarter.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\test\java\org\slf4j\impl\Log4jLoggerAdapter.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-hbase-1.4\src\test\resources\log4j2-test.properties">
+</file>
+</checkstyle>

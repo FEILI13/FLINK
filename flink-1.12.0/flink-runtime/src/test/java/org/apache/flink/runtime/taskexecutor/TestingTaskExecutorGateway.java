@@ -23,6 +23,7 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.java.tuple.Tuple6;
 import org.apache.flink.runtime.blob.TransientBlobKey;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
+import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
@@ -234,6 +235,29 @@ public class TestingTaskExecutorGateway implements TaskExecutorGateway {
 	@Override
 	public CompletableFuture<ThreadDumpInfo> requestThreadDump(Time timeout) {
 		return requestThreadDumpSupplier.get();
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> ignoreCheckpoint(
+		ExecutionAttemptID attemptId,
+		long checkpointId,
+		Time rpcTimeout) {
+		return null;
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> switchStandbyTaskToRunning(
+		ExecutionAttemptID executionAttemptID,
+		Time timeout) {
+		return null;
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(
+		ExecutionAttemptID executionAttemptID,
+		JobManagerTaskRestore taskRestore,
+		Time timeout) {
+		return null;
 	}
 
 	@Override

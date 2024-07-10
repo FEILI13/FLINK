@@ -315,4 +315,7 @@ public abstract class ResultPartition implements ResultPartitionWriter {
 	protected boolean canBeCompressed(Buffer buffer) {
 		return bufferCompressor != null && buffer.isBuffer() && buffer.readableBytes() > 0;
 	}
+
+	public abstract ResultSubpartition[] getResultSubpartitions() ;
+
 }

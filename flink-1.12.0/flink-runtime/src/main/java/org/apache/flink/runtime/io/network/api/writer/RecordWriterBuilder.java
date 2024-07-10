@@ -18,7 +18,9 @@
 
 package org.apache.flink.runtime.io.network.api.writer;
 
+import org.apache.flink.api.common.services.RandomService;
 import org.apache.flink.core.io.IOReadableWritable;
+import org.apache.flink.runtime.causal.EpochTracker;
 
 /**
  * Utility class to encapsulate the logic of building a {@link RecordWriter} instance.
@@ -28,6 +30,8 @@ public class RecordWriterBuilder<T extends IOReadableWritable> {
 	private ChannelSelector<T> selector = new RoundRobinChannelSelector<>();
 
 	private long timeout = -1;
+
+	private RandomService randomService;
 
 	private String taskName = "test";
 
@@ -46,11 +50,24 @@ public class RecordWriterBuilder<T extends IOReadableWritable> {
 		return this;
 	}
 
+	public RecordWriterBuilder<T> setRandom(RandomService randomService) {
+		this.randomService = randomService;
+		return this;
+	}
+
 	public RecordWriter<T> build(ResultPartitionWriter writer) {
 		if (selector.isBroadcast()) {
 			return new BroadcastRecordWriter<>(writer, timeout, taskName);
 		} else {
 			return new ChannelSelectorRecordWriter<>(writer, selector, timeout, taskName);
+		}
+	}
+
+	public RecordWriter<T> build(ResultPartitionWriter writer, EpochTracker epochTracker) {
+		if (selector.isBroadcast()) {
+			return new BroadcastRecordWriter<>(writer, timeout, taskName,epochTracker);
+		} else {
+			return new ChannelSelectorRecordWriter<>(writer, selector, timeout, taskName,epochTracker);
 		}
 	}
 }

@@ -49,6 +49,7 @@ import org.apache.flink.runtime.io.network.NettyShuffleEnvironmentBuilder;
 import org.apache.flink.runtime.io.network.api.writer.AvailabilityTestResultPartitionWriter;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.operators.testutils.DummyEnvironment;
@@ -1308,6 +1309,11 @@ public class StreamTaskTest extends TestLogger {
 		}
 
 		@Override
+		public void resetInputChannelDeserializer(InputGate gate, int channelIndex) {
+
+		}
+
+		@Override
 		public void close() throws IOException {
 		}
 
@@ -1475,6 +1481,11 @@ public class StreamTaskTest extends TestLogger {
 		@Override
 		public CompletableFuture<Void> prepareSnapshot(ChannelStateWriter channelStateWriter, long checkpointId) {
 			return FutureUtils.completedVoidFuture();
+		}
+
+		@Override
+		public void resetInputChannelDeserializer(InputGate gate, int channelIndex) {
+
 		}
 
 		@Override

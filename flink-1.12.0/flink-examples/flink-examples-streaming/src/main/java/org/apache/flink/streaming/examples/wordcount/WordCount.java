@@ -18,13 +18,18 @@
 package org.apache.flink.streaming.examples.wordcount;
 
 import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.restartstrategy.RestartStrategies;
+import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.utils.MultipleParameterTool;
+import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.examples.wordcount.util.WordCountData;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
+
+import java.util.concurrent.TimeUnit;
 
 /**
  * Implements the "WordCount" program that computes a simple word occurrence
@@ -51,11 +56,17 @@ public class WordCount {
 
 	public static void main(String[] args) throws Exception {
 
+
+
 		// Checking input parameters
 		final MultipleParameterTool params = MultipleParameterTool.fromArgs(args);
 
 		// set up the execution environment
 		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+
+		env.enableCheckpointing(1000, CheckpointingMode.AT_LEAST_ONCE);
+
+		env.setRestartStrategy(RestartStrategies.fixedDelayRestart(3, Time.of(10, TimeUnit.SECONDS)));
 
 		// make parameters available in the web interface
 		env.getConfig().setGlobalJobParameters(params);
@@ -83,7 +94,7 @@ public class WordCount {
 			// split up the lines in pairs (2-tuples) containing: (word,1)
 			text.flatMap(new Tokenizer())
 			// group by the tuple field "0" and sum up tuple field "1"
-			.keyBy(value -> value.f0).sum(1);
+			.keyBy(value -> value.f0).sum(1).setParallelism(1);
 
 		// emit result
 		if (params.has("output")) {

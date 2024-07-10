@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.14">
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-fs-tests\src\test\java\org\apache\flink\hdfstests\ContinuousFileProcessingITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-fs-tests\src\test\java\org\apache\flink\hdfstests\ContinuousFileProcessingMigrationTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-fs-tests\src\test\java\org\apache\flink\hdfstests\ContinuousFileProcessingTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-fs-tests\src\test\java\org\apache\flink\hdfstests\DistributedCacheDfsTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-fs-tests\src\test\java\org\apache\flink\hdfstests\HDFSTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-fs-tests\src\test\java\org\apache\flink\hdfstests\Utils.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-fs-tests\src\test\resources\log4j2-test.properties">
+</file>
+</checkstyle>

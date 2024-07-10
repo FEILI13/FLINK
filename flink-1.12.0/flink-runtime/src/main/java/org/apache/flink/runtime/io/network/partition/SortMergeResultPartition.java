@@ -24,6 +24,7 @@ import org.apache.flink.core.memory.MemorySegmentFactory;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
+import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferCompressor;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
@@ -138,17 +139,35 @@ public class SortMergeResultPartition extends ResultPartition {
 	}
 
 	@Override
-	public void emitRecord(ByteBuffer record, int targetSubpartition) throws IOException {
+	public void emitRecord(ByteBuffer record, int targetSubpartition,long checkp) throws IOException {
 		emit(record, targetSubpartition, DataType.DATA_BUFFER);
 	}
 
-	@Override
-	public void broadcastRecord(ByteBuffer record) throws IOException {
+	public void emitRecord(ByteBuffer record, int targetSubpartition) throws IOException {
+
+	}
+
+
+	public void broadcastRecord(ByteBuffer record,long checkp) throws IOException {
 		broadcast(record, DataType.DATA_BUFFER);
+	}
+
+	public void broadcastRecord(ByteBuffer record) throws IOException {
+
 	}
 
 	@Override
 	public void broadcastEvent(AbstractEvent event, boolean isPriorityEvent) throws IOException {
+		Buffer buffer = EventSerializer.toBuffer(event, isPriorityEvent);
+		try {
+			ByteBuffer serializedEvent = buffer.getNioBufferReadable();
+			broadcast(serializedEvent, buffer.getDataType());
+		} finally {
+			buffer.recycleBuffer();
+		}
+	}
+
+	public void broadcastEvent(AbstractEvent event, boolean isPriorityEvent,long che) throws IOException {
 		Buffer buffer = EventSerializer.toBuffer(event, isPriorityEvent);
 		try {
 			ByteBuffer serializedEvent = buffer.getNioBufferReadable();
@@ -301,6 +320,11 @@ public class SortMergeResultPartition extends ResultPartition {
 	}
 
 	@Override
+	public ResultPartitionWriter getResult() {
+		return this;
+	}
+
+	@Override
 	public ResultSubpartitionView createSubpartitionView(
 			int subpartitionIndex,
 			BufferAvailabilityListener availabilityListener) throws IOException {
@@ -343,6 +367,12 @@ public class SortMergeResultPartition extends ResultPartition {
 	@Override
 	public CompletableFuture<?> getAvailableFuture() {
 		return AVAILABLE;
+	}
+
+	@Override
+	public ResultSubpartition[] getResultSubpartitions() {
+		LOG.info("SortMergeResultPartition: getResultSubpartitions");
+		return new ResultSubpartition[0];
 	}
 
 	@Override

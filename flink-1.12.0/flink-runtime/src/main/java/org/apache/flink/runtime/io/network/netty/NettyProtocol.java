@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
+import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.io.network.NetworkClientHandler;
 import org.apache.flink.runtime.io.network.TaskEventPublisher;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionProvider;
@@ -30,14 +31,23 @@ import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandler;
 public class NettyProtocol {
 
 	private final NettyMessage.NettyMessageEncoder
-		messageEncoder = new NettyMessage.NettyMessageEncoder();
+		messageEncoder ;
 
 	private final ResultPartitionProvider partitionProvider;
 	private final TaskEventPublisher taskEventPublisher;
 
+	private final CausalLogManager causalLogManager;
+
+
 	NettyProtocol(ResultPartitionProvider partitionProvider, TaskEventPublisher taskEventPublisher) {
+		this(partitionProvider,taskEventPublisher,null);
+	}
+	NettyProtocol(ResultPartitionProvider partitionProvider, TaskEventPublisher taskEventPublisher,
+				  CausalLogManager causalLogManager) {
 		this.partitionProvider = partitionProvider;
 		this.taskEventPublisher = taskEventPublisher;
+		this.causalLogManager = causalLogManager;
+		this.messageEncoder = new NettyMessage.NettyMessageEncoder(causalLogManager);
 	}
 
 	/**
@@ -125,7 +135,7 @@ public class NettyProtocol {
 
 		return new ChannelHandler[]{
 			messageEncoder,
-			new NettyMessageClientDecoderDelegate(networkClientHandler),
+			new NettyMessageClientDecoderDelegate(networkClientHandler,causalLogManager),
 			networkClientHandler};
 	}
 

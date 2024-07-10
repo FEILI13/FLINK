@@ -21,6 +21,7 @@ package org.apache.flink.runtime.io.network.api.writer;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.core.memory.DataOutputSerializer;
+import org.apache.flink.runtime.causal.EpochTracker;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.AvailabilityProvider;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
@@ -46,7 +47,7 @@ import static org.apache.flink.util.Preconditions.checkArgument;
  *
  * @param <T> the type of the record that can be emitted with this record writer
  */
-public abstract class RecordWriter<T extends IOReadableWritable> implements AvailabilityProvider {
+public abstract class RecordWriter<T extends IOReadableWritable> implements AvailabilityProvider{
 
 	/** Default name for the output flush thread, if no name with a task reference is given. */
 	@VisibleForTesting
@@ -74,7 +75,14 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 	private int volatileFlusherExceptionCheckSkipCount;
 	private static final int VOLATILE_FLUSHER_EXCEPTION_MAX_CHECK_SKIP_COUNT = 100;
 
-	RecordWriter(ResultPartitionWriter writer, long timeout, String taskName) {
+	public final EpochTracker epochTracker;
+
+	RecordWriter(ResultPartitionWriter writer, long timeout, String taskName){
+		this(writer,timeout,taskName,new EpochTracker());
+	}
+
+	RecordWriter(ResultPartitionWriter writer, long timeout, String taskName, EpochTracker epochTracker) {
+		this.epochTracker = epochTracker;
 		this.targetPartition = writer;
 		this.numberOfChannels = writer.getNumberOfSubpartitions();
 
@@ -97,7 +105,7 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 	protected void emit(T record, int targetSubpartition) throws IOException {
 		checkErroneous();
 
-		targetPartition.emitRecord(serializeRecord(serializer, record), targetSubpartition);
+		targetPartition.emitRecord(serializeRecord(serializer, record), targetSubpartition,epochTracker.checkpointID);
 
 		if (flushAlways) {
 			targetPartition.flush(targetSubpartition);
@@ -109,7 +117,7 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 	}
 
 	public void broadcastEvent(AbstractEvent event, boolean isPriorityEvent) throws IOException {
-		targetPartition.broadcastEvent(event, isPriorityEvent);
+		targetPartition.broadcastEvent(event, isPriorityEvent,epochTracker.checkpointID);
 
 		if (flushAlways) {
 			flushAll();
@@ -159,7 +167,8 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 	public void randomEmit(T record) throws IOException {
 		checkErroneous();
 
-		int targetSubpartition = rng.nextInt(numberOfChannels);
+		//int targetSubpartition = rng.nextInt(numberOfChannels);
+		int targetSubpartition = epochTracker.randomService.nextInt(numberOfChannels);
 		emit(record, targetSubpartition);
 	}
 
@@ -258,7 +267,9 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 	}
 
 	@VisibleForTesting
-	ResultPartitionWriter getTargetPartition() {
+	public ResultPartitionWriter getTargetPartition() {
 		return targetPartition;
 	}
+
+
 }

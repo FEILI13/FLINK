@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.scheduler.strategy;
 
+import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.topology.Topology;
 
@@ -44,4 +45,6 @@ public interface SchedulingTopology
 	 * @throws IllegalArgumentException If the partition does not exist
 	 */
 	SchedulingResultPartition getResultPartition(IntermediateResultPartitionID intermediateResultPartitionId);
+
+	ExecutionGraph getExecutionGraph();
 }

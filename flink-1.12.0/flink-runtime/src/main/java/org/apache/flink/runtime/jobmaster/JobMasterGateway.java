@@ -290,4 +290,17 @@ public interface JobMasterGateway extends
 		OperatorID operatorId,
 		SerializedValue<CoordinationRequest> serializedRequest,
 		@RpcTimeout Time timeout);
+
+	/**todo 赫明萱加
+	 * Requests to fail the producer of a partition.
+	 *
+	 * @param intermediateResultId The execution attempt ID of the producer task to fail
+	 * @param partitionId The partition ID of the partition of which to fail producer
+	 * @param cause The reason to fail the producer
+	 * @return Future acknowledge of the fail operation
+	 */
+	CompletableFuture<Acknowledge> requestFailProducer(
+		final IntermediateDataSetID intermediateResultId,
+		final ResultPartitionID partitionId,
+		final Throwable cause);
 }

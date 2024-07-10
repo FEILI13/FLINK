@@ -27,6 +27,9 @@ import org.apache.flink.util.IterableUtils;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Sets;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -42,6 +45,8 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * {@link SchedulingStrategy} instance for batch job which schedule vertices when input data are ready.
  */
 public class LazyFromSourcesSchedulingStrategy implements SchedulingStrategy {
+
+	private static final Logger LOG = LoggerFactory.getLogger(LazyFromSourcesSchedulingStrategy.class);
 
 	private static final Predicate<SchedulingExecutionVertex> IS_IN_CREATED_EXECUTION_STATE = schedulingExecutionVertex -> CREATED == schedulingExecutionVertex.getState();
 
@@ -127,6 +132,8 @@ public class LazyFromSourcesSchedulingStrategy implements SchedulingStrategy {
 			final Iterable<? extends SchedulingExecutionVertex> vertices) {
 
 		final Set<SchedulingExecutionVertex> vertexSet = Sets.newHashSet(vertices);
+
+		LOG.info("lazy");
 
 		// do the check right before scheduling each vertex in case that a vertex's status is changed
 		// when scheduling other vertices

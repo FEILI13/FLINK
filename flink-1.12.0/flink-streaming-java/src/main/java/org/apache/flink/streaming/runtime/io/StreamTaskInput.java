@@ -36,8 +36,12 @@ public interface StreamTaskInput<T> extends PushingAsyncDataInput<T>, Closeable 
 	 */
 	int getInputIndex();
 
+	void recordDeserializers(int index);
+
 	/**
 	 * Prepares to spill the in-flight input buffers as checkpoint snapshot.
 	 */
 	CompletableFuture<Void> prepareSnapshot(ChannelStateWriter channelStateWriter, long checkpointId) throws IOException;
+
+	public CheckpointedInputGate getCheckpointedInputGate();
 }

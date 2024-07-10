@@ -255,4 +255,37 @@ public class TaskDeploymentDescriptorFactory {
 			producerState == ExecutionState.CANCELED ||
 			producerState == ExecutionState.FAILED;
 	}
+
+
+	/*
+	todo 赫明萱加
+	 */
+
+	public TaskDeploymentDescriptor createDeploymentDescriptor(
+		AllocationID allocationID,
+		int targetSlotNumber,
+		@Nullable JobManagerTaskRestore taskRestore,
+		Collection<ResultPartitionDeploymentDescriptor> producedPartitions,
+		boolean isStandby) {
+
+
+
+		TaskDeploymentDescriptor taskDeploymentDescriptor = new TaskDeploymentDescriptor(
+			jobID,
+			serializedJobInformation,
+			taskInfo,
+			executionId,
+			allocationID,
+			subtaskIndex,
+			attemptNumber,
+			targetSlotNumber,
+			taskRestore,
+			new ArrayList<>(producedPartitions),
+			createInputGateDeploymentDescriptors(),
+			isStandby);
+
+		//add producedPartitions
+
+		return taskDeploymentDescriptor;
+	}
 }

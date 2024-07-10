@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.io.network.netty;
 
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
@@ -167,14 +168,59 @@ public abstract class NettyMessage {
 	@ChannelHandler.Sharable
 	static class NettyMessageEncoder extends ChannelOutboundHandlerAdapter {
 
+		private final CausalLogManager causalLog;
+
+		public NettyMessageEncoder() {
+			this(null);
+		}
+
+		public NettyMessageEncoder(CausalLogManager causalLogManager) {
+			this.causalLog = causalLogManager;
+		}
+
 		@Override
 		public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws IOException {
+
+			System.out.println("NettyMessageEncoder:");
 			if (msg instanceof NettyMessage) {
+
+//				if(msg instanceof BufferResponse){
+//					System.out.println("((BufferResponse) msg).causalLog = this.causalLog;");
+//					((BufferResponse) msg).causalLog = this.causalLog;
+//				}
 				((NettyMessage) msg).write(ctx, promise, ctx.alloc());
 			}
 			else {
 				ctx.write(msg, promise);
 			}
+//			if (msg instanceof NettyMessage) {
+//
+//				if(msg instanceof BufferResponse){
+//					ByteBuf serialized = null;
+//					try {
+//						serialized = ((BufferResponse) msg).write(ctx.alloc());
+//						if (msg instanceof BufferResponse) {
+//							BufferResponse bufferResponse = (BufferResponse) msg;
+//							serialized = causalLog.enrichWithCausalLogDeltas(serialized, bufferResponse.receiverId,
+//								bufferResponse.epochID, ctx.alloc());
+//						}
+//					} catch (Throwable t) {
+//						throw new IOException("Error while serializing message: " + msg, t);
+//					} finally {
+//						if (serialized != null) {
+//							ctx.write(serialized, promise);
+//						}
+//					}
+//				}
+//
+//				else{
+//					((NettyMessage) msg).write(ctx, promise, ctx.alloc());
+//				}
+//
+//			} else {
+//				ctx.write(msg, promise);
+//			}
+
 		}
 	}
 
@@ -275,6 +321,10 @@ public abstract class NettyMessage {
 
 		final int bufferSize;
 
+		CausalLogManager causalLog;
+
+		final long epochID;
+
 		private BufferResponse(
 				@Nullable Buffer buffer,
 				Buffer.DataType dataType,
@@ -290,6 +340,8 @@ public abstract class NettyMessage {
 			this.receiverId = checkNotNull(receiverId);
 			this.backlog = backlog;
 			this.bufferSize = bufferSize;
+
+			this.epochID = -1;
 		}
 
 		BufferResponse(
@@ -305,6 +357,24 @@ public abstract class NettyMessage {
 			this.receiverId = checkNotNull(receiverId);
 			this.backlog = backlog;
 			this.bufferSize = buffer.getSize();
+			this.epochID = -1;
+		}
+
+		BufferResponse(
+			Buffer buffer,
+			int sequenceNumber,
+			InputChannelID receiverId,
+			int backlog,
+			long epochID) {
+			this.buffer = checkNotNull(buffer);
+			checkArgument(buffer.getDataType().ordinal() <= Byte.MAX_VALUE, "Too many data types defined!");
+			this.dataType = buffer.getDataType();
+			this.isCompressed = buffer.isCompressed();
+			this.sequenceNumber = sequenceNumber;
+			this.receiverId = checkNotNull(receiverId);
+			this.backlog = backlog;
+			this.bufferSize = buffer.getSize();
+			this.epochID = epochID;
 		}
 
 		boolean isBuffer() {
@@ -328,18 +398,41 @@ public abstract class NettyMessage {
 
 		@Override
 		void write(ChannelOutboundInvoker out, ChannelPromise promise, ByteBufAllocator allocator) throws IOException {
+
+
+
 			ByteBuf headerBuf = null;
 			try {
 				// in order to forward the buffer to netty, it needs an allocator set
 				buffer.setAllocator(allocator);
 
 				headerBuf = fillHeader(allocator);
+
+
 				out.write(headerBuf);
 				out.write(buffer, promise);
 			}
 			catch (Throwable t) {
 				handleException(headerBuf, buffer, t);
 			}
+
+//			ByteBuf headerBuf = null;
+//			try {
+//				// in order to forward the buffer to netty, it needs an allocator set
+//				buffer.setAllocator(allocator);
+//
+//				headerBuf = fillHeader(allocator);
+//				headerBuf = causalLog.enrichWithCausalLogDeltas( headerBuf, receiverId, epochID, allocator);
+//				out.write(headerBuf);
+////				ByteBuffer buffer1 = buffer_hmx.nioBuffer();
+//				out.write(buffer, promise);
+//			}
+//			catch (Throwable t) {
+//				handleException(headerBuf, buffer, t);
+//			}
+
+
+
 		}
 
 		@VisibleForTesting
@@ -351,11 +444,11 @@ public abstract class NettyMessage {
 
 				headerBuf = fillHeader(allocator);
 
-				CompositeByteBuf composityBuf = allocator.compositeDirectBuffer();
-				composityBuf.addComponent(headerBuf);
-				composityBuf.addComponent(buffer.asByteBuf());
+				CompositeByteBuf composityBuf = allocator.compositeDirectBuffer(Integer.MAX_VALUE);
+				composityBuf.addComponent(true,headerBuf);
+				composityBuf.addComponent(true,buffer.asByteBuf());
 				// update writer index since we have data written to the components:
-				composityBuf.writerIndex(headerBuf.writerIndex() + buffer.asByteBuf().writerIndex());
+				//composityBuf.writerIndex(headerBuf.writerIndex() + buffer.asByteBuf().writerIndex());
 				return composityBuf;
 			}
 			catch (Throwable t) {
@@ -394,6 +487,7 @@ public abstract class NettyMessage {
 			boolean isCompressed = messageHeader.readBoolean();
 			int size = messageHeader.readInt();
 
+
 			Buffer dataBuffer = null;
 
 			if (size != 0) {
@@ -403,6 +497,9 @@ public abstract class NettyMessage {
 					dataBuffer = bufferAllocator.allocateUnPooledNetworkBuffer(size, dataType);
 				}
 			}
+
+
+
 
 			if (dataBuffer != null) {
 				dataBuffer.setCompressed(isCompressed);

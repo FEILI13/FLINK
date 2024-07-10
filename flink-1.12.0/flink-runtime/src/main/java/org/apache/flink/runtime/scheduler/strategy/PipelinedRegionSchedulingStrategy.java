@@ -26,6 +26,9 @@ import org.apache.flink.runtime.scheduler.ExecutionVertexDeploymentOption;
 import org.apache.flink.runtime.scheduler.SchedulerOperations;
 import org.apache.flink.util.IterableUtils;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -42,6 +45,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  * {@link SchedulingStrategy} instance which schedules tasks in granularity of pipelined regions.
  */
 public class PipelinedRegionSchedulingStrategy implements SchedulingStrategy {
+	private static final Logger LOG = LoggerFactory.getLogger(PipelinedRegionSchedulingStrategy.class);
 
 	private final SchedulerOperations schedulerOperations;
 
@@ -84,6 +88,7 @@ public class PipelinedRegionSchedulingStrategy implements SchedulingStrategy {
 
 	@Override
 	public void startScheduling() {
+		LOG.info("startScheduling()");
 		final Set<SchedulingPipelinedRegion> sourceRegions = IterableUtils
 			.toStream(schedulingTopology.getAllPipelinedRegions())
 			.filter(region -> !region.getConsumedResults().iterator().hasNext())
@@ -93,6 +98,7 @@ public class PipelinedRegionSchedulingStrategy implements SchedulingStrategy {
 
 	@Override
 	public void restartTasks(final Set<ExecutionVertexID> verticesToRestart) {
+		LOG.info("restartTasks");
 		final Set<SchedulingPipelinedRegion> regionsToRestart = verticesToRestart.stream()
 			.map(schedulingTopology::getPipelinedRegionOfVertex)
 			.collect(Collectors.toSet());
@@ -101,7 +107,10 @@ public class PipelinedRegionSchedulingStrategy implements SchedulingStrategy {
 
 	@Override
 	public void onExecutionStateChange(final ExecutionVertexID executionVertexId, final ExecutionState executionState) {
+
+		LOG.info("onExecutionStateChange");
 		if (executionState == ExecutionState.FINISHED) {
+			LOG.info("executionState == ExecutionState.FINISHED");
 			final Set<SchedulingResultPartition> finishedPartitions = IterableUtils
 				.toStream(schedulingTopology.getVertex(executionVertexId).getProducedResults())
 				.filter(partition -> partitionConsumerRegions.containsKey(partition.getId()))
@@ -135,12 +144,24 @@ public class PipelinedRegionSchedulingStrategy implements SchedulingStrategy {
 
 		checkState(areRegionVerticesAllInCreatedState(region), "BUG: trying to schedule a region which is not in CREATED state");
 
+		LOG.info("pipe");
 		final List<ExecutionVertexDeploymentOption> vertexDeploymentOptions =
 			SchedulingStrategyUtils.createExecutionVertexDeploymentOptions(
 				regionVerticesSorted.get(region),
 				id -> deploymentOption);
+
+
 		schedulerOperations.allocateSlotsAndDeploy(vertexDeploymentOptions);
 	}
+
+	public void allocatestandbySlotsAndDeploy(List<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions){
+		LOG.info("申请备用算子的slot");
+		LOG.info("schedulerOperations.class {}",schedulerOperations);
+		schedulerOperations.allocateStandbySlotsAndDeploy(executionVertexDeploymentOptions);
+	}
+
+
+
 
 	private boolean areRegionInputsAllConsumable(final SchedulingPipelinedRegion region) {
 		for (SchedulingResultPartition partition : region.getConsumedResults()) {

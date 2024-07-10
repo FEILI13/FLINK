@@ -513,6 +513,9 @@ public class NetworkBufferPool implements BufferPoolFactory, MemorySegmentProvid
 		assert (numDistributedMemorySegment == memorySegmentsToDistribute);
 	}
 
+	public int getMemorySegmentSize() {
+		return memorySegmentSize;
+	}
 	private String getConfigDescription() {
 		return String.format("The total number of network buffers is currently set to %d of %d bytes each. " +
 						"You can increase this number by setting the configuration keys '%s', '%s', and '%s'",

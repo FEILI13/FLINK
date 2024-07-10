@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.io.network.api.writer;
 
 import org.apache.flink.core.io.IOReadableWritable;
+import org.apache.flink.runtime.causal.EpochTracker;
 
 import java.io.IOException;
 
@@ -39,6 +40,14 @@ public final class BroadcastRecordWriter<T extends IOReadableWritable> extends R
 		super(writer, timeout, taskName);
 	}
 
+	BroadcastRecordWriter(
+		ResultPartitionWriter writer,
+		long timeout,
+		String taskName,
+		EpochTracker epochTracker) {
+		super(writer, timeout, taskName,epochTracker);
+	}
+
 	@Override
 	public void emit(T record) throws IOException {
 		broadcastEmit(record);
@@ -48,10 +57,11 @@ public final class BroadcastRecordWriter<T extends IOReadableWritable> extends R
 	public void broadcastEmit(T record) throws IOException {
 		checkErroneous();
 
-		targetPartition.broadcastRecord(serializeRecord(serializer, record));
+		targetPartition.broadcastRecord(serializeRecord(serializer, record),epochTracker.checkpointID);
 
 		if (flushAlways) {
 			flushAll();
 		}
 	}
+
 }

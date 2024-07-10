@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.14">
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-sequence-file\src\main\java\org\apache\flink\formats\sequencefile\SequenceFileWriter.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-sequence-file\src\main\java\org\apache\flink\formats\sequencefile\SequenceFileWriterFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-sequence-file\src\main\java\org\apache\flink\formats\sequencefile\SerializableHadoopConfiguration.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-sequence-file\src\test\java\org\apache\flink\formats\sequencefile\SequenceStreamingFileSinkITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-sequence-file\src\test\java\org\apache\flink\formats\sequencefile\SerializableHadoopConfigurationTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-sequence-file\src\test\resources\log4j2-test.properties">
+</file>
+</checkstyle>

@@ -24,6 +24,7 @@ import org.apache.flink.core.memory.MemorySegment;
 
 import javax.annotation.Nullable;
 
+import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -104,6 +105,16 @@ public class NoOpBufferPool implements BufferPool {
 	@Override
 	public BufferRecycler[] getSubpartitionBufferRecyclers() {
 		return new BufferRecycler[0];
+	}
+
+	@Override
+	public int getMemorySegmentSize() {
+		return 0;
+	}
+
+	@Override
+	public Buffer requestBufferBlocking() throws IOException, InterruptedException {
+		return null;
 	}
 
 	@Override

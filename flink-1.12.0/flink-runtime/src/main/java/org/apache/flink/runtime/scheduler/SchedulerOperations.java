@@ -36,4 +36,6 @@ public interface SchedulerOperations {
 	 * @param executionVertexDeploymentOptions The deployment options of tasks to be deployed
 	 */
 	void allocateSlotsAndDeploy(List<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions);
+
+	void allocateStandbySlotsAndDeploy(List<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions);
 }

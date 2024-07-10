@@ -55,15 +55,36 @@ public class MockResultPartitionWriter implements ResultPartitionWriter {
 	}
 
 	@Override
-	public void emitRecord(ByteBuffer record, int targetSubpartition) throws IOException {
+	public void emitRecord(
+		ByteBuffer record,
+		int targetSubpartition,
+		long checkpointID) throws IOException {
+
 	}
 
 	@Override
+	public void broadcastRecord(ByteBuffer record, long checkp) throws IOException {
+
+	}
+
+
+	public void emitRecord(ByteBuffer record, int targetSubpartition) throws IOException {
+	}
+
+
 	public void broadcastRecord(ByteBuffer record) throws IOException {
 	}
 
 	@Override
 	public void broadcastEvent(AbstractEvent event, boolean isPriorityEvent) throws IOException {
+	}
+
+	@Override
+	public void broadcastEvent(
+		AbstractEvent event,
+		boolean isPriorityEvent,
+		long checkpointID) throws IOException {
+
 	}
 
 	@Override
@@ -112,5 +133,10 @@ public class MockResultPartitionWriter implements ResultPartitionWriter {
 
 	@Override
 	public void close() {
+	}
+
+	@Override
+	public ResultPartitionWriter getResult() {
+		return null;
 	}
 }

@@ -23,6 +23,7 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.blob.TransientBlobKey;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
+import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
@@ -269,4 +270,30 @@ public interface TaskExecutorGateway extends RpcGateway, TaskExecutorOperatorEve
 	 * @return the {@link ThreadDumpInfo} for this TaskManager.
 	 */
 	CompletableFuture<ThreadDumpInfo> requestThreadDump(@RpcTimeout Time timeout);
+
+	/**
+	 * todo 赫明萱加
+	 */
+	CompletableFuture<Acknowledge> ignoreCheckpoint(ExecutionAttemptID attemptId, long checkpointId, Time rpcTimeout);
+
+	/**
+	 * Switch the given (standby) task to running.
+	 *
+	 * @param executionAttemptID identifying the task
+	 * @param timeout for the cancel operation
+	 * @return Future acknowledge if the task is successfully canceled
+	 */
+	CompletableFuture<Acknowledge> switchStandbyTaskToRunning(ExecutionAttemptID executionAttemptID, @RpcTimeout Time timeout);
+
+
+
+	/**
+	 * Dispatch a checkpointed state snapshot of a running task to its standby task.
+	 *
+	 * @param executionAttemptID identifying the standby task
+	 * @param taskRestore identifying the state snapshot that is dispatchred
+	 * @param timeout for the cancel operation
+	 * @return Future acknowledge if the task is successfully canceled
+	 */
+	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobManagerTaskRestore taskRestore, Time timeout);
 }

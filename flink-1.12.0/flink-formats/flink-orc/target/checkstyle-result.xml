@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.14">
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\AbstractOrcFileInputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\OrcBatchReader.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\OrcColumnarRowFileInputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\OrcColumnarRowSplitReader.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\OrcFileFormatFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\OrcFilters.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\OrcInputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\OrcRowInputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\OrcRowSplitReader.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\OrcSplitReader.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\OrcSplitReaderUtil.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\OrcTableSource.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\shim\OrcShim.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\shim\OrcShimV200.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\shim\OrcShimV210.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\shim\OrcShimV230.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\TimestampUtil.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\util\SerializableHadoopConfigWrapper.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\vector\AbstractOrcColumnVector.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\vector\ColumnBatchFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\vector\HiveOrcBatchWrapper.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\vector\OrcBytesColumnVector.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\vector\OrcDecimalColumnVector.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\vector\OrcDoubleColumnVector.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\vector\OrcLegacyTimestampColumnVector.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\vector\OrcLongColumnVector.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\vector\OrcTimestampColumnVector.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\vector\OrcVectorizedBatchWrapper.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\vector\RowDataVectorizer.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\vector\Vectorizer.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\writer\OrcBulkWriter.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\writer\OrcBulkWriterFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\writer\PhysicalWriterImpl.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\main\java\org\apache\flink\orc\writer\ThreadLocalClassLoaderConfiguration.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\test\java\org\apache\flink\orc\data\Record.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\test\java\org\apache\flink\orc\OrcBatchReaderTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\test\java\org\apache\flink\orc\OrcColumnarRowFileInputFormatTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\test\java\org\apache\flink\orc\OrcColumnarRowSplitReaderTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\test\java\org\apache\flink\orc\OrcFileSystemFilterTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\test\java\org\apache\flink\orc\OrcFileSystemITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\test\java\org\apache\flink\orc\OrcFsStreamingSinkITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\test\java\org\apache\flink\orc\OrcRowInputFormatTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\test\java\org\apache\flink\orc\OrcSplitReaderUtilTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\test\java\org\apache\flink\orc\OrcTableSourceITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\test\java\org\apache\flink\orc\OrcTableSourceTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\test\java\org\apache\flink\orc\util\OrcBulkWriterTestUtil.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\test\java\org\apache\flink\orc\util\OrcTestFileGenerator.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\test\java\org\apache\flink\orc\vector\RecordVectorizer.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\test\java\org\apache\flink\orc\writer\OrcBulkWriterFactoryTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\test\java\org\apache\flink\orc\writer\OrcBulkWriterITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\test\java\org\apache\flink\orc\writer\OrcBulkWriterTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-orc\src\test\resources\log4j2-test.properties">
+</file>
+</checkstyle>

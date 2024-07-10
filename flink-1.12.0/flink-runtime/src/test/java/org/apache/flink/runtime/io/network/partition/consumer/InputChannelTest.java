@@ -141,7 +141,7 @@ public class InputChannelTest {
 		}
 
 		@Override
-		void sendTaskEvent(TaskEvent event) throws IOException {
+		public void sendTaskEvent(TaskEvent event) throws IOException {
 		}
 
 		@Override

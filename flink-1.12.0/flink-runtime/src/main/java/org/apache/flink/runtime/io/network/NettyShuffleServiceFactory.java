@@ -21,6 +21,8 @@ package org.apache.flink.runtime.io.network;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.runtime.causal.log.CausalLogManager;
+import org.apache.flink.runtime.causal.log.job.serde.DeltaEncodingStrategy;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.io.disk.FileChannelManager;
 import org.apache.flink.runtime.io.disk.FileChannelManagerImpl;
@@ -38,6 +40,7 @@ import org.apache.flink.runtime.shuffle.ShuffleEnvironmentContext;
 import org.apache.flink.runtime.shuffle.ShuffleServiceFactory;
 import org.apache.flink.runtime.taskmanager.NettyShuffleEnvironmentConfiguration;
 
+import java.time.Duration;
 import java.util.concurrent.Executor;
 
 import static org.apache.flink.runtime.io.network.metrics.NettyShuffleMetricFactory.registerShuffleMetrics;
@@ -105,8 +108,27 @@ public class NettyShuffleServiceFactory implements ShuffleServiceFactory<NettySh
 
 		FileChannelManager fileChannelManager = new FileChannelManagerImpl(config.getTempDirs(), DIR_NAME_PREFIX);
 
+
+
+
+
+		int determinantSegmentSize = 32768;
+		float determinantSteal = 0.2f;
+		final long networkBuf = calculateNetworkBufferMemory();
+
+
+		final long numNetBuffersForDeterminants = (long) (networkBuf * determinantSteal / determinantSegmentSize);
+		NetworkBufferPool determinantBufferPool = new NetworkBufferPool(
+			(int) (numNetBuffersForDeterminants),
+			determinantSegmentSize,
+			Duration.ofMillis(30000l));
+
+		CausalLogManager clm = new CausalLogManager(determinantBufferPool,500,
+			DeltaEncodingStrategy.HIERARCHICAL,true);
+
+
 		ConnectionManager connectionManager = nettyConfig != null ?
-			new NettyConnectionManager(resultPartitionManager, taskEventPublisher, nettyConfig) :
+			new NettyConnectionManager(resultPartitionManager, taskEventPublisher, nettyConfig,clm) :
 			new LocalConnectionManager();
 
 		NetworkBufferPool networkBufferPool = new NetworkBufferPool(
@@ -148,6 +170,18 @@ public class NettyShuffleServiceFactory implements ShuffleServiceFactory<NettySh
 			fileChannelManager,
 			resultPartitionFactory,
 			singleInputGateFactory,
-			ioExecutor);
+			ioExecutor,clm);
+	}
+
+	static long calculateNetworkBufferMemory(){
+
+		final long networkBufMax =1073741824;
+		final long networkBufMin = 67108864;
+		final long jvmHeapNoNet = 859832320;
+		final float networkBufFraction = 0.2f;
+		final long networkBufBytes = Math.min(networkBufMax, Math.max(networkBufMin,
+			(long) (jvmHeapNoNet / (1.0 - networkBufFraction) * networkBufFraction)));
+
+		return networkBufBytes;
 	}
 }

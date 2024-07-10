@@ -53,12 +53,12 @@ import static org.apache.flink.util.Preconditions.checkState;
 public class CheckpointedInputGate implements PullingAsyncDataInput<BufferOrEvent>, Closeable {
 	private static final Logger LOG = LoggerFactory.getLogger(CheckpointedInputGate.class);
 
-	private final CheckpointBarrierHandler barrierHandler;
+	private  CheckpointBarrierHandler barrierHandler;
 
 	private final UpstreamRecoveryTracker upstreamRecoveryTracker;
 
 	/** The gate that the buffer draws its input from. */
-	private final InputGate inputGate;
+	private  InputGate inputGate;
 
 	private final MailboxExecutor mailboxExecutor;
 
@@ -94,9 +94,10 @@ public class CheckpointedInputGate implements PullingAsyncDataInput<BufferOrEven
 			UpstreamRecoveryTracker upstreamRecoveryTracker) {
 		this.inputGate = inputGate;
 		this.barrierHandler = barrierHandler;
+
+		((CausalBufferHandler)this.barrierHandler).getWrapped().setInputGate(inputGate);
 		this.mailboxExecutor = mailboxExecutor;
 		this.upstreamRecoveryTracker = upstreamRecoveryTracker;
-
 		waitForPriorityEvents(inputGate, mailboxExecutor);
 	}
 
@@ -144,6 +145,29 @@ public class CheckpointedInputGate implements PullingAsyncDataInput<BufferOrEven
 		if (!next.isPresent()) {
 			return handleEmptyBuffer();
 		}
+//		if(next.get()==null){
+//			System.out.println("woshinullaaaaaaaaaa");
+//		}
+
+//		Optional<BufferOrEvent> next=null;
+//		BufferOrEvent bufferOrEvent1 = null;
+//		if((bufferOrEvent1=((CausalBufferHandler)barrierHandler).getNextNonBlocked(null))==null){
+//			return handleEmptyBuffer();
+//		}
+//		bufferOrEvent1=((CausalBufferHandler)barrierHandler).getNextNonBlocked(null);
+
+//		next = Optional.of(bufferOrEvent1);
+
+//		Optional<BufferOrEvent> next ;
+//		try {
+//			System.out.println(" next = Optional.of(barrierHandler.getNextNonBlocked());");
+//			 next = Optional.of(barrierHandler.getNextNonBlocked(null));
+////			barrierHandler.getNextNonBlocked(next.get());
+//		} catch (Exception e) {
+//			throw new RuntimeException(e);
+//		}
+
+
 
 		BufferOrEvent bufferOrEvent = next.get();
 
@@ -284,7 +308,11 @@ public class CheckpointedInputGate implements PullingAsyncDataInput<BufferOrEven
 	}
 
 	@VisibleForTesting
-	CheckpointBarrierHandler getCheckpointBarrierHandler() {
+	public CheckpointBarrierHandler getCheckpointBarrierHandler() {
 		return barrierHandler;
+	}
+
+	public InputGate getInputGate(){
+		return inputGate;
 	}
 }

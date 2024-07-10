@@ -1,0 +1,241 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.14">
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\config\AWSConfigConstants.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\config\ConsumerConfigConstants.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\config\ProducerConfigConstants.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\FixedKinesisPartitioner.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\FlinkDynamoDBStreamsConsumer.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\FlinkKinesisConsumer.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\FlinkKinesisException.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\FlinkKinesisProducer.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\internals\DynamoDBStreamsDataFetcher.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\internals\KinesisDataFetcher.java">
+<error line="25" column="8" severity="error" message="Unused import: org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID." source="com.puppycrawl.tools.checkstyle.checks.imports.UnusedImportsCheck"/>
+<error line="1049" severity="error" message="&apos;METHOD_DEF&apos; 后只应有一个空行。" source="com.puppycrawl.tools.checkstyle.checks.whitespace.EmptyLineSeparatorCheck"/>
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\internals\publisher\fanout\FanOutRecordPublisher.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\internals\publisher\fanout\FanOutRecordPublisherConfiguration.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\internals\publisher\fanout\FanOutRecordPublisherFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\internals\publisher\fanout\FanOutShardSubscriber.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\internals\publisher\fanout\StreamConsumerRegistrar.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\internals\publisher\polling\AdaptivePollingRecordPublisher.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\internals\publisher\polling\PollingRecordPublisher.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\internals\publisher\polling\PollingRecordPublisherConfiguration.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\internals\publisher\polling\PollingRecordPublisherFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\internals\publisher\RecordBatch.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\internals\publisher\RecordPublisher.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\internals\publisher\RecordPublisherFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\internals\ShardConsumer.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\KinesisPartitioner.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\KinesisShardAssigner.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\metrics\KinesisConsumerMetricConstants.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\metrics\PollingRecordPublisherMetricsReporter.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\metrics\ShardConsumerMetricsReporter.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\model\DynamoDBStreamsShardHandle.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\model\KinesisStreamShard.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\model\KinesisStreamShardState.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\model\SentinelSequenceNumber.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\model\SequenceNumber.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\model\StartingPosition.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\model\StreamShardHandle.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\model\StreamShardMetadata.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\proxy\DynamoDBStreamsProxy.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\proxy\FullJitterBackoff.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\proxy\GetShardListResult.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\proxy\KinesisProxy.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\proxy\KinesisProxyInterface.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\proxy\KinesisProxyV2.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\proxy\KinesisProxyV2Factory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\proxy\KinesisProxyV2Interface.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\RandomKinesisPartitioner.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\serialization\DynamoDBStreamsSchema.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\serialization\KinesisDeserializationSchema.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\serialization\KinesisDeserializationSchemaWrapper.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\serialization\KinesisSerializationSchema.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\table\KinesisDynamicSink.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\table\KinesisDynamicSource.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\table\KinesisDynamicTableFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\table\KinesisOptions.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\table\RowDataFieldsKinesisPartitioner.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\table\RowDataKinesisDeserializationSchema.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\util\AWSUtil.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\util\AwsV2Util.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\util\BeanDeserializerModifierForIgnorables.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\util\JobManagerWatermarkTracker.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\util\KinesisConfigUtil.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\util\RecordEmitter.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\util\StreamConsumerRegistrarUtil.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\util\TimeoutLatch.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\main\java\org\apache\flink\streaming\connectors\kinesis\util\WatermarkTracker.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\examples\ConsumeFromDynamoDBStreams.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\examples\ConsumeFromKinesis.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\examples\ProduceIntoKinesis.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\FlinkKinesisConsumerMigrationTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\FlinkKinesisConsumerTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\FlinkKinesisProducerTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\internals\KinesisDataFetcherTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\internals\publisher\fanout\FanOutRecordPublisherConfigurationTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\internals\publisher\fanout\FanOutRecordPublisherTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\internals\publisher\fanout\FanOutShardSubscriberTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\internals\publisher\fanout\StreamConsumerRegistrarTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\internals\publisher\polling\PollingRecordPublisherConfigurationTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\internals\publisher\polling\PollingRecordPublisherFactoryTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\internals\publisher\polling\PollingRecordPublisherTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\internals\publisher\RecordBatchTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\internals\ShardConsumerFanOutTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\internals\ShardConsumerTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\internals\ShardConsumerTestUtils.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\KinesisConsumerTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\manualtests\ManualConsumerProducerTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\manualtests\ManualExactlyOnceTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\manualtests\ManualExactlyOnceWithStreamReshardingTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\manualtests\ManualProducerTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\metrics\PollingRecordPublisherMetricsReporterTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\metrics\ShardConsumerMetricsReporterTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\model\DynamoDBStreamsShardHandleTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\model\SentinelSequenceNumberTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\model\StartingPositionTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\model\StreamShardHandleTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\proxy\KinesisProxyTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\proxy\KinesisProxyV2Test.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\table\KinesisDynamicTableFactoryTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\table\RowDataFieldsKinesisPartitionerTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\testutils\AlwaysThrowsDeserializationSchema.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\testutils\ExactlyOnceValidatingConsumerThread.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\testutils\FakeKinesisBehavioursFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\testutils\FakeKinesisFanOutBehavioursFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\testutils\KinesisEventsGeneratorProducerThread.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\testutils\KinesisPubsubClient.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\testutils\KinesisShardIdGenerator.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\testutils\TestableFlinkKinesisConsumer.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\testutils\TestableKinesisDataFetcher.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\testutils\TestableKinesisDataFetcherForShardConsumerException.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\testutils\TestRuntimeContext.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\testutils\TestSourceContext.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\testutils\TestUtils.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\util\AWSUtilTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\util\AwsV2UtilTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\util\JobManagerWatermarkTrackerTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\util\KinesisConfigUtilTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\util\RecordEmitterTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\util\StreamConsumerRegistrarUtilTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\java\org\apache\flink\streaming\connectors\kinesis\util\WatermarkTrackerTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-kinesis\src\test\resources\log4j2-test.properties">
+</file>
+</checkstyle>

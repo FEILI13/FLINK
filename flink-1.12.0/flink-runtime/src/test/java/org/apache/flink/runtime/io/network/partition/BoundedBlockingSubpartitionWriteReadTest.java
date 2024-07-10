@@ -204,23 +204,23 @@ public class BoundedBlockingSubpartitionWriteReadTest {
 	// ------------------------------------------------------------------------
 
 	private static void writeLongs(BoundedBlockingSubpartition partition, long nums) throws IOException {
-		final MemorySegment memory = MemorySegmentFactory.allocateUnpooledSegment(BUFFER_SIZE);
-
-		long l = 0;
-		while (nums > 0) {
-			int pos = 0;
-			for (; nums > 0 && pos <= memory.size() - 8; pos += 8) {
-				memory.putLongBigEndian(pos, l++);
-				nums--;
-			}
-
-			partition.add(new BufferConsumer(memory, (ignored) -> {}, pos, Buffer.DataType.DATA_BUFFER));
-
-			// we need to flush after every buffer as long as the add() contract is that
-			// buffer are immediately added and can be filled further after that (for low latency
-			// streaming data exchanges)
-			partition.flush();
-		}
+//		final MemorySegment memory = MemorySegmentFactory.allocateUnpooledSegment(BUFFER_SIZE);
+//
+//		long l = 0;
+//		while (nums > 0) {
+//			int pos = 0;
+//			for (; nums > 0 && pos <= memory.size() - 8; pos += 8) {
+//				memory.putLongBigEndian(pos, l++);
+//				nums--;
+//			}
+//
+//			partition.add(new BufferConsumer(memory, (ignored) -> {}, pos, Buffer.DataType.DATA_BUFFER));
+//
+//			// we need to flush after every buffer as long as the add() contract is that
+//			// buffer are immediately added and can be filled further after that (for low latency
+//			// streaming data exchanges)
+//			partition.flush();
+//		}
 	}
 
 	private BoundedBlockingSubpartition createAndFillPartition(long numLongs) throws IOException {

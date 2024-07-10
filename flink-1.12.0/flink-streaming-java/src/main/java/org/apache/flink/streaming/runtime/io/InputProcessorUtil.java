@@ -24,12 +24,15 @@ import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.metrics.MetricNames;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
+import org.apache.flink.runtime.taskmanager.InputGateWithMetrics;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.MailboxExecutor;
+import org.apache.flink.streaming.runtime.tasks.StreamTask;
 import org.apache.flink.streaming.runtime.tasks.SubtaskCheckpointCoordinator;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Iterables;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -104,7 +107,10 @@ public class InputProcessorUtil {
 		InputGate[] unionedInputGates = Arrays.stream(inputGates)
 			.map(InputGateUtil::createInputGate)
 			.toArray(InputGate[]::new);
-
+		System.out.println("unionedInputGates.length:"+unionedInputGates.length);
+		if(unionedInputGates[0]==null){
+			System.out.println("unionedInputGates[0]==null");
+		}
 		return Arrays.stream(unionedInputGates)
 			.map(unionedInputGate -> new CheckpointedInputGate(
 				unionedInputGate,
@@ -129,6 +135,8 @@ public class InputProcessorUtil {
 				.sorted(Comparator.comparing(CheckpointableInput::getInputGateIndex))
 				.toArray(CheckpointableInput[]::new);
 
+		CheckpointBarrierHandler barrierHandler;
+
 		switch (config.getCheckpointMode()) {
 			case EXACTLY_ONCE:
 				int numberOfChannels = (int) Arrays
@@ -141,21 +149,38 @@ public class InputProcessorUtil {
 							new AlignedController(inputs),
 							new UnalignedController(checkpointCoordinator, inputs)) :
 						new AlignedController(inputs);
-				return new SingleCheckpointBarrierHandler(
+				barrierHandler= new SingleCheckpointBarrierHandler(
 						taskName,
 						toNotifyOnCheckpoint,
 						numberOfChannels,
 						controller);
+				break;
 			case AT_LEAST_ONCE:
 				if (config.isUnalignedCheckpointsEnabled()) {
 					throw new IllegalStateException("Cannot use unaligned checkpoints with AT_LEAST_ONCE " +
 						"checkpointing mode");
 				}
+
+				InputGate[] unionedInputGates = Arrays.stream(inputGates)
+					.map(InputGateUtil::createInputGate)
+					.toArray(InputGate[]::new);
 				int numInputChannels = Arrays.stream(inputs).mapToInt(CheckpointableInput::getNumberOfInputChannels).sum();
-				return new CheckpointBarrierTracker(numInputChannels, toNotifyOnCheckpoint);
+				barrierHandler= new CheckpointBarrierTracker(numInputChannels, toNotifyOnCheckpoint);
+				break;
 			default:
 				throw new UnsupportedOperationException("Unrecognized Checkpointing Mode: " + config.getCheckpointMode());
 		}
+
+
+
+		return new CausalBufferHandler(
+			toNotifyOnCheckpoint.getJobCausalLog(),
+			toNotifyOnCheckpoint.getRecoveryManager(),
+			barrierHandler,
+			barrierHandler.getTotalNumberOfInputChannels(),
+			toNotifyOnCheckpoint.getCheckpointLock(),
+			toNotifyOnCheckpoint
+		);
 	}
 
 	private static void registerCheckpointMetrics(TaskIOMetricGroup taskIOMetricGroup, CheckpointBarrierHandler barrierHandler) {

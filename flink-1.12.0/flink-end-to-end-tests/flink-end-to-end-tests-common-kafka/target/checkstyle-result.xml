@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.14">
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-end-to-end-tests\flink-end-to-end-tests-common-kafka\src\main\java\org\apache\flink\tests\util\kafka\KafkaContainerClient.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-end-to-end-tests\flink-end-to-end-tests-common-kafka\src\main\java\org\apache\flink\tests\util\kafka\KafkaResource.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-end-to-end-tests\flink-end-to-end-tests-common-kafka\src\main\java\org\apache\flink\tests\util\kafka\KafkaResourceFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-end-to-end-tests\flink-end-to-end-tests-common-kafka\src\main\java\org\apache\flink\tests\util\kafka\LocalStandaloneKafkaResource.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-end-to-end-tests\flink-end-to-end-tests-common-kafka\src\main\java\org\apache\flink\tests\util\kafka\LocalStandaloneKafkaResourceFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-end-to-end-tests\flink-end-to-end-tests-common-kafka\src\test\java\org\apache\flink\tests\util\kafka\containers\SchemaRegistryContainer.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-end-to-end-tests\flink-end-to-end-tests-common-kafka\src\test\java\org\apache\flink\tests\util\kafka\SQLClientKafkaITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-end-to-end-tests\flink-end-to-end-tests-common-kafka\src\test\java\org\apache\flink\tests\util\kafka\SQLClientSchemaRegistryITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-end-to-end-tests\flink-end-to-end-tests-common-kafka\src\test\java\org\apache\flink\tests\util\kafka\StreamingKafkaITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-end-to-end-tests\flink-end-to-end-tests-common-kafka\src\test\resources\log4j2-test.properties">
+</file>
+</checkstyle>

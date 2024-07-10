@@ -54,6 +54,8 @@ public enum ExecutionState {
 	SCHEDULED,
 	
 	DEPLOYING,
+
+	STANDBY,
 	
 	RUNNING,
 

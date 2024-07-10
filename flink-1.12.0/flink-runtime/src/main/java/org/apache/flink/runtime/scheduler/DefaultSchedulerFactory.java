@@ -30,7 +30,10 @@ import org.apache.flink.runtime.executiongraph.failover.flip1.RestartBackoffTime
 import org.apache.flink.runtime.io.network.partition.JobMasterPartitionTracker;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobmaster.ExecutionDeploymentTracker;
+import org.apache.flink.runtime.jobmaster.slotpool.PhysicalSlotProviderImpl;
+import org.apache.flink.runtime.jobmaster.slotpool.SchedulerImpl;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotPool;
+import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
 import org.apache.flink.runtime.metrics.groups.JobManagerJobMetricGroup;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.BackPressureStatsTracker;
 import org.apache.flink.runtime.shuffle.ShuffleMaster;
@@ -84,6 +87,14 @@ public class DefaultSchedulerFactory implements SchedulerNGFactory {
 			.create();
 		log.info("Using restart back off time strategy {} for {} ({}).", restartBackoffTimeStrategy, jobGraph.getName(), jobGraph.getJobID());
 
+
+		PhysicalSlotProviderImpl physicalSlotProvider = (PhysicalSlotProviderImpl) ((SlotSharingExecutionSlotAllocatorFactory)schedulerComponents.getAllocatorFactory()).getSlotProvider();
+
+		SlotProvider slotProvider = new SchedulerImpl(
+			physicalSlotProvider.getSlotSelectionStrategy(),
+			physicalSlotProvider.getSlotPool());
+
+
 		return new DefaultScheduler(
 			log,
 			jobGraph,
@@ -107,6 +118,7 @@ public class DefaultSchedulerFactory implements SchedulerNGFactory {
 			new ExecutionVertexVersioner(),
 			schedulerComponents.getAllocatorFactory(),
 			executionDeploymentTracker,
-			initializationTimestamp);
+			initializationTimestamp,
+			slotProvider);
 	}
 }

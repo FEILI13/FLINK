@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
+import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.buffer.BufferCompressor;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.util.function.SupplierWithException;
@@ -131,6 +132,11 @@ public class PipelinedResultPartition extends BufferWritingResultPartition
 	}
 
 	@Override
+	public ResultSubpartition[] getResultSubpartitions() {
+		return subpartitions;
+	}
+
+	@Override
 	public CheckpointedResultSubpartition getCheckpointedSubpartition(int subpartitionIndex) {
 		return (CheckpointedResultSubpartition) subpartitions[subpartitionIndex];
 	}
@@ -143,6 +149,11 @@ public class PipelinedResultPartition extends BufferWritingResultPartition
 	@Override
 	public void flush(int targetSubpartition) {
 		flushSubpartition(targetSubpartition, false);
+	}
+
+	@Override
+	public ResultPartitionWriter getResult() {
+		return this;
 	}
 
 	@Override

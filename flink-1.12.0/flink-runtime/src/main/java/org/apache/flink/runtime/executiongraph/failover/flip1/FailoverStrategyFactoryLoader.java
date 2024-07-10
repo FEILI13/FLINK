@@ -35,6 +35,8 @@ public final class FailoverStrategyFactoryLoader {
 	/** Config name for the {@link RestartPipelinedRegionFailoverStrategy}. */
 	public static final String PIPELINED_REGION_RESTART_STRATEGY_NAME = "region";
 
+	public static final String SINGLE_STANDBY_STRATEGY_NAME = "standby";
+
 	private FailoverStrategyFactoryLoader() {
 	}
 
@@ -47,7 +49,8 @@ public final class FailoverStrategyFactoryLoader {
 	public static FailoverStrategy.Factory loadFailoverStrategyFactory(final Configuration config) {
 		checkNotNull(config);
 
-		final String strategyParam = config.getString(JobManagerOptions.EXECUTION_FAILOVER_STRATEGY);
+//		final String strategyParam = config.getString(JobManagerOptions.EXECUTION_FAILOVER_STRATEGY);
+		final String strategyParam = "standby";
 
 		switch (strategyParam.toLowerCase()) {
 			case FULL_RESTART_STRATEGY_NAME:
@@ -55,6 +58,8 @@ public final class FailoverStrategyFactoryLoader {
 
 			case PIPELINED_REGION_RESTART_STRATEGY_NAME:
 				return new RestartPipelinedRegionFailoverStrategy.Factory();
+			case SINGLE_STANDBY_STRATEGY_NAME:
+				return new StandbyFailoverStrategy.Factory();
 
 			default:
 				throw new IllegalConfigurationException("Unknown failover strategy: " + strategyParam);

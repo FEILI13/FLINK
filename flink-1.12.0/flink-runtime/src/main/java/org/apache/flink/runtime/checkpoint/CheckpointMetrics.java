@@ -30,9 +30,9 @@ public class CheckpointMetrics implements Serializable {
 
 	private static final long serialVersionUID = 1L;
 
-	private final long bytesProcessedDuringAlignment;
+	private  final long bytesProcessedDuringAlignment;
 
-	private final long bytesPersistedDuringAlignment;
+	private  final long bytesPersistedDuringAlignment;
 
 	/** The duration (in nanoseconds) that the stream alignment for the checkpoint took. */
 	private final long alignmentDurationNanos;
@@ -71,6 +71,7 @@ public class CheckpointMetrics implements Serializable {
 		this.asyncDurationMillis = asyncDurationMillis;
 		this.checkpointStartDelayNanos = checkpointStartDelayNanos;
 	}
+
 
 	public long getBytesProcessedDuringAlignment() {
 		return bytesProcessedDuringAlignment;

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<project name="maven-antrun-" default="main"  >
+<target name="main">
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-streaming/target/flink-examples-streaming_2.11-1.12.0-IncrementalLearning.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-streaming/target/IncrementalLearning.jar"/>
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-streaming/target/flink-examples-streaming_2.11-1.12.0-Iteration.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-streaming/target/Iteration.jar"/>
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-streaming/target/flink-examples-streaming_2.11-1.12.0-SessionWindowing.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-streaming/target/SessionWindowing.jar"/>
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-streaming/target/flink-examples-streaming_2.11-1.12.0-TopSpeedWindowing.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-streaming/target/TopSpeedWindowing.jar"/>
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-streaming/target/flink-examples-streaming_2.11-1.12.0-WindowJoin.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-streaming/target/WindowJoin.jar"/>
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-streaming/target/flink-examples-streaming_2.11-1.12.0-WordCount.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-streaming/target/WordCount.jar"/>
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-streaming/target/flink-examples-streaming_2.11-1.12.0-SocketWindowWordCount.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-streaming/target/SocketWindowWordCount.jar"/>
+</target>
+</project>

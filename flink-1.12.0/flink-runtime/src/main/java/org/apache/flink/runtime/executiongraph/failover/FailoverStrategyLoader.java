@@ -24,6 +24,7 @@ import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.util.StringUtils;
 
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
@@ -32,8 +33,12 @@ import javax.annotation.Nullable;
  */
 public class FailoverStrategyLoader {
 
+	private static final Logger LOG = LoggerFactory.getLogger(FailoverStrategyLoader.class);
+
 	/** Config name for the {@link RestartAllStrategy}. */
 	public static final String FULL_RESTART_STRATEGY_NAME = "full";
+
+	public static final String STANDBY_TASK_RUN_STRATEGY_NAME = "standbytask";
 
 	// ------------------------------------------------------------------------
 
@@ -41,22 +46,34 @@ public class FailoverStrategyLoader {
 	 * Loads a FailoverStrategy Factory from the given configuration.
 	 */
 	public static FailoverStrategy.Factory loadFailoverStrategy(Configuration config, @Nullable Logger logger) {
-		final String strategyParam = config.getString(
-			JobManagerOptions.EXECUTION_FAILOVER_STRATEGY,
-			FULL_RESTART_STRATEGY_NAME);
+//		final String strategyParam = config.getString(
+//			JobManagerOptions.EXECUTION_FAILOVER_STRATEGY,
+//			FULL_RESTART_STRATEGY_NAME);
+
+		final String strategyParam = "standbytask";
+		LOG.info("strategyParam {}",strategyParam);
 
 		if (StringUtils.isNullOrWhitespaceOnly(strategyParam)) {
 			if (logger != null) {
 				logger.warn("Null config value for {} ; using default failover strategy (full restarts).",
 						JobManagerOptions.EXECUTION_FAILOVER_STRATEGY.key());
 			}
-
+			LOG.info("StringUtils.isNullOrWhitespaceOnly(strategyParam)");
 			return new RestartAllStrategy.Factory();
 		}
 		else {
 			switch (strategyParam.toLowerCase()) {
 				case FULL_RESTART_STRATEGY_NAME:
+					LOG.info("FULL_RESTART_STRATEGY_NAME {}",FULL_RESTART_STRATEGY_NAME);
 					return new RestartAllStrategy.Factory();
+				case STANDBY_TASK_RUN_STRATEGY_NAME:
+
+
+					final int numStandbyTasksToMaintain = config.getInteger(JobManagerOptions.NUMBER_OF_STANDBY_TASKS_TO_MAINTAIN);
+					final int checkpointCoordinatorBackoffMultiplier = config.getInteger(JobManagerOptions.CC_BACKOFF_MULT);
+					final long checkpointCoordinatorBackoffBase = config.getLong(JobManagerOptions.CC_BACKOFF_BASE);
+					LOG.info("STANDBY_TASK_RUN_STRATEGY_NAME {} numStandbyTasksToMaintain {}",STANDBY_TASK_RUN_STRATEGY_NAME,numStandbyTasksToMaintain);
+					return new RunStandbyTaskStrategy.Factory(numStandbyTasksToMaintain, checkpointCoordinatorBackoffMultiplier, checkpointCoordinatorBackoffBase);
 
 				default:
 					// we could interpret the parameter as a factory class name and instantiate that

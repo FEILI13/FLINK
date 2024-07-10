@@ -359,4 +359,31 @@ public class UnionInputGate extends InputGate {
 			inputGate.finishReadRecoveredState();
 		}
 	}
+
+
+	public int getAbsoluteChannelIndex(InputGate gate, int channelIndex) {
+		for (Map.Entry<Integer, InputGate> entry : inputGatesByGateIndex.entrySet()) {
+
+			if(entry.getValue()==gate){
+				return entry.getKey() + channelIndex;
+			}
+
+		}
+		return -1;
+	}
+
+
+	public SingleInputGate[] getInputGates() {
+		SingleInputGate[] SI = new SingleInputGate[inputGatesWithRemainingData.size()];
+		int count =0;
+		for (Map.Entry<Integer, InputGate> entry : inputGatesByGateIndex.entrySet()) {
+
+			SI[count] = (SingleInputGate) entry.getValue();
+
+			count++;
+
+		}
+		return SI;
+	}
+
 }

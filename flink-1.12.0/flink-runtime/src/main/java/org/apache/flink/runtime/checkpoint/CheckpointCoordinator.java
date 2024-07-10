@@ -22,14 +22,17 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.runtime.checkpoint.hooks.MasterHooks;
+import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.Execution;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
+import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.ExecutionVertex;
 import org.apache.flink.runtime.executiongraph.JobStatusListener;
+import org.apache.flink.runtime.executiongraph.failover.RunStandbyTaskStrategy;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
@@ -63,6 +66,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -72,6 +76,7 @@ import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
@@ -83,6 +88,9 @@ import java.util.function.Predicate;
 import static org.apache.flink.util.ExceptionUtils.findThrowable;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
+
+import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Operation.RESTORE_STATE;//新加的
+import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Operation.DISPATCH_STATE_TO_STANDBY_TASK;//新加的
 
 /**
  * The checkpoint coordinator coordinates the distributed snapshots of operators and state.
@@ -1131,6 +1139,22 @@ public class CheckpointCoordinator {
 		LOG.info("Completed checkpoint {} for job {} ({} bytes in {} ms).", checkpointId, job,
 			completedCheckpoint.getStateSize(), completedCheckpoint.getDuration());
 
+		try {//todo:新加的，判断运行task的策略是否可用
+			ExecutionGraph executionGraph = tasksToTrigger[0].getExecutionGraph();
+			if (executionGraph.getFailoverStrategy() instanceof RunStandbyTaskStrategy) {
+				boolean errorIfNoCheckpoint = false;
+				boolean allowNonRestoredState = true;
+				System.out.println("completePendingCheckpoint调用completePendingCheckpoint");
+				//todo 将最新的状态交给备份算子
+				dispatchLatestCheckpointedStateToStandbyTasks(executionGraph.getAllVertices(), errorIfNoCheckpoint,
+					allowNonRestoredState);
+			}
+		} catch (Throwable t) {
+			LOG.warn("Failed to dispatch the latest checkpointed state to standby tasks. Only possible when " +
+				"RunStandbyTaskStrategy is enabled.", t);
+		}
+
+
 		if (LOG.isDebugEnabled()) {
 			StringBuilder builder = new StringBuilder();
 			builder.append("Checkpoint state: ");
@@ -1411,7 +1435,7 @@ public class CheckpointCoordinator {
 			final Map<OperatorID, OperatorState> operatorStates = latest.getOperatorStates();
 
 			StateAssignmentOperation stateAssignmentOperation =
-					new StateAssignmentOperation(latest.getCheckpointID(), tasks, operatorStates, allowNonRestoredState);
+					new StateAssignmentOperation(latest.getCheckpointID(), tasks, operatorStates, allowNonRestoredState,RESTORE_STATE);
 
 			stateAssignmentOperation.assignStates();
 
@@ -1941,5 +1965,128 @@ public class CheckpointCoordinator {
 
 		/** Coordinators are not restored during this checkpoint restore. */
 		SKIP;
+	}
+
+	/** todo 以下赫明萱加
+	 * Dispatches the latest checkpointed state of running tasks to the standby tasks that mirror them.
+	 *
+	 * @param tasks                     Map of job vertices that point to the running tasks to dispatch state from.
+	 *                                  The new state for standby tasks is dispatched via
+	 *                                  {@link Execution#setInitialState(JobManagerTaskRestore)}.
+	 * @param errorIfNoCheckpoint       Fail if no completed checkpoint is available to
+	 *                                  dispatch state from.
+	 * @param allowNonRestoredState Allow checkpoint state that cannot be mapped
+	 *                                  to any job vertex in tasks.
+	 * @return <code>true</code> if state was dispatchred, <code>false</code> otherwise.
+	 * @throws IllegalStateException If the CheckpointCoordinator is shut down.
+	 * @throws IllegalStateException If no completed checkpoint is available and
+	 *                               the <code>failIfNoCheckpoint</code> flag has been set.
+	 * @throws IllegalStateException If the checkpoint contains state that cannot be
+	 *                               mapped to any job vertex in <code>tasks</code> and the
+	 *                               <code>allowNonDispatchedState</code> flag has not been set.
+	 * @throws IllegalStateException If the max parallelism changed for an operator
+	 *                               that receives state from this checkpoint.
+	 * @throws IllegalStateException If the parallelism changed for an operator
+	 *                               that receives <i>non-partitioned</i> state from this
+	 *                               checkpoint.
+	 */
+	//todo 新加的
+	public boolean dispatchLatestCheckpointedStateToStandbyTasks(
+		Map<JobVertexID, ExecutionJobVertex> tasks,
+		boolean errorIfNoCheckpoint,
+		boolean allowNonRestoredState) throws Exception {
+
+		synchronized (lock) {
+			if (shutdown) {
+				throw new IllegalStateException("CheckpointCoordinator is shut down");
+			}
+
+			// Get the latest checkpoint
+			CompletedCheckpoint latest = completedCheckpointStore.getLatestCheckpoint(true);
+
+			if (latest == null) {
+				if (errorIfNoCheckpoint) {
+					throw new IllegalStateException("No completed checkpoint available");
+				} else {
+					LOG.debug("No completed checkpoint available for dispatching state to standby tasks.");
+					return false;
+				}
+			}
+
+			LOG.info("Dispatching state of job {} from latest valid checkpoint: {} to standby tasks.", job, latest);
+
+			// re-assign the task states
+			final Map<OperatorID, OperatorState> operatorStates = latest.getOperatorStates();
+
+			Set<ExecutionJobVertex> TaskSet = new HashSet<>(tasks.values());
+
+			StateAssignmentOperation stateAssignmentOperation =
+				new StateAssignmentOperation(latest.getCheckpointID(), TaskSet, operatorStates, allowNonRestoredState,
+					DISPATCH_STATE_TO_STANDBY_TASK);
+
+			stateAssignmentOperation.assignStates();
+
+			return true;
+		}
+	}
+
+	//todo 新加的
+	public void rpcIgnoreUnacknowledgedPendingCheckpointsFor(ExecutionVertex vertex, Throwable cause) {
+		synchronized (lock) {
+			Iterator<PendingCheckpoint> pendingCheckpointIterator = pendingCheckpoints.values().iterator();
+
+			while (pendingCheckpointIterator.hasNext()) {
+				final PendingCheckpoint pendingCheckpoint = pendingCheckpointIterator.next();
+				LOG.info("Checking pending: {}", pendingCheckpoint.getCheckpointId());
+
+				List<ExecutionVertex> downstream = vertex.getDownstreamVertexes();
+				if (!downstream.stream().map(x -> x.getCurrentExecutionAttempt().getAttemptId()).allMatch(pendingCheckpoint::isAcknowledgedBy)) {
+					LOG.info("Sending ignore checkpoint rpc for checkpoint {}", pendingCheckpoint.getCheckpointId());
+					pendingCheckpointIterator.remove();
+					rpcIgnoreCheckpoint(vertex.getCurrentAssignedResourceLocation().getResourceID(),downstream, pendingCheckpoint, cause);
+					rememberRecentCheckpointId(pendingCheckpoint.getCheckpointId());
+				}
+			}
+		}
+	}
+
+	//todo 新加的
+	private void rpcIgnoreCheckpoint(ResourceID failedTM, List<ExecutionVertex> downstream, PendingCheckpoint pendingCheckpoint, Throwable cause) {
+		assert (Thread.holdsLock(lock));
+		Preconditions.checkNotNull(pendingCheckpoint);
+
+		final long checkpointId = pendingCheckpoint.getCheckpointId();
+
+		final String reason = (cause != null) ? cause.getMessage() : "";
+
+		LOG.info("RPC Cancelling checkpoint {} of job {} because: {}", checkpointId, job, reason);
+
+		downstream.stream()
+			.filter(x -> !x.getCurrentAssignedResource().getTaskManagerLocation().getResourceID().equals(failedTM))
+			.forEach(v -> v.ignoreCheckpoint(pendingCheckpoint.getCheckpointId()));
+	}
+
+
+
+	//An alias for startCheckpointScheduler for readability
+	//todo 新加的
+	public void restartBackoffCheckpointScheduler(int checkpointCoordinatorBackoffMultiplier,
+												  long checkpointCoordinatorBackoffBaseMs) {
+		synchronized (lock) {
+			internalUnsafeStartCheckpointScheduler(checkpointCoordinatorBackoffMultiplier * baseInterval + checkpointCoordinatorBackoffBaseMs);
+		}
+	}
+
+	public void internalUnsafeStartCheckpointScheduler(long initialDelay) {
+		if (shutdown) {
+			throw new IllegalArgumentException("Checkpoint coordinator is shut down");
+		}
+
+		// make sure all prior timers are cancelled
+		stopCheckpointScheduler();
+
+		periodicScheduling = true;
+		currentPeriodicTrigger = timer.scheduleAtFixedRate(
+			new ScheduledTrigger(), initialDelay, baseInterval, TimeUnit.MILLISECONDS);
 	}
 }

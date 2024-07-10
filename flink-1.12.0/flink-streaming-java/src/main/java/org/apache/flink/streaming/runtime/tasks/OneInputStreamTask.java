@@ -23,8 +23,12 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.core.memory.ManagedMemoryUseCase;
 import org.apache.flink.metrics.Counter;
+import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
+import org.apache.flink.runtime.checkpoint.CheckpointMetricsBuilder;
+import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.partition.consumer.IndexedInputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.metrics.MetricNames;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
@@ -53,6 +57,8 @@ import static org.apache.flink.util.Preconditions.checkState;
  */
 @Internal
 public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamOperator<IN, OUT>> {
+
+	public CheckpointedInputGate inputGate = null;
 
 	private final WatermarkGauge inputWatermarkGauge = new WatermarkGauge();
 
@@ -88,7 +94,7 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 		int numberOfInputs = configuration.getNumberOfNetworkInputs();
 
 		if (numberOfInputs > 0) {
-			CheckpointedInputGate inputGate = createCheckpointedInputGate();
+			inputGate = createCheckpointedInputGate();
 			Counter numRecordsIn = setupNumRecordsInCounter(mainOperator);
 			DataOutput<IN> output = createDataOutput(numRecordsIn);
 			StreamTaskInput<IN> input = createTaskInput(inputGate);
@@ -163,6 +169,7 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 			0);
 	}
 
+
 	/**
 	 * The network data output implementation used for processing stream elements
 	 * from {@link StreamTaskNetworkInput} in one input processor.
@@ -203,5 +210,13 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 		public void emitLatencyMarker(LatencyMarker latencyMarker) throws Exception {
 			operator.processLatencyMarker(latencyMarker);
 		}
+	}
+
+	public void resetInputChannelDeserializer(InputGate gate, int channelIndex){
+
+		int absoluteChannelIndex = this.inputGate.getInputGate().getAbsoluteChannelIndex(gate, channelIndex);
+
+		//recordDeserializers[absoluteChannelIndex].clear();
+		this.inputGate.getCheckpointBarrierHandler().unblockChannelIfBlocked(absoluteChannelIndex);
 	}
 }

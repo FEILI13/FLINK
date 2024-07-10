@@ -28,6 +28,7 @@ import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.streaming.api.functions.python.DataStreamPythonFunctionInfo;
 import org.apache.flink.streaming.api.utils.PythonTypeUtils;
 import org.apache.flink.streaming.runtime.operators.TimestampsAndWatermarksOperator;
@@ -182,6 +183,11 @@ public class PythonTimestampsAndWatermarksOperator<IN> extends OneInputPythonFun
 		final long now = getProcessingTimeService().getCurrentProcessingTime();
 		getProcessingTimeService().registerTimer(now + watermarkInterval, this);
 	}
+
+//	@Override
+//	public ProcessingTimeCallbackID getID() {
+//		return new ProcessingTimeCallbackID(ProcessingTimeCallbackID.Type.TIMESTAMP_PUNCTUATED_WATERMARK_EXTRACTOR);
+//	}
 
 	@Override
 	public void processWatermark(org.apache.flink.streaming.api.watermark.Watermark mark) {

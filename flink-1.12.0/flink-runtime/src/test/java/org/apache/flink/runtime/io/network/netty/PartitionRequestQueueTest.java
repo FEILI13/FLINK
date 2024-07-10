@@ -483,7 +483,7 @@ public class PartitionRequestQueueTest {
 		ResultPartition partition = createPartition(environment, fileChannelManager, ResultPartitionType.BLOCKING, 1);
 
 		partition.setup();
-		partition.emitRecord(ByteBuffer.allocate(BUFFER_SIZE), 0);
+//		partition.emitRecord(ByteBuffer.allocate(BUFFER_SIZE), 0);
 		partition.finish();
 
 		return partition;

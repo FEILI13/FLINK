@@ -19,6 +19,7 @@
 package org.apache.flink.table.runtime.operators.wmassigners;
 
 import org.apache.flink.metrics.Gauge;
+import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
@@ -90,6 +91,11 @@ public class ProcTimeMiniBatchAssignerOperator extends AbstractStreamOperator<Ro
 		}
 		getProcessingTimeService().registerTimer(currentBatch + intervalMs, this);
 	}
+//
+//	@Override
+//	public ProcessingTimeCallbackID getID() {
+//		return new ProcessingTimeCallbackID(ProcessingTimeCallbackID.Type.TIMESTAMP_PERIODIC_WATERMARK_EXTRACTOR);
+//	}
 
 	/**
 	 * Override the base implementation to completely ignore watermarks propagated from

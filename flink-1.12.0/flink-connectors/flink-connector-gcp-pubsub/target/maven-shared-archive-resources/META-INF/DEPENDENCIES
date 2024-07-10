@@ -1,0 +1,127 @@
+// ------------------------------------------------------------------
+// Transitive dependencies of this project determined from the
+// maven pom organized by organization.
+// ------------------------------------------------------------------
+
+Flink : Connectors : Google PubSub
+
+
+From: 'an unknown organization'
+  - Google Android Annotations Library (http://source.android.com/) com.google.android:annotations:jar:4.1.1.4
+    License: Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
+  - API Common (https://github.com/googleapis/api-common-java) com.google.api:api-common:jar:1.9.3
+    License: BSD  (https://github.com/googleapis/api-common-java/blob/master/LICENSE)
+  - GAX (Google Api eXtensions) for Java (https://github.com/googleapis/gax-java) com.google.api:gax:jar:1.57.1
+    License: BSD  (https://github.com/googleapis/gax-java/blob/master/LICENSE)
+  - GAX (Google Api eXtensions) for Java (https://github.com/googleapis/gax-java) com.google.api:gax-grpc:jar:1.57.1
+    License: BSD  (https://github.com/googleapis/gax-java/blob/master/LICENSE)
+  - Gson (https://github.com/google/gson/gson) com.google.code.gson:gson:jar:2.8.6
+    License: Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0.txt)
+  - error-prone annotations (http://nexus.sonatype.org/oss-repository-hosting.html/error_prone_parent/error_prone_annotations) com.google.errorprone:error_prone_annotations:jar:2.4.0
+    License: Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0.txt)
+  - Guava InternalFutureFailureAccess and InternalFutures (https://github.com/google/guava/failureaccess) com.google.guava:failureaccess:bundle:1.0.1
+    License: The Apache Software License, Version 2.0  (http://www.apache.org/licenses/LICENSE-2.0.txt)
+  - Guava: Google Core Libraries for Java (https://github.com/google/guava/guava) com.google.guava:guava:bundle:29.0-android
+    License: Apache License, Version 2.0  (http://www.apache.org/licenses/LICENSE-2.0.txt)
+  - Guava ListenableFuture only (https://github.com/google/guava/listenablefuture) com.google.guava:listenablefuture:jar:9999.0-empty-to-avoid-conflict-with-guava
+    License: The Apache Software License, Version 2.0  (http://www.apache.org/licenses/LICENSE-2.0.txt)
+  - J2ObjC Annotations (https://github.com/google/j2objc/) com.google.j2objc:j2objc-annotations:jar:1.3
+    License: The Apache Software License, Version 2.0  (http://www.apache.org/licenses/LICENSE-2.0.txt)
+  - Protocol Buffers [Core] (https://developers.google.com/protocol-buffers/protobuf-java/) com.google.protobuf:protobuf-java:bundle:3.12.2
+    License: 3-Clause BSD License  (https://opensource.org/licenses/BSD-3-Clause)
+  - Protocol Buffers [Util] (https://developers.google.com/protocol-buffers/protobuf-java-util/) com.google.protobuf:protobuf-java-util:bundle:3.12.2
+    License: 3-Clause BSD License  (https://opensource.org/licenses/BSD-3-Clause)
+  - io.grpc:grpc-alts (https://github.com/grpc/grpc-java) io.grpc:grpc-alts:jar:1.30.2
+    License: Apache 2.0  (https://opensource.org/licenses/Apache-2.0)
+  - io.grpc:grpc-api (https://github.com/grpc/grpc-java) io.grpc:grpc-api:jar:1.30.2
+    License: Apache 2.0  (https://opensource.org/licenses/Apache-2.0)
+  - io.grpc:grpc-auth (https://github.com/grpc/grpc-java) io.grpc:grpc-auth:jar:1.30.2
+    License: Apache 2.0  (https://opensource.org/licenses/Apache-2.0)
+  - io.grpc:grpc-context (https://github.com/grpc/grpc-java) io.grpc:grpc-context:jar:1.30.2
+    License: Apache 2.0  (https://opensource.org/licenses/Apache-2.0)
+  - io.grpc:grpc-core (https://github.com/grpc/grpc-java) io.grpc:grpc-core:jar:1.30.2
+    License: Apache 2.0  (https://opensource.org/licenses/Apache-2.0)
+  - io.grpc:grpc-grpclb (https://github.com/grpc/grpc-java) io.grpc:grpc-grpclb:jar:1.30.2
+    License: Apache 2.0  (https://opensource.org/licenses/Apache-2.0)
+  - io.grpc:grpc-netty-shaded (https://github.com/grpc/grpc-java) io.grpc:grpc-netty-shaded:jar:1.30.2
+    License: Apache 2.0  (https://opensource.org/licenses/Apache-2.0)
+  - io.grpc:grpc-protobuf (https://github.com/grpc/grpc-java) io.grpc:grpc-protobuf:jar:1.30.2
+    License: Apache 2.0  (https://opensource.org/licenses/Apache-2.0)
+  - io.grpc:grpc-protobuf-lite (https://github.com/grpc/grpc-java) io.grpc:grpc-protobuf-lite:jar:1.30.2
+    License: Apache 2.0  (https://opensource.org/licenses/Apache-2.0)
+  - io.grpc:grpc-stub (https://github.com/grpc/grpc-java) io.grpc:grpc-stub:jar:1.30.2
+    License: Apache 2.0  (https://opensource.org/licenses/Apache-2.0)
+  - OpenCensus (https://github.com/census-instrumentation/opencensus-java) io.opencensus:opencensus-api:jar:0.24.0
+    License: The Apache License, Version 2.0  (http://www.apache.org/licenses/LICENSE-2.0.txt)
+  - OpenCensus (https://github.com/census-instrumentation/opencensus-java) io.opencensus:opencensus-contrib-http-util:jar:0.24.0
+    License: The Apache License, Version 2.0  (http://www.apache.org/licenses/LICENSE-2.0.txt)
+  - perfmark:perfmark-api (https://github.com/perfmark/perfmark) io.perfmark:perfmark-api:jar:0.19.0
+    License: Apache 2.0  (https://opensource.org/licenses/Apache-2.0)
+  - Checker Qual (https://checkerframework.org) org.checkerframework:checker-compat-qual:jar:2.5.5
+    License: GNU General Public License, version 2 (GPL2), with the classpath exception  (http://www.gnu.org/software/classpath/license.html)    License: The MIT License  (http://opensource.org/licenses/MIT)
+  - org.conscrypt:conscrypt-openjdk-uber (https://conscrypt.org/) org.conscrypt:conscrypt-openjdk-uber:jar:2.2.1
+    License: Apache 2  (https://www.apache.org/licenses/LICENSE-2.0)
+
+From: 'FasterXML' (http://fasterxml.com/)
+  - Jackson-core (https://github.com/FasterXML/jackson-core) com.fasterxml.jackson.core:jackson-core:bundle:2.10.1
+    License: The Apache Software License, Version 2.0  (http://www.apache.org/licenses/LICENSE-2.0.txt)
+
+From: 'GlassFish Community' (https://javaee.github.io/glassfish)
+  - javax.annotation API (http://jcp.org/en/jsr/detail?id=250) javax.annotation:javax.annotation-api:jar:1.3.2
+    License: CDDL + GPLv2 with classpath exception  (https://github.com/javaee/javax.annotation/blob/master/LICENSE)
+
+From: 'Google' (http://www.google.com/)
+  - Google Auth Library for Java - Credentials (https://github.com/googleapis/google-auth-library-java/google-auth-library-credentials) com.google.auth:google-auth-library-credentials:jar:0.21.1
+    License: BSD New license  (http://opensource.org/licenses/BSD-3-Clause)
+  - Google Auth Library for Java - OAuth2 HTTP (https://github.com/googleapis/google-auth-library-java/google-auth-library-oauth2-http) com.google.auth:google-auth-library-oauth2-http:jar:0.21.1
+    License: BSD New license  (http://opensource.org/licenses/BSD-3-Clause)
+  - Google HTTP Client Library for Java (https://github.com/googleapis/google-http-java-client/google-http-client) com.google.http-client:google-http-client:jar:1.36.0
+    License: The Apache Software License, Version 2.0  (http://www.apache.org/licenses/LICENSE-2.0.txt)
+  - Jackson 2 extensions to the Google HTTP Client Library for Java. (https://github.com/googleapis/google-http-java-client/google-http-client-jackson2) com.google.http-client:google-http-client-jackson2:jar:1.36.0
+    License: The Apache Software License, Version 2.0  (http://www.apache.org/licenses/LICENSE-2.0.txt)
+
+From: 'Google LLC' (http://www.google.com)
+  - AutoValue Annotations (https://github.com/google/auto/tree/master/value) com.google.auto.value:auto-value-annotations:jar:1.7.2
+    License: Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0.txt)
+
+From: 'Google LLC'
+  - grpc-google-cloud-pubsub-v1 (https://github.com/googleapis/java-pubsub/grpc-google-cloud-pubsub-v1) com.google.api.grpc:grpc-google-cloud-pubsub-v1:jar:1.90.0
+    License: Apache-2.0  (https://www.apache.org/licenses/LICENSE-2.0.txt)
+  - proto-google-cloud-pubsub-v1 (https://github.com/googleapis/java-pubsub/proto-google-cloud-pubsub-v1) com.google.api.grpc:proto-google-cloud-pubsub-v1:jar:1.90.0
+    License: Apache-2.0  (https://www.apache.org/licenses/LICENSE-2.0.txt)
+  - proto-google-common-protos (https://github.com/googleapis/java-iam/proto-google-common-protos) com.google.api.grpc:proto-google-common-protos:jar:1.18.0
+    License: Apache-2.0  (https://www.apache.org/licenses/LICENSE-2.0.txt)
+  - proto-google-iam-v1 (https://github.com/googleapis/api-client-staging) com.google.api.grpc:proto-google-iam-v1:jar:0.13.0
+    License: Apache-2.0  (https://www.apache.org/licenses/LICENSE-2.0.txt)
+  - Google Cloud Core (https://github.com/googleapis/java-core) com.google.cloud:google-cloud-core:jar:1.93.7
+    License: Apache-2.0  (https://www.apache.org/licenses/LICENSE-2.0.txt)
+  - Google Cloud Pub/Sub (https://github.com/googleapis/java-pubsub) com.google.cloud:google-cloud-pubsub:jar:1.108.0
+    License: Apache-2.0  (https://www.apache.org/licenses/LICENSE-2.0.txt)
+
+From: 'MojoHaus' (http://www.mojohaus.org)
+  - Animal Sniffer Annotations (http://www.mojohaus.org/animal-sniffer/animal-sniffer-annotations) org.codehaus.mojo:animal-sniffer-annotations:jar:1.18
+    License: MIT license  (http://www.opensource.org/licenses/mit-license.php)
+
+From: 'The Apache Software Foundation' (http://www.apache.org/)
+  - Commons Logging (http://commons.apache.org/proper/commons-logging/) commons-logging:commons-logging:jar:1.1.3
+    License: The Apache Software License, Version 2.0  (http://www.apache.org/licenses/LICENSE-2.0.txt)
+  - Apache Commons Lang (http://commons.apache.org/proper/commons-lang/) org.apache.commons:commons-lang3:jar:3.3.2
+    License: The Apache Software License, Version 2.0  (http://www.apache.org/licenses/LICENSE-2.0.txt)
+  - Apache HttpClient (http://hc.apache.org/httpcomponents-client) org.apache.httpcomponents:httpclient:jar:4.5.3
+    License: Apache License, Version 2.0  (http://www.apache.org/licenses/LICENSE-2.0.txt)
+  - Apache HttpCore (http://hc.apache.org/httpcomponents-core-ga) org.apache.httpcomponents:httpcore:jar:4.4.6
+    License: Apache License, Version 2.0  (http://www.apache.org/licenses/LICENSE-2.0.txt)
+
+From: 'The Apache Software Foundation' (https://www.apache.org/)
+  - Apache Commons Codec (https://commons.apache.org/proper/commons-codec/) commons-codec:commons-codec:jar:1.13
+    License: Apache License, Version 2.0  (https://www.apache.org/licenses/LICENSE-2.0.txt)
+  - Flink : Tools : Force Shading (https://www.apache.org/force-shading/) org.apache.flink:force-shading:jar:1.12.0
+    License: Apache License, Version 2.0  (https://www.apache.org/licenses/LICENSE-2.0.txt)
+
+From: 'ThreeTen.org' (https://www.threeten.org)
+  - ThreeTen backport (https://www.threeten.org/threetenbp) org.threeten:threetenbp:jar:1.4.4
+    License: BSD 3-clause  (https://raw.githubusercontent.com/ThreeTen/threetenbp/master/LICENSE.txt)
+
+
+
+

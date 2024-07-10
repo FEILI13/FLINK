@@ -68,7 +68,7 @@ import static org.apache.flink.util.Preconditions.checkState;
 @Internal
 public final class StreamTaskNetworkInput<T> implements StreamTaskInput<T> {
 
-	private final CheckpointedInputGate checkpointedInputGate;
+	private  CheckpointedInputGate checkpointedInputGate;
 
 	private final DeserializationDelegate<StreamElement> deserializationDelegate;
 
@@ -138,10 +138,11 @@ public final class StreamTaskNetworkInput<T> implements StreamTaskInput<T> {
 
 	@Override
 	public InputStatus emitNext(DataOutput<T> output) throws Exception {
-
+		//System.out.println("Test emitNext");
 		while (true) {
 			// get the stream element from the deserializer
 			if (currentRecordDeserializer != null) {
+				//System.out.println("Test currentRecordDeserializer not null");
 				DeserializationResult result = currentRecordDeserializer.getNextRecord(deserializationDelegate);
 				if (result.isBufferConsumed()) {
 					currentRecordDeserializer.getCurrentBuffer().recycleBuffer();
@@ -155,9 +156,11 @@ public final class StreamTaskNetworkInput<T> implements StreamTaskInput<T> {
 			}
 
 			Optional<BufferOrEvent> bufferOrEvent = checkpointedInputGate.pollNext();
+
 			if (bufferOrEvent.isPresent()) {
 				// return to the mailbox after receiving a checkpoint barrier to avoid processing of
 				// data after the barrier before checkpoint is performed for unaligned checkpoint mode
+				//System.out.println("Test bufferOrEvent " + bufferOrEvent.get().isBuffer());
 				if (bufferOrEvent.get().isBuffer()) {
 					processBuffer(bufferOrEvent.get());
 				} else {
@@ -165,6 +168,7 @@ public final class StreamTaskNetworkInput<T> implements StreamTaskInput<T> {
 					return InputStatus.MORE_AVAILABLE;
 				}
 			} else {
+				//System.out.println("Test checkpointedInputGate isFinished " + checkpointedInputGate.isFinished());
 				if (checkpointedInputGate.isFinished()) {
 					checkState(checkpointedInputGate.getAvailableFuture().isDone(), "Finished BarrierHandler should be available");
 					return InputStatus.END_OF_INPUT;
@@ -175,6 +179,8 @@ public final class StreamTaskNetworkInput<T> implements StreamTaskInput<T> {
 	}
 
 	private void processElement(StreamElement recordOrMark, DataOutput<T> output) throws Exception {
+		//System.out.println("Test processElement");
+		//System.out.println(recordOrMark.isRecord() + " " + recordOrMark.isWatermark() + " " + recordOrMark.isLatencyMarker() + " " + recordOrMark.isStreamStatus());
 		if (recordOrMark.isRecord()){
 			output.emitRecord(recordOrMark.asRecord());
 		} else if (recordOrMark.isWatermark()) {
@@ -212,6 +218,11 @@ public final class StreamTaskNetworkInput<T> implements StreamTaskInput<T> {
 	@Override
 	public int getInputIndex() {
 		return inputIndex;
+	}
+
+	@Override
+	public void recordDeserializers(int index) {
+		recordDeserializers[index].clear();
 	}
 
 	@Override
@@ -264,5 +275,9 @@ public final class StreamTaskNetworkInput<T> implements StreamTaskInput<T> {
 
 			recordDeserializers[channelIndex] = null;
 		}
+	}
+
+	public CheckpointedInputGate getCheckpointedInputGate(){
+		return checkpointedInputGate;
 	}
 }

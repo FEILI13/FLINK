@@ -21,6 +21,7 @@ package org.apache.flink.runtime.scheduler;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.jobmaster.slotpool.PhysicalSlotProvider;
 import org.apache.flink.runtime.jobmaster.slotpool.PhysicalSlotRequestBulkChecker;
+import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
 import org.apache.flink.runtime.scheduler.SharedSlotProfileRetriever.SharedSlotProfileRetrieverFactory;
 
 /**
@@ -65,5 +66,9 @@ class SlotSharingExecutionSlotAllocatorFactory implements ExecutionSlotAllocator
 			bulkChecker,
 			allocationTimeout,
 			context::getResourceProfile);
+	}
+
+	public PhysicalSlotProvider getSlotProvider(){
+		return slotProvider;
 	}
 }

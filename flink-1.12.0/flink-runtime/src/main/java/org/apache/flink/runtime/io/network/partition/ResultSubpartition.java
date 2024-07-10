@@ -131,11 +131,17 @@ public abstract class ResultSubpartition {
 		private final Buffer.DataType nextDataType;
 		private final int sequenceNumber;
 
-		public BufferAndBacklog(Buffer buffer, int buffersInBacklog, Buffer.DataType nextDataType, int sequenceNumber) {
+		private final long epochID;
+		public BufferAndBacklog(Buffer buffer, int buffersInBacklog, Buffer.DataType nextDataType, int sequenceNumber){
+			this(buffer,buffersInBacklog,nextDataType,sequenceNumber,-1);
+		}
+
+		public BufferAndBacklog(Buffer buffer, int buffersInBacklog, Buffer.DataType nextDataType, int sequenceNumber,long epochID) {
 			this.buffer = checkNotNull(buffer);
 			this.buffersInBacklog = buffersInBacklog;
 			this.nextDataType = checkNotNull(nextDataType);
 			this.sequenceNumber = sequenceNumber;
+			this.epochID = epochID;
 		}
 
 		public Buffer buffer() {
@@ -156,6 +162,10 @@ public abstract class ResultSubpartition {
 
 		public Buffer.DataType getNextDataType() {
 			return nextDataType;
+		}
+
+		public long getEpochID(){
+			return epochID;
 		}
 
 		public int getSequenceNumber() {

@@ -50,7 +50,7 @@ final class ChannelStatePersister {
 	/**
 	 * Writer must be initialized before usage. {@link #startPersisting(long, List)} enforces this invariant.
 	 */
-	private final ChannelStateWriter channelStateWriter;
+	public final ChannelStateWriter channelStateWriter;
 
 	ChannelStatePersister(ChannelStateWriter channelStateWriter, InputChannelInfo channelInfo) {
 		this.channelStateWriter = checkNotNull(channelStateWriter);

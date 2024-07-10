@@ -235,7 +235,8 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 						next.buffer(),
 						next.getSequenceNumber(),
 						reader.getReceiverId(),
-						next.buffersInBacklog());
+						next.buffersInBacklog(),
+						next.getEpochID());
 
 					// Write and flush and wait until this is done before
 					// trying to continue with the next buffer.

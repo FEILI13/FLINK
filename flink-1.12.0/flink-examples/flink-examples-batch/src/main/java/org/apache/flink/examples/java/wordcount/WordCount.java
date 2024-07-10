@@ -59,6 +59,7 @@ public class WordCount {
 
 		// make parameters available in the web interface
 		env.getConfig().setGlobalJobParameters(params);
+		env.setParallelism(1);
 
 		// get input data
 		DataSet<String> text = null;
@@ -84,7 +85,7 @@ public class WordCount {
 				text.flatMap(new Tokenizer())
 				// group by the tuple field "0" and sum up tuple field "1"
 				.groupBy(0)
-				.sum(1);
+				.sum(1).setParallelism(1);
 
 		// emit result
 		if (params.has("output")) {

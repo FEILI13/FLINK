@@ -184,7 +184,7 @@ public abstract class RecoveredInputChannel extends InputChannel implements Chan
 	}
 
 	@Override
-	void sendTaskEvent(TaskEvent event) {
+	public void sendTaskEvent(TaskEvent event) {
 		throw new UnsupportedOperationException("RecoveredInputChannel should never send any task events.");
 	}
 

@@ -21,6 +21,7 @@ package org.apache.flink.streaming.runtime.io;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.core.io.InputStatus;
 import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.streaming.api.operators.InputSelection;
 import org.apache.flink.streaming.api.operators.MultipleInputStreamOperator;
 import org.apache.flink.util.ExceptionUtils;
@@ -123,6 +124,13 @@ public final class StreamMultipleInputProcessor implements StreamInputProcessor 
 		return CompletableFuture.allOf(inputFutures);
 	}
 
+	@Override
+	public void resetInputChannelDeserializer(InputGate gate, int channelIndex) {
+		for(StreamOneInputProcessor sip:inputProcessors){
+			sip.resetInputChannelDeserializer(gate,channelIndex);
+		}
+	}
+
 	private int selectNextReadingInputIndex() {
 		if (!inputSelectionHandler.isAnyInputAvailable()) {
 			fullCheckAndSetAvailable();
@@ -153,4 +161,5 @@ public final class StreamMultipleInputProcessor implements StreamInputProcessor 
 			}
 		}
 	}
+
 }

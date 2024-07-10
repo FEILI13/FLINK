@@ -20,6 +20,7 @@ package org.apache.flink.runtime.scheduler.strategy;
 
 import org.apache.flink.api.common.InputDependencyConstraint;
 import org.apache.flink.runtime.execution.ExecutionState;
+import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.executiongraph.failover.flip1.PipelinedRegionComputeUtil;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
@@ -72,6 +73,11 @@ public class TestingSchedulingTopology implements SchedulingTopology {
 			throw new IllegalArgumentException("can not find partition: " + intermediateResultPartitionId);
 		}
 		return resultPartition;
+	}
+
+	@Override
+	public ExecutionGraph getExecutionGraph() {
+		return null;
 	}
 
 	@Override
