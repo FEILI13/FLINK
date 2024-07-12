@@ -19,6 +19,9 @@
 package org.apache.flink.state.api.output;
 
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
+import org.apache.flink.runtime.checkpoint.CheckpointMetricsBuilder;
+import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.state.api.functions.Timestamper;
 import org.apache.flink.state.api.runtime.NeverFireProcessingTimeService;
@@ -114,6 +117,15 @@ class BoundedStreamTask<IN, OUT, OP extends OneInputStreamOperator<IN, OUT> & Bo
 		mainOperator.close();
 		mainOperator.dispose();
 	}
+
+//	@Override
+//	public boolean performCheckpoint(
+//		CheckpointMetaData checkpointMetaData,
+//		CheckpointOptions checkpointOptions,
+//		CheckpointMetricsBuilder checkpointMetrics) throws Exception {
+//		return super.performCheckpoint(checkpointMetaData,checkpointOptions,checkpointMetrics);
+//	}
+
 
 	private static class CollectorWrapper<OUT> implements Output<StreamRecord<OUT>> {
 

@@ -84,4 +84,8 @@ public class IntermediateResultPartitionID implements ResultID {
 	public String toString() {
 		return intermediateDataSetID.toString() + "#" + partitionNum;
 	}
+
+	public IntermediateDataSetID getIntermediateResultPartitionID(){
+		return intermediateDataSetID;
+	}
 }

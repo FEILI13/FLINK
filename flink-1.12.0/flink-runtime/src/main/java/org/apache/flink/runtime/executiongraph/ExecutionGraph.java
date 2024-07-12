@@ -65,6 +65,8 @@ import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.ScheduleMode;
 import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
+import org.apache.flink.runtime.jobmaster.EstablishedResourceManagerConnection;
+import org.apache.flink.runtime.jobmaster.slotpool.SlotPool;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
 import org.apache.flink.runtime.query.KvStateLocationRegistry;
 import org.apache.flink.runtime.reConfig.Controller;
@@ -74,6 +76,7 @@ import org.apache.flink.runtime.scheduler.adapter.DefaultExecutionTopology;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingExecutionVertex;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingResultPartition;
+import org.apache.flink.runtime.scheduler.strategy.SchedulingStrategy;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingTopology;
 import org.apache.flink.runtime.shuffle.ShuffleMaster;
 import org.apache.flink.runtime.state.SharedStateRegistry;
@@ -328,6 +331,15 @@ public class ExecutionGraph implements AccessExecutionGraph {
 	public List<ExecutionVertex> removeExecutionVertices = new ArrayList<>();
 
 	private Set<Execution> canceledAttempts = new HashSet<>();
+
+
+	// ------ Connection allowing failoverstrategy to fail taskmanagers新加的
+	EstablishedResourceManagerConnection resourceManagerConnection;
+	private SlotPool slotPool;
+
+	public SchedulingStrategy schedulingStrategy_hmx;
+
+	private ArrayList<ExecutionJobVertex> newExecJobVerticestoStandby;
 
 	// --------------------------------------------------------------------------------------------
 	//   Constructors
@@ -869,14 +881,18 @@ public class ExecutionGraph implements AccessExecutionGraph {
 			this.numVerticesTotal += ejv.getParallelism();
 			newExecJobVertices.add(ejv);
 		}
+		newExecJobVerticestoStandby = newExecJobVertices;
 
 		// the topology assigning should happen before notifying new vertices to failoverStrategy
 		executionTopology = DefaultExecutionTopology.fromExecutionGraph(this);
-
-		failoverStrategy.notifyNewVertices(newExecJobVertices);
+//		LOG.info("failoverStrategy.notifyNewVertices(newExecJobVertices);");
+//		failoverStrategy.notifyNewVertices(newExecJobVertices);
 
 		partitionReleaseStrategy = partitionReleaseStrategyFactory.createInstance(getSchedulingTopology());
 	}
+
+
+
 
 	public boolean isLegacyScheduling() {
 		return legacyScheduling;
@@ -1495,7 +1511,7 @@ public class ExecutionGraph implements AccessExecutionGraph {
 	public boolean updateState(TaskExecutionStateTransition state) {
 		assertRunningInJobMasterMainThread();
 		final Execution attempt = currentExecutions.get(state.getID());
-
+		//System.out.println("--- " + attempt.isStandby + " " + state.getExecutionState());
 		if (attempt != null) {
 			try {
 				final boolean stateUpdated = updateStateInternal(state, attempt);
@@ -1518,6 +1534,7 @@ public class ExecutionGraph implements AccessExecutionGraph {
 	private boolean updateStateInternal(final TaskExecutionStateTransition state, final Execution attempt) {
 		Map<String, Accumulator<?, ?>> accumulators;
 
+		LOG.info("state.getExecutionState()  {}",state.getExecutionState());
 		switch (state.getExecutionState()) {
 			case RUNNING:
 				return attempt.switchToRunning();
@@ -1545,6 +1562,10 @@ public class ExecutionGraph implements AccessExecutionGraph {
 					state.getReleasePartitions(),
 					!isLegacyScheduling());
 				return true;
+
+			case STANDBY:
+				LOG.info("case STANDBY:  {}   {}",attempt.isStandby,attempt.getState());
+				return attempt.switchToStandby();//新加的
 
 			default:
 				// we mark as failed and return false, which triggers the TaskManager
@@ -1648,9 +1669,14 @@ public class ExecutionGraph implements AccessExecutionGraph {
 	void registerExecution(Execution exec) {
 		assertRunningInJobMasterMainThread();
 		Execution previous = currentExecutions.putIfAbsent(exec.getAttemptId(), exec);
+
+
 		if (previous != null) {
+			LOG.info("注册失败");
 			failGlobal(new Exception("Trying to register execution " + exec + " for already used ID " + exec.getAttemptId()));
 		}
+
+		LOG.info("注册成功");
 	}
 
 	void deregisterExecution(Execution exec) {
@@ -1716,9 +1742,11 @@ public class ExecutionGraph implements AccessExecutionGraph {
 
 		executionStateUpdateListener.onStateUpdate(execution.getAttemptId(), newExecutionState);
 
-		if (!isLegacyScheduling()) {
-			return;
-		}
+//		if (!isLegacyScheduling()) {
+//
+//			LOG.info("直接退出了");
+//			return;
+//		}
 
 		// see what this means for us. currently, the first FAILED state means -> FAILED
 		if (newExecutionState == ExecutionState.FAILED) {
@@ -1732,7 +1760,7 @@ public class ExecutionGraph implements AccessExecutionGraph {
 					if (checkpointCoordinator != null) {
 						checkpointCoordinator.failUnacknowledgedPendingCheckpointsFor(execution.getAttemptId(), ex);
 					}
-
+					LOG.info("赫明萱failoverStrategy {}",failoverStrategy.toString());
 					failoverStrategy.onTaskFailure(execution, ex);
 				}
 				catch (Throwable t) {
@@ -1966,4 +1994,28 @@ public class ExecutionGraph implements AccessExecutionGraph {
 		}
 		this.removeExecutionVertices.clear();
     }
+	 *  todo 赫明萱加
+	 */
+	public EstablishedResourceManagerConnection getResourceManagerConnection(){
+		return resourceManagerConnection;
+	}
+
+	public void setResourceManagerConnection(EstablishedResourceManagerConnection resourceManagerConnection){
+		this.resourceManagerConnection = resourceManagerConnection;
+	}
+
+	public void setSlotPool(SlotPool slotPool){
+		this.slotPool = slotPool;
+	}
+
+	public SlotPool getSlotPool(){
+		return slotPool;
+	}
+
+
+	public void notifyStandby(){
+		LOG.info("failoverStrategy.notifyNewVertices(newExecJobVertices);");
+		failoverStrategy.notifyNewVertices(newExecJobVerticestoStandby);
+	}
+
 }

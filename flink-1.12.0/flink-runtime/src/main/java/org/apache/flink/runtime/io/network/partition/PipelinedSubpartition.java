@@ -19,8 +19,18 @@
 package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.runtime.causal.EpochTracker;
+import org.apache.flink.runtime.causal.determinant.BufferBuiltDeterminant;
+import org.apache.flink.runtime.causal.log.job.CausalLogID;
+import org.apache.flink.runtime.causal.log.job.JobCausalLog;
+import org.apache.flink.runtime.causal.log.thread.ThreadCausalLog;
+import org.apache.flink.runtime.causal.recovery.IRecoveryManager;
+import org.apache.flink.runtime.causal.recovery.RecoveryManager;
 import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
 import org.apache.flink.runtime.event.AbstractEvent;
+import org.apache.flink.runtime.inflightlogging.InFlightLog;
+import org.apache.flink.runtime.inflightlogging.InFlightLogIterator;
+import org.apache.flink.runtime.inflightlogging.InMemorySubpartitionInFlightLogger;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
@@ -29,6 +39,8 @@ import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumerWithPartialRecordLength;
 import org.apache.flink.runtime.io.network.partition.consumer.EndOfChannelStateEvent;
+
+import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Iterators;
 
@@ -40,8 +52,11 @@ import javax.annotation.concurrent.GuardedBy;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static java.util.Objects.requireNonNull;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -106,9 +121,40 @@ public class PipelinedSubpartition extends ResultSubpartition
 
 	// ------------------------------------------------------------------------
 
+
+	private final InFlightLog inFlightLog;
+
+	private ThreadCausalLog subpartitionThreadCausalLog;
+
+	private RecoveryManager recoveryManager;
+
+	private final AtomicBoolean downstreamFailed;
+
+	@GuardedBy("buffers")
+	private InFlightLogIterator<Buffer> inflightReplayIterator;
+
+
+	private final AtomicBoolean isRecoveringSubpartitionInFlightState;
+
+
+	private final BufferBuiltDeterminant reuseBufferBuiltDeterminant;
+	private short vertexID;
+
+	private EpochTracker epochTracker;
+
+	@GuardedBy("buffers")
+	private final Deque<BufferConsumer> determinantRequests;
+
 	PipelinedSubpartition(int index, ResultPartition parent) {
 		super(index, parent);
+
+		this.inFlightLog = new InMemorySubpartitionInFlightLogger();
+		this.downstreamFailed = new AtomicBoolean(false);
+		this.isRecoveringSubpartitionInFlightState = new AtomicBoolean(false);
+		this.determinantRequests = new LinkedList<>();
+		this.reuseBufferBuiltDeterminant = new BufferBuiltDeterminant();
 	}
+
 
 	@Override
 	public void setChannelStateWriter(ChannelStateWriter channelStateWriter) {
@@ -124,13 +170,23 @@ public class PipelinedSubpartition extends ResultSubpartition
 	@Override
 	public void finishReadRecoveredState(boolean notifyAndBlockOnCompletion) throws IOException {
 		if (notifyAndBlockOnCompletion) {
-			add(EventSerializer.toBufferConsumer(EndOfChannelStateEvent.INSTANCE, false), 0, false);
+			add(EventSerializer.toBufferConsumer(EndOfChannelStateEvent.INSTANCE, false,epochTracker.checkpointID), 0, false);
 		}
+	}
+
+	public void setCausalComponents(RecoveryManager recoveryManager, JobCausalLog causalLog) {
+		this.recoveryManager = recoveryManager;
+		this.epochTracker = recoveryManager.getContext().getEpochTracker();
+		this.vertexID = recoveryManager.getContext().getTaskVertexID();
+		IntermediateResultPartitionID partitionID = parent.getPartitionId().getPartitionId();
+		CausalLogID causalLogID = new CausalLogID(recoveryManager.getContext().getTaskVertexID(),
+			partitionID.getIntermediateResultPartitionID().getLowerPart(), partitionID.getIntermediateResultPartitionID().getUpperPart(), (byte) subpartitionInfo.getSubPartitionIdx());
+		this.subpartitionThreadCausalLog = causalLog.getThreadCausalLog(causalLogID);;
 	}
 
 	@Override
 	public void finish() throws IOException {
-		add(EventSerializer.toBufferConsumer(EndOfPartitionEvent.INSTANCE, false), 0, true);
+		add(EventSerializer.toBufferConsumer(EndOfPartitionEvent.INSTANCE, false,epochTracker.checkpointID), 0, true);
 		LOG.debug("{}: Finished {}.", parent.getOwningTaskName(), this);
 	}
 
@@ -255,65 +311,121 @@ public class PipelinedSubpartition extends ResultSubpartition
 		}
 	}
 
+	private BufferAndBacklog getReplayedBufferUnsafe() {
+
+		long epoch = inflightReplayIterator.getEpoch();
+		Buffer buffer = inflightReplayIterator.next();
+
+		int numBuffersInBacklog = getBuffersInBacklog() + inflightReplayIterator.numberRemaining();
+		if (!inflightReplayIterator.hasNext()) {
+			inflightReplayIterator = null;
+			LOG.debug("Finished replaying inflight log!");
+		}
+
+		return new BufferAndBacklog(buffer,
+			getBuffersInBacklog() + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining() : 0),
+			isDataAvailableUnsafe() ? getNextBufferTypeUnsafe() : Buffer.DataType.NONE, sequenceNumber++,epoch);
+	}
+
 	@Nullable
 	BufferAndBacklog pollBuffer() {
+
+
+		if (downstreamFailed.get()) {
+			LOG.debug("Polling for next buffer, but downstream is still failed.");
+			return null;
+		}
+
 		synchronized (buffers) {
-			if (isBlocked) {
-				return null;
+			if (!determinantRequests.isEmpty()) {
+				LOG.debug("We have a determinant request to send");
+				BufferConsumer consumer = determinantRequests.poll();
+				assert consumer != null;
+				long epochID = consumer.checkpointID;
+				Buffer buffer = consumer.build();
+				consumer.close();
+				int numBuffersInBacklog = getBuffersInBacklog() + (inflightReplayIterator != null ?
+					inflightReplayIterator.numberRemaining() : 0);
+				return new BufferAndBacklog(buffer,
+					getBuffersInBacklog() + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining() : 0),
+					isDataAvailableUnsafe() ? getNextBufferTypeUnsafe() : Buffer.DataType.NONE,
+					sequenceNumber++,epochID);
+//				return new BufferAndBacklog(buffer,
+//					getBuffersInBacklog() + (inflightReplayIterator != null ? inflightReplayIterator.numberRemaining() : 0),
+//					isDataAvailableUnsafe() ? getNextBufferTypeUnsafe() : Buffer.DataType.NONE, sequenceNumber++);
 			}
+		}
 
-			Buffer buffer = null;
 
-			if (buffers.isEmpty()) {
-				flushRequested = false;
-			}
 
-			while (!buffers.isEmpty()) {
-				BufferConsumerWithPartialRecordLength bufferConsumerWithPartialRecordLength = buffers.peek();
-				BufferConsumer bufferConsumer = bufferConsumerWithPartialRecordLength.getBufferConsumer();
 
-				buffer = buildSliceBuffer(bufferConsumerWithPartialRecordLength);
+		synchronized (buffers) {
+			if(inflightReplayIterator != null){
+				LOG.debug("We are replaying index {}, get inflight logs next buffer", subpartitionInfo.getSubPartitionIdx());
+				return getReplayedBufferUnsafe();
+			}else{
+				long epochID = 0;
+				if (isBlocked) {
+					return null;
+				}
 
-				checkState(bufferConsumer.isFinished() || buffers.size() == 1,
-					"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of the buffers queue.");
+				Buffer buffer = null;
 
-				if (buffers.size() == 1) {
-					// turn off flushRequested flag if we drained all of the available data
+				if (buffers.isEmpty()) {
 					flushRequested = false;
 				}
 
-				if (bufferConsumer.isFinished()) {
-					requireNonNull(buffers.poll()).getBufferConsumer().close();
-					decreaseBuffersInBacklogUnsafe(bufferConsumer.isBuffer());
+				while (!buffers.isEmpty()) {
+					BufferConsumerWithPartialRecordLength bufferConsumerWithPartialRecordLength = buffers.peek();
+					BufferConsumer bufferConsumer = bufferConsumerWithPartialRecordLength.getBufferConsumer();
+					epochID = bufferConsumer.getCheckpointID();
+					buffer = buildSliceBuffer(bufferConsumerWithPartialRecordLength);
+
+					checkState(bufferConsumer.isFinished() || buffers.size() == 1,
+						"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of the buffers queue.");
+
+					if (buffers.size() == 1) {
+						// turn off flushRequested flag if we drained all of the available data
+						flushRequested = false;
+					}
+
+					if (bufferConsumer.isFinished()) {
+						requireNonNull(buffers.poll()).getBufferConsumer().close();
+						decreaseBuffersInBacklogUnsafe(bufferConsumer.isBuffer());
+					}
+
+					if (buffer.readableBytes() > 0) {
+						break;
+					}
+					buffer.recycleBuffer();
+					buffer = null;
+					if (!bufferConsumer.isFinished()) {
+						break;
+					}
 				}
 
-				if (buffer.readableBytes() > 0) {
-					break;
+				if (buffer == null) {
+					return null;
 				}
-				buffer.recycleBuffer();
-				buffer = null;
-				if (!bufferConsumer.isFinished()) {
-					break;
+
+				if (buffer.getDataType().isBlockingUpstream()) {
+					isBlocked = true;
 				}
-			}
 
-			if (buffer == null) {
-				return null;
-			}
+				subpartitionThreadCausalLog.appendDeterminant(reuseBufferBuiltDeterminant.replace(buffer.readableBytes())
+					, epochID);
+				inFlightLog.log(buffer, epochID, isFinished);  //存储飞行日志存储
 
-			if (buffer.getDataType().isBlockingUpstream()) {
-				isBlocked = true;
+				updateStatistics(buffer);
+				// Do not report last remaining buffer on buffers as available to read (assuming it's unfinished).
+				// It will be reported for reading either on flush or when the number of buffers in the queue
+				// will be 2 or more.
+				return new BufferAndBacklog(
+					buffer,
+					getBuffersInBacklog(),
+					isDataAvailableUnsafe() ? getNextBufferTypeUnsafe() : Buffer.DataType.NONE,
+					sequenceNumber++,epochID);
 			}
-
-			updateStatistics(buffer);
-			// Do not report last remaining buffer on buffers as available to read (assuming it's unfinished).
-			// It will be reported for reading either on flush or when the number of buffers in the queue
-			// will be 2 or more.
-			return new BufferAndBacklog(
-				buffer,
-				getBuffersInBacklog(),
-				isDataAvailableUnsafe() ? getNextBufferTypeUnsafe() : Buffer.DataType.NONE,
-				sequenceNumber++);
 		}
 	}
 
@@ -371,7 +483,8 @@ public class PipelinedSubpartition extends ResultSubpartition
 
 	private Buffer.DataType getNextBufferTypeUnsafe() {
 		assert Thread.holdsLock(buffers);
-
+		if (inflightReplayIterator != null)
+			return inflightReplayIterator.peekNext().getDataType();
 		final BufferConsumerWithPartialRecordLength first = buffers.peek();
 		return first != null ? first.getBufferConsumer().getDataType() : Buffer.DataType.NONE;
 	}
@@ -497,7 +610,7 @@ public class PipelinedSubpartition extends ResultSubpartition
 		return readView != null && !flushRequested && !isBlocked && getNumberOfFinishedBuffers() == 1;
 	}
 
-	private void notifyDataAvailable() {
+	public void notifyDataAvailable() {
 		final PipelinedSubpartitionView readView = this.readView;
 		if (readView != null) {
 			readView.notifyDataAvailable();
@@ -539,5 +652,133 @@ public class PipelinedSubpartition extends ResultSubpartition
 	@VisibleForTesting
 	BufferConsumerWithPartialRecordLength getNextBuffer() {
 		return buffers.poll();
+	}
+
+
+	//todo 赫明萱加
+	public boolean isRecoveringSubpartititionInFlightState() {
+		return isRecoveringSubpartitionInFlightState.get();
+	}
+
+	public void requestReplay(long checkpointId, int ignoreMessages) {
+		LOG.debug("Replay requested");
+		int prioritySequenceNumber = -1;
+		final boolean notifyDataAvailable;
+		synchronized (buffers) {
+			if (inflightReplayIterator != null)
+				inflightReplayIterator.close();
+			inflightReplayIterator = inFlightLog.getInFlightIterator(checkpointId, ignoreMessages);
+
+			prioritySequenceNumber = sequenceNumber;
+			if (inflightReplayIterator != null) {
+				LOG.debug("Replay has been requested for pipelined subpartition of id {}, index {}, skipping {} " +
+						"buffers, " +
+						"buffers to replay {}. Setting downstreamFailed to false", this.parent.getPartitionId(),
+					this.subpartitionInfo.getSubPartitionIdx(),
+					ignoreMessages, inflightReplayIterator.numberRemaining());
+				if (!inflightReplayIterator.hasNext())
+					inflightReplayIterator = null;
+			}
+
+			notifyDataAvailable =  shouldNotifyDataAvailable();
+
+			downstreamFailed.set(false);
+		}
+
+		if (prioritySequenceNumber != -1) {
+			notifyPriorityEvent(prioritySequenceNumber);
+		}
+		if (notifyDataAvailable) {
+			notifyDataAvailable();
+		}
+	}
+
+
+	public void setIsRecoveringSubpartitionInFlightState(boolean isRecoveringSubpartitionInFlightState) {
+		LOG.debug("Set isRecoveringSubpartitionInFlightState to {}", isRecoveringSubpartitionInFlightState);
+		this.isRecoveringSubpartitionInFlightState.set(isRecoveringSubpartitionInFlightState);
+	}
+
+	public InFlightLog getInFlightLog() {
+		return inFlightLog;
+	}
+
+	public void bypassDeterminantRequest(BufferConsumer bufferConsumer) {
+		synchronized (buffers) {
+			LOG.debug("Acquired lock to Add determinantRequest buffer consumer");
+			determinantRequests.add(bufferConsumer);
+			flushRequested = true;
+			notifyDataAvailable();
+		}
+	}
+
+	public void buildAndLogBuffer(int bufferSize) throws InterruptedException {
+		LOG.debug("building buffer of size {} and discarding result", bufferSize);
+		synchronized (buffers) {
+			while (true) {
+//				BufferConsumerWithPartialRecordLength bufferConsumerWithPartialRecordLength = buffers.peek();
+//				BufferConsumer bufferConsumer = bufferConsumerWithPartialRecordLength.getBufferConsumer();
+//				epochID = bufferConsumer.getCheckpointID();
+//				buffer = buildSliceBuffer(bufferConsumerWithPartialRecordLength);
+				BufferConsumerWithPartialRecordLength bufferConsumerWithPartialRecordLength = buffers.peek();
+				BufferConsumer consumer = bufferConsumerWithPartialRecordLength.getBufferConsumer();
+
+				//No consumer ready
+				if (consumer == null) {
+					buffers.wait(5);
+					continue;
+				}
+
+				//Empty consumer (No dataflow between checkpoints)
+				if (consumer.isFinished() && consumer.getUnreadBytes() <= 0) {
+					buffers.poll().getBufferConsumer().close();
+					continue;
+				}
+
+				// Erroneous state, consumer is finished without enough data, throw exception
+				if (consumer.isFinished() && consumer.getUnreadBytes() > 0 && consumer.getUnreadBytes() < bufferSize) {
+					String msg = "Vertex " + recoveryManager.getContext().getTaskVertexID() + " - Size of finished bufferConsumer ( unread: " + consumer.getUnreadBytes() +
+						", written: " + consumer.getWrittenBytes() +
+						") does not match size of recovery request to build buffer ( " + bufferSize + " ).";
+					LOG.info("Exception:" + msg);
+					throw new RuntimeException(msg);
+				}
+				//If there is enough data in consumer for building the correct buffer
+				if (consumer.getUnreadBytes() >= bufferSize) {
+					buildRequestedBuffer(bufferSize, consumer);
+					break;
+				}
+
+				buffers.wait(5);
+			}
+		}
+		LOG.debug("Done building and discarding bufer of size {}", bufferSize);
+	}
+
+	private void buildRequestedBuffer(int bufferSize, BufferConsumer consumer) {
+		LOG.debug("There are enough bytes to build the requested buffer!");
+
+		long epochID = consumer.checkpointID;
+		//This assumes that the input buffers which are before this close in the determinant log have
+		// been
+		// fully processed, thus the bufferconsumer will have this amount of data.
+		subpartitionThreadCausalLog.appendDeterminant(reuseBufferBuiltDeterminant.replace(bufferSize), epochID);
+		Buffer buffer = consumer.build(bufferSize);
+
+
+		checkState(consumer.isFinished() || buffers.size() == 1,
+			"When there are multiple buffers, an unfinished bufferConsumer can not be at the head of" +
+				" " +
+				"the buffers queue.");
+
+		if (buffers.size() == 1) {
+			// turn off flushRequested flag if we drained all of the available data
+			flushRequested = false;
+		}
+
+
+		updateStatistics(buffer);
+		inFlightLog.log(buffer, epochID, true);
+		buffer.recycleBuffer(); //It is not sent downstream, so we must recycle it here.
 	}
 }

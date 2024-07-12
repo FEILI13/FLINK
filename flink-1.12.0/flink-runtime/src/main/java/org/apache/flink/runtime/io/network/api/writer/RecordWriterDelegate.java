@@ -23,6 +23,7 @@ import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.AvailabilityProvider;
 
 import java.io.IOException;
+import java.util.List;
 
 /**
  * The record writer delegate provides the availability function for task processor, and it might represent
@@ -53,4 +54,5 @@ public interface RecordWriterDelegate<T extends IOReadableWritable> extends Avai
 	void cleanRouting();
 
     int updatePartitionStrategy();
+	List<RecordWriter<T>> getRecordWriterList(int outputIndex);
 }

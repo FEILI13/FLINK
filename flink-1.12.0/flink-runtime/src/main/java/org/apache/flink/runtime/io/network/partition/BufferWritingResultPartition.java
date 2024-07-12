@@ -143,13 +143,13 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 	}
 
 	@Override
-	public void emitRecord(ByteBuffer record, int targetSubpartition) throws IOException {
-		BufferBuilder buffer = appendUnicastDataForNewRecord(record, targetSubpartition);
+	public void emitRecord(ByteBuffer record, int targetSubpartition,long checkp) throws IOException {
+		BufferBuilder buffer = appendUnicastDataForNewRecord(record, targetSubpartition,checkp);
 
 		while (record.hasRemaining()) {
 			// full buffer, partial record
 			finishUnicastBufferBuilder(targetSubpartition);
-			buffer = appendUnicastDataForRecordContinuation(record, targetSubpartition);
+			buffer = appendUnicastDataForRecordContinuation(record, targetSubpartition,checkp);
 		}
 
 		if (buffer.isFull()) {
@@ -160,14 +160,20 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 		// partial buffer, full record
 	}
 
-	@Override
-	public void broadcastRecord(ByteBuffer record) throws IOException {
-		BufferBuilder buffer = appendBroadcastDataForNewRecord(record);
+	public void emitRecord(ByteBuffer record, int targetSubpartition) throws IOException {
+
+
+		// partial buffer, full record
+	}
+
+
+	public void broadcastRecord(ByteBuffer record,long checkp) throws IOException {
+		BufferBuilder buffer = appendBroadcastDataForNewRecord(record,checkp);
 
 		while (record.hasRemaining()) {
 			// full buffer, partial record
 			finishBroadcastBufferBuilder();
-			buffer = appendBroadcastDataForRecordContinuation(record);
+			buffer = appendBroadcastDataForRecordContinuation(record,checkp);
 		}
 
 		if (buffer.isFull()) {
@@ -201,6 +207,19 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 					// Retain the buffer so that it can be recycled by each channel of targetPartition
 					subpartition.add(eventBufferConsumer.copy(), 0);
 				}
+			}
+		}
+	}
+
+	public void broadcastEvent(AbstractEvent event, boolean isPriorityEvent,long checkpointID) throws IOException {
+		checkInProduceState();
+		finishBroadcastBufferBuilder();
+		finishUnicastBufferBuilders();
+
+		try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event, isPriorityEvent,checkpointID)) {
+			for (ResultSubpartition subpartition : subpartitions) {
+				// Retain the buffer so that it can be recycled by each channel of targetPartition
+				subpartition.add(eventBufferConsumer.copy(), 0);
 			}
 		}
 	}
@@ -254,12 +273,13 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 
 	private BufferBuilder appendUnicastDataForNewRecord(
 			final ByteBuffer record,
-			final int targetSubpartition) throws IOException {
+			final int targetSubpartition,
+			long checkp) throws IOException {
 		BufferBuilder buffer = unicastBufferBuilders[targetSubpartition];
 
 		if (buffer == null) {
 			buffer = requestNewUnicastBufferBuilder(targetSubpartition);
-			subpartitions[targetSubpartition].add(buffer.createBufferConsumerFromBeginning(), 0);
+			subpartitions[targetSubpartition].add(buffer.createBufferConsumerFromBeginning(checkp), 0);
 		}
 
 		buffer.appendAndCommit(record);
@@ -269,24 +289,37 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 
 	private BufferBuilder appendUnicastDataForRecordContinuation(
 			final ByteBuffer remainingRecordBytes,
-			final int targetSubpartition) throws IOException {
+			final int targetSubpartition,
+			long checkp) throws IOException {
 		final BufferBuilder buffer = requestNewUnicastBufferBuilder(targetSubpartition);
 		// !! Be aware, in case of partialRecordBytes != 0, partial length and data has to `appendAndCommit` first
 		// before consumer is created. Otherwise it would be confused with the case the buffer starting
 		// with a complete record.
 		// !! The next two lines can not change order.
 		final int partialRecordBytes = buffer.appendAndCommit(remainingRecordBytes);
-		subpartitions[targetSubpartition].add(buffer.createBufferConsumerFromBeginning(), partialRecordBytes);
+		subpartitions[targetSubpartition].add(buffer.createBufferConsumerFromBeginning(checkp), partialRecordBytes);
 
 		return buffer;
 	}
 
-	private BufferBuilder appendBroadcastDataForNewRecord(final ByteBuffer record) throws IOException {
+//	private BufferBuilder appendBroadcastDataForNewRecord(final ByteBuffer record) throws IOException {
+//		BufferBuilder buffer = broadcastBufferBuilder;
+//
+//		if (buffer == null) {
+//			buffer = requestNewBroadcastBufferBuilder();
+//			createBroadcastBufferConsumers(buffer, 0);
+//		}
+//
+//		buffer.appendAndCommit(record);
+//
+//		return buffer;
+//	}
+	private BufferBuilder appendBroadcastDataForNewRecord(final ByteBuffer record,long checkp) throws IOException {
 		BufferBuilder buffer = broadcastBufferBuilder;
 
 		if (buffer == null) {
 			buffer = requestNewBroadcastBufferBuilder();
-			createBroadcastBufferConsumers(buffer, 0);
+			createBroadcastBufferConsumers(buffer, 0,checkp);
 		}
 
 		buffer.appendAndCommit(record);
@@ -295,20 +328,29 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 	}
 
 	private BufferBuilder appendBroadcastDataForRecordContinuation(
-			final ByteBuffer remainingRecordBytes) throws IOException {
+			final ByteBuffer remainingRecordBytes,
+			long checkp) throws IOException {
 		final BufferBuilder buffer = requestNewBroadcastBufferBuilder();
 		// !! Be aware, in case of partialRecordBytes != 0, partial length and data has to `appendAndCommit` first
 		// before consumer is created. Otherwise it would be confused with the case the buffer starting
 		// with a complete record.
 		// !! The next two lines can not change order.
 		final int partialRecordBytes = buffer.appendAndCommit(remainingRecordBytes);
-		createBroadcastBufferConsumers(buffer, partialRecordBytes);
+		createBroadcastBufferConsumers(buffer, partialRecordBytes,checkp);
 
 		return buffer;
 	}
 
-	private void createBroadcastBufferConsumers(BufferBuilder buffer, int partialRecordBytes) throws IOException {
-		try (final BufferConsumer consumer = buffer.createBufferConsumerFromBeginning()) {
+//	private void createBroadcastBufferConsumers(BufferBuilder buffer, int partialRecordBytes) throws IOException {
+//		try (final BufferConsumer consumer = buffer.createBufferConsumerFromBeginning(0)) {
+//			for (ResultSubpartition subpartition : subpartitions) {
+//				subpartition.add(consumer.copy(), partialRecordBytes);
+//			}
+//		}
+//	}
+
+	private void createBroadcastBufferConsumers(BufferBuilder buffer, int partialRecordBytes,long checkp) throws IOException {
+		try (final BufferConsumer consumer = buffer.createBufferConsumerFromBeginning(checkp)) {
 			for (ResultSubpartition subpartition : subpartitions) {
 				if(subpartition==null){
 					continue;

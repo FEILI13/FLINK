@@ -398,6 +398,13 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		for (StreamOperatorWrapper<?, ?> operatorWrapper : getAllOperators(true)) {
 			StreamOperator<?> operator = operatorWrapper.getStreamOperator();
 			operator.initializeState(streamTaskStateInitializer);
+			//operator.open();
+		}
+	}
+
+	protected void Open() throws Exception {
+		for (StreamOperatorWrapper<?, ?> operatorWrapper : getAllOperators(true)) {
+			StreamOperator<?> operator = operatorWrapper.getStreamOperator();
 			operator.open();
 		}
 	}

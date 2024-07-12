@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.14">
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\BootstrapTransformation.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\EvictingWindowReader.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\ExistingSavepoint.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\functions\BroadcastStateBootstrapFunction.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\functions\KeyedStateBootstrapFunction.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\functions\KeyedStateReaderFunction.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\functions\StateBootstrapFunction.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\functions\Timestamper.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\functions\WindowReaderFunction.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\input\BroadcastStateInputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\input\BufferingCollector.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\input\KeyedStateInputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\input\ListStateInputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\input\MultiStateKeyIterator.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\input\operator\KeyedStateReaderOperator.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\input\operator\StateReaderOperator.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\input\operator\window\AggregateEvictingWindowReaderFunction.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\input\operator\window\EvictingWindowReaderFunction.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\input\operator\window\PassThroughReader.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\input\operator\window\ProcessEvictingWindowReader.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\input\operator\window\ReduceEvictingWindowReaderFunction.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\input\operator\window\WindowContents.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\input\operator\WindowReaderOperator.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\input\OperatorStateInputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\input\splits\KeyGroupRangeInputSplit.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\input\splits\OperatorStateInputSplit.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\input\UnionStateInputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\KeyedOperatorTransformation.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\NewSavepoint.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\OneInputOperatorTransformation.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\OperatorTransformation.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\output\BoundedOneInputStreamTaskRunner.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\output\BoundedStreamTask.java">
+<error line="22" column="8" severity="error" message="Unused import: org.apache.flink.runtime.checkpoint.CheckpointMetaData." source="com.puppycrawl.tools.checkstyle.checks.imports.UnusedImportsCheck"/>
+<error line="23" column="8" severity="error" message="Unused import: org.apache.flink.runtime.checkpoint.CheckpointMetricsBuilder." source="com.puppycrawl.tools.checkstyle.checks.imports.UnusedImportsCheck"/>
+<error line="24" column="8" severity="error" message="Unused import: org.apache.flink.runtime.checkpoint.CheckpointOptions." source="com.puppycrawl.tools.checkstyle.checks.imports.UnusedImportsCheck"/>
+<error line="130" severity="error" message="&apos;CLASS_DEF&apos; 前只应有一个空行。" source="com.puppycrawl.tools.checkstyle.checks.whitespace.EmptyLineSeparatorCheck"/>
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\output\FileCopyFunction.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\output\MergeOperatorStates.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\output\operators\BroadcastStateBootstrapOperator.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\output\operators\KeyedStateBootstrapOperator.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\output\operators\LazyTimerService.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\output\operators\StateBootstrapOperator.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\output\operators\StateBootstrapWrapperOperator.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\output\OperatorSubtaskStateReducer.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\output\partitioner\HashSelector.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\output\partitioner\KeyGroupRangePartitioner.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\output\SavepointOutputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\output\SnapshotUtils.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\output\StatePathExtractor.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\output\TaggedOperatorSubtaskState.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\output\TimestampAssignerWrapper.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\runtime\BootstrapTransformationWithID.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\runtime\metadata\OperatorStateSpec.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\runtime\metadata\SavepointMetadata.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\runtime\NeverFireProcessingTimeService.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\runtime\OperatorIDGenerator.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\runtime\SavepointEnvironment.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\runtime\SavepointLoader.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\runtime\SavepointLocalRecoveryProvider.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\runtime\SavepointRuntimeContext.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\runtime\SavepointTaskManagerRuntimeInfo.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\runtime\SavepointTaskStateManager.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\runtime\VoidTriggerable.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\Savepoint.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\SavepointWriterOperatorFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\WindowedOperatorTransformation.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\WindowReader.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\main\java\org\apache\flink\state\api\WritableSavepoint.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\BootstrapTransformationTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\CustomIntSerializer.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\input\BroadcastStateInputFormatTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\input\BufferingCollectorTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\input\KeyedStateInputFormatTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\input\ListStateInputFormatTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\input\MultiStateKeyIteratorTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\input\UnionStateInputFormatTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\input\WindowReaderTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\MemoryStateBackendReaderKeyedStateITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\MemoryStateBackendWindowITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\output\KeyedStateBootstrapOperatorTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\output\SavepointOutputFormatTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\output\SnapshotUtilsTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\RocksDBStateBackendReaderKeyedStateITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\RocksDBStateBackendWindowITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\runtime\OperatorIDGeneratorTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\SavepointDeepCopyTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\SavepointReaderCustomSerializerITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\SavepointReaderITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\SavepointReaderITTestBase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\SavepointReaderKeyedStateITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\SavepointTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\SavepointWindowReaderITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\SavepointWriterITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\SavepointWriterWindowITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\utils\AggregateSum.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\utils\MaxWatermarkSource.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\utils\ReduceSum.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\utils\SavepointTestBase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-libraries\flink-state-processing-api\src\test\java\org\apache\flink\state\api\utils\WaitingSource.java">
+</file>
+</checkstyle>

@@ -179,7 +179,8 @@ class CreditBasedSequenceNumberingViewReader implements BufferAvailabilityListen
 				next.buffer(),
 				nextDataType,
 				next.buffersInBacklog(),
-				next.getSequenceNumber());
+				next.getSequenceNumber(),
+				next.getEpochID());
 		} else {
 			return null;
 		}

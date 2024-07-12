@@ -279,6 +279,8 @@ public class SlotPoolImpl implements SlotPool {
 
 	@Override
 	public void connectToResourceManager(@Nonnull ResourceManagerGateway resourceManagerGateway) {
+
+		log.info("connectToResourceManager");
 		this.resourceManagerGateway = checkNotNull(resourceManagerGateway);
 
 		// work on all slots waiting for this connection
@@ -309,6 +311,7 @@ public class SlotPoolImpl implements SlotPool {
 	@Nonnull
 	private CompletableFuture<AllocatedSlot> requestNewAllocatedSlotInternal(PendingRequest pendingRequest) {
 
+		log.info("requestNewAllocatedSlotInternal(PendingRequest pendingRequest)");
 		if (resourceManagerGateway == null) {
 			stashRequestWaitingForResourceManager(pendingRequest);
 		} else {
@@ -429,6 +432,8 @@ public class SlotPoolImpl implements SlotPool {
 			@Nonnull ResourceProfile resourceProfile,
 			@Nullable Time timeout) {
 
+		log.info(" requestNewAllocatedSlot(");
+
 		componentMainThreadExecutor.assertRunningInMainThread();
 
 		final PendingRequest pendingRequest = PendingRequest.createStreamingRequest(slotRequestId, resourceProfile);
@@ -458,6 +463,7 @@ public class SlotPoolImpl implements SlotPool {
 	public CompletableFuture<PhysicalSlot> requestNewAllocatedBatchSlot(
 		@Nonnull SlotRequestId slotRequestId,
 		@Nonnull ResourceProfile resourceProfile) {
+
 
 		componentMainThreadExecutor.assertRunningInMainThread();
 
@@ -872,43 +878,43 @@ public class SlotPoolImpl implements SlotPool {
 	 */
 	protected void checkIdleSlot() {
 
-		// The timestamp in SlotAndTimestamp is relative
-		final long currentRelativeTimeMillis = clock.relativeTimeMillis();
-
-		final List<AllocatedSlot> expiredSlots = new ArrayList<>(availableSlots.size());
-
-		for (SlotAndTimestamp slotAndTimestamp : availableSlots.availableSlots.values()) {
-			if (currentRelativeTimeMillis - slotAndTimestamp.timestamp > idleSlotTimeout.toMilliseconds()) {
-				expiredSlots.add(slotAndTimestamp.slot);
-			}
-		}
-
-		final FlinkException cause = new FlinkException("Releasing idle slot.");
-
-		for (AllocatedSlot expiredSlot : expiredSlots) {
-			final AllocationID allocationID = expiredSlot.getAllocationId();
-			if (availableSlots.tryRemove(allocationID) != null) {
-
-				log.info("Releasing idle slot [{}].", allocationID);
-				final CompletableFuture<Acknowledge> freeSlotFuture = expiredSlot.getTaskManagerGateway().freeSlot(
-					allocationID,
-					cause,
-					rpcTimeout);
-
-				FutureUtils.whenCompleteAsyncIfNotDone(
-					freeSlotFuture,
-					componentMainThreadExecutor,
-					(Acknowledge ignored, Throwable throwable) -> {
-						if (throwable != null) {
-							// The slot status will be synced to task manager in next heartbeat.
-							log.debug("Releasing slot [{}] of registered TaskExecutor {} failed. Discarding slot.",
-										allocationID, expiredSlot.getTaskManagerId(), throwable);
-						}
-					});
-			}
-		}
-
-		scheduleRunAsync(this::checkIdleSlot, idleSlotTimeout);
+//		// The timestamp in SlotAndTimestamp is relative
+//		final long currentRelativeTimeMillis = clock.relativeTimeMillis();
+//
+//		final List<AllocatedSlot> expiredSlots = new ArrayList<>(availableSlots.size());
+//
+//		for (SlotAndTimestamp slotAndTimestamp : availableSlots.availableSlots.values()) {
+//			if (currentRelativeTimeMillis - slotAndTimestamp.timestamp > idleSlotTimeout.toMilliseconds()) {
+//				expiredSlots.add(slotAndTimestamp.slot);
+//			}
+//		}
+//
+//		final FlinkException cause = new FlinkException("Releasing idle slot.");
+//
+//		for (AllocatedSlot expiredSlot : expiredSlots) {
+//			final AllocationID allocationID = expiredSlot.getAllocationId();
+//			if (availableSlots.tryRemove(allocationID) != null) {
+//
+//				log.info("Releasing idle slot [{}].", allocationID);
+//				final CompletableFuture<Acknowledge> freeSlotFuture = expiredSlot.getTaskManagerGateway().freeSlot(
+//					allocationID,
+//					cause,
+//					rpcTimeout);
+//
+//				FutureUtils.whenCompleteAsyncIfNotDone(
+//					freeSlotFuture,
+//					componentMainThreadExecutor,
+//					(Acknowledge ignored, Throwable throwable) -> {
+//						if (throwable != null) {
+//							// The slot status will be synced to task manager in next heartbeat.
+//							log.debug("Releasing slot [{}] of registered TaskExecutor {} failed. Discarding slot.",
+//										allocationID, expiredSlot.getTaskManagerId(), throwable);
+//						}
+//					});
+//			}
+//		}
+//
+//		scheduleRunAsync(this::checkIdleSlot, idleSlotTimeout);
 	}
 
 	protected void checkBatchSlotTimeout() {

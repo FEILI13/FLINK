@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.14">
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-dist\src\test\java\org\apache\flink\dist\BashJavaUtilsITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-dist\src\test\java\org\apache\flink\dist\JavaBashTestBase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-dist\src\main\resources\log4j-bash-utils.properties">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-dist\src\test\resources\log4j2-test.properties">
+</file>
+</checkstyle>

@@ -323,4 +323,6 @@ public abstract class ResultPartition implements ResultPartitionWriter {
 	public int getNumberOfSubpartitionsForRescale() {
 		return markedNewNumSubpartitions == -1 ? numSubpartitions : markedNewNumSubpartitions;
 	}
+	public abstract ResultSubpartition[] getResultSubpartitions() ;
+
 }

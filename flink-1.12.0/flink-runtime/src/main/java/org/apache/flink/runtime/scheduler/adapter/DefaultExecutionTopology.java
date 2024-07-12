@@ -65,9 +65,11 @@ public class DefaultExecutionTopology implements SchedulingTopology {
 	@Nullable
 	private List<DefaultSchedulingPipelinedRegion> pipelinedRegions;
 
+	private ExecutionGraph graph;
+
 	private DefaultExecutionTopology(ExecutionGraph graph) {
 		checkNotNull(graph, "execution graph can not be null");
-
+		this.graph = graph;
 		this.executionVerticesById = new HashMap<>();
 		this.executionVerticesList = new ArrayList<>(graph.getTotalNumberOfVertices());
 		Map<IntermediateResultPartitionID, DefaultResultPartition> tmpResultPartitionsById = new HashMap<>();
@@ -123,6 +125,11 @@ public class DefaultExecutionTopology implements SchedulingTopology {
 			throw new IllegalArgumentException("can not find partition: " + intermediateResultPartitionId);
 		}
 		return resultPartition;
+	}
+
+	@Override
+	public ExecutionGraph getExecutionGraph() {
+		return graph;
 	}
 
 	@Override

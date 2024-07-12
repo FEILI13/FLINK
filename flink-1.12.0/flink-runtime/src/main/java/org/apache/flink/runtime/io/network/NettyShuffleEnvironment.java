@@ -20,6 +20,7 @@ package org.apache.flink.runtime.io.network;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
@@ -40,6 +41,7 @@ import org.apache.flink.runtime.io.network.partition.consumer.InputGateID;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGateFactory;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.runtime.shuffle.NettyShuffleDescriptor;
 import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
 import org.apache.flink.runtime.shuffle.ShuffleEnvironment;
@@ -96,13 +98,39 @@ public class NettyShuffleEnvironment implements ShuffleEnvironment<ResultPartiti
 
 	private final ResultPartitionFactory resultPartitionFactory;
 
-	private final SingleInputGateFactory singleInputGateFactory;
+	public final SingleInputGateFactory singleInputGateFactory;
 
 	private final Executor ioExecutor;
 
 	private boolean isClosed;
 
 	private final Map<InputGateID, InputChannelMetrics> inputGateChannelMetrics = new HashMap<>();
+
+	private CausalLogManager causalLogManager;
+
+	NettyShuffleEnvironment(
+		ResourceID taskExecutorResourceId,
+		NettyShuffleEnvironmentConfiguration config,
+		NetworkBufferPool networkBufferPool,
+		ConnectionManager connectionManager,
+		ResultPartitionManager resultPartitionManager,
+		FileChannelManager fileChannelManager,
+		ResultPartitionFactory resultPartitionFactory,
+		SingleInputGateFactory singleInputGateFactory,
+		Executor ioExecutor) {
+
+		this(taskExecutorResourceId,
+			config,
+			networkBufferPool,
+			connectionManager,
+			resultPartitionManager,
+			fileChannelManager,
+			resultPartitionFactory,
+			singleInputGateFactory,
+			ioExecutor,
+			null);
+
+	}
 
 	NettyShuffleEnvironment(
 			ResourceID taskExecutorResourceId,
@@ -113,7 +141,7 @@ public class NettyShuffleEnvironment implements ShuffleEnvironment<ResultPartiti
 			FileChannelManager fileChannelManager,
 			ResultPartitionFactory resultPartitionFactory,
 			SingleInputGateFactory singleInputGateFactory,
-			Executor ioExecutor) {
+			Executor ioExecutor,CausalLogManager causalLogManager) {
 		this.taskExecutorResourceId = taskExecutorResourceId;
 		this.config = config;
 		this.networkBufferPool = networkBufferPool;
@@ -125,6 +153,7 @@ public class NettyShuffleEnvironment implements ShuffleEnvironment<ResultPartiti
 		this.singleInputGateFactory = singleInputGateFactory;
 		this.ioExecutor = ioExecutor;
 		this.isClosed = false;
+		this.causalLogManager = causalLogManager;
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -277,11 +306,14 @@ public class NettyShuffleEnvironment implements ShuffleEnvironment<ResultPartiti
 		if (inputGate == null) {
 			return false;
 		}
+		boolean updateConsumersOnFailover = false;
 		ShuffleDescriptor shuffleDescriptor = partitionInfo.getShuffleDescriptor();
 		checkArgument(shuffleDescriptor instanceof NettyShuffleDescriptor,
 			"Tried to update unknown channel with unknown ShuffleDescriptor %s.",
 			shuffleDescriptor.getClass().getName());
-		inputGate.updateInputChannel(taskExecutorResourceId, (NettyShuffleDescriptor) shuffleDescriptor);
+		updateConsumersOnFailover = partitionInfo.updateConsumersOnFailover;
+		TaskIOMetricGroup metric = partitionInfo.metric;
+		inputGate.updateInputChannel(taskExecutorResourceId, (NettyShuffleDescriptor) shuffleDescriptor,updateConsumersOnFailover,this,metric);
 		return true;
 	}
 
@@ -381,6 +413,11 @@ public class NettyShuffleEnvironment implements ShuffleEnvironment<ResultPartiti
 
 			isClosed = true;
 		}
+	}
+
+
+	public CausalLogManager getCausalLogManager() {
+		return causalLogManager;
 	}
 
 	public boolean isClosed() {

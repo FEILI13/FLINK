@@ -25,6 +25,7 @@ import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.partition.consumer.IndexedInputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.metrics.MetricNames;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.graph.StreamConfig.InputConfig;
@@ -119,6 +120,7 @@ public class MultipleInputStreamTask<OUT> extends StreamTask<OUT, MultipleInputS
 			List<IndexedInputGate>[] inputGates,
 			InputConfig[] inputs,
 			WatermarkGauge[] inputWatermarkGauges) {
+		System.out.println("多少个门： "+inputGates.length);
 		checkpointBarrierHandler = InputProcessorUtil.createCheckpointBarrierHandler(
 			this,
 			getConfiguration(),
@@ -232,4 +234,9 @@ public class MultipleInputStreamTask<OUT> extends StreamTask<OUT, MultipleInputS
 		}
 		super.abortCheckpointOnBarrier(checkpointId, cause);
 	}
+
+	public void resetInputChannelDeserializer(InputGate gate, int channelIndex){
+		this.inputProcessor.resetInputChannelDeserializer(gate, channelIndex);
+	}
+
 }

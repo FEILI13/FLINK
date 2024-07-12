@@ -34,7 +34,10 @@ import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.ArchivedExecutionGraph;
+import org.apache.flink.runtime.executiongraph.Execution;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
+import org.apache.flink.runtime.executiongraph.ExecutionVertex;
+import org.apache.flink.runtime.executiongraph.IntermediateResult;
 import org.apache.flink.runtime.executiongraph.JobStatusListener;
 import org.apache.flink.runtime.heartbeat.HeartbeatListener;
 import org.apache.flink.runtime.heartbeat.HeartbeatManager;
@@ -242,7 +245,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 			@Override
 			public void onMissingDeploymentsOf(Collection<ExecutionAttemptID> executionAttemptIds, ResourceID host) {
-				log.debug("Failing deployments {} due to no longer being deployed.", executionAttemptIds);
+				log.info("Failing deployments {} due to no longer being deployed.", executionAttemptIds);
 				for (ExecutionAttemptID executionAttemptId : executionAttemptIds) {
 					schedulerNG.updateTaskExecutionState(new TaskExecutionState(
 						jobGraph.getJobID(),
@@ -1060,6 +1063,10 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 				resourceManagerGateway,
 				resourceManagerResourceId);
 
+			//todo 赫明萱加
+			this.schedulerNG.getExecutionGraph().setResourceManagerConnection(establishedResourceManagerConnection);
+			this.schedulerNG.getExecutionGraph().setSlotPool(this.slotPool);
+
 			slotPool.connectToResourceManager(resourceManagerGateway);
 
 			resourceManagerHeartbeatManager.monitorTarget(resourceManagerResourceId, new HeartbeatTarget<Void>() {
@@ -1315,6 +1322,47 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 	@Override
 	public void acknowledgeDeploymentForRescaling(ExecutionAttemptID executionAttemptID) {
 		schedulerNG.acknowledgeDeploymentForRescaling(executionAttemptID);
+	}
+	/*
+	todo 赫明萱加
+	 */
+
+	@Override
+	public CompletableFuture<Acknowledge> requestFailProducer(//todo 新加的
+															  final IntermediateDataSetID intermediateResultId,
+															  final ResultPartitionID resultPartitionId,
+															  final Throwable cause) {
+
+		Execution producerExecutionToFail = this.schedulerNG.getExecutionGraph().getRegisteredExecutions().get(resultPartitionId.getProducerId());
+		if (producerExecutionToFail == null) {
+			return CompletableFuture.completedFuture(Acknowledge.get());
+		}
+		else {
+			final IntermediateResult intermediateResult =
+				this.schedulerNG.getExecutionGraph().getAllIntermediateResults().get(intermediateResultId);
+
+			if (intermediateResult != null) {
+				final ExecutionVertex producerVertex = intermediateResult
+					.getPartitionById(resultPartitionId.getPartitionId())
+					.getProducer();
+				// Check whether another fail signal for the same vertex was sent recently
+				if (producerVertex.concurrentFailExecutionSignal()) {
+					return CompletableFuture.completedFuture(Acknowledge.get());
+				}
+				// Try to find the producing execution
+				Execution producerExecutionCurrent = producerVertex.getCurrentExecutionAttempt();
+
+				if (producerExecutionToFail.getAttemptNumber() == producerExecutionCurrent.getAttemptNumber() &&
+					producerExecutionCurrent.getState() == ExecutionState.RUNNING) {
+					log.info("Fail externally producer execution {} of result partition {} because of {}.", producerExecutionCurrent, resultPartitionId, cause);
+					producerExecutionCurrent.fail(cause);
+				}
+				return CompletableFuture.completedFuture(Acknowledge.get());
+			} else {
+				return FutureUtils.completedExceptionally(new IllegalArgumentException("Intermediate data set with ID "
+					+ intermediateResultId + " not found."));
+			}
+		}
 	}
 }
 

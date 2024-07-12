@@ -29,6 +29,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 
+import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
@@ -650,6 +651,16 @@ class LocalBufferPool implements BufferPool {
 			subpartitionBufferRecyclers[0] = null;// TODO cut the partition
 		}
 	}
+
+	public int getMemorySegmentSize() {
+		return networkBufferPool.getMemorySegmentSize();
+	}
+
+	public Buffer requestBufferBlocking() throws IOException, InterruptedException {
+		return toBuffer(requestMemorySegment(UNKNOWN_CHANNEL));
+	}
+
+
 
 	private static class SubpartitionBufferRecycler implements BufferRecycler {
 

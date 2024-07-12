@@ -21,9 +21,11 @@ package org.apache.flink.streaming.api.operators;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.TypeSerializerSchemaCompatibility;
+import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.runtime.state.InternalPriorityQueue;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyGroupedInternalPriorityQueue;
+import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.util.CloseableIterator;
 import org.apache.flink.util.FlinkRuntimeException;
@@ -42,7 +44,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 /**
  * {@link InternalTimerService} that stores timers on the Java heap.
  */
-public class InternalTimerServiceImpl<K, N> implements InternalTimerService<N> {
+public class InternalTimerServiceImpl<K, N> implements InternalTimerService<N>{
 
 	private final ProcessingTimeService processingTimeService;
 
@@ -94,7 +96,10 @@ public class InternalTimerServiceImpl<K, N> implements InternalTimerService<N> {
 	/** The restored timers snapshot, if any. */
 	private InternalTimersSnapshot<K, N> restoredTimersSnapshot;
 
+	private final ProcessingTimeCallbackID processingTimeCallbackID;
+
 	InternalTimerServiceImpl(
+		String name,
 		KeyGroupRange localKeyGroupRange,
 		KeyContext keyContext,
 		ProcessingTimeService processingTimeService,
@@ -113,6 +118,9 @@ public class InternalTimerServiceImpl<K, N> implements InternalTimerService<N> {
 			startIdx = Math.min(keyGroupIdx, startIdx);
 		}
 		this.localKeyGroupRangeStartIdx = startIdx;
+
+
+		this.processingTimeCallbackID = new ProcessingTimeCallbackID("" + name.hashCode() % 1000);
 	}
 
 	/**
@@ -177,6 +185,7 @@ public class InternalTimerServiceImpl<K, N> implements InternalTimerService<N> {
 			final InternalTimer<K, N> headTimer = processingTimeTimersQueue.peek();
 			if (headTimer != null) {
 				nextTimer = processingTimeService.registerTimer(headTimer.getTimestamp(), this::onProcessingTime);
+//				nextTimer = processingTimeService.registerTimer(headTimer.getTimestamp(), this);
 			}
 			this.isInitialized = true;
 		} else {
@@ -247,7 +256,7 @@ public class InternalTimerServiceImpl<K, N> implements InternalTimerService<N> {
 		}
 	}
 
-	private void onProcessingTime(long time) throws Exception {
+	public void onProcessingTime(long time) throws Exception {
 		// null out the timer in case the Triggerable calls registerProcessingTimeTimer()
 		// inside the callback.
 		nextTimer = null;
@@ -261,8 +270,13 @@ public class InternalTimerServiceImpl<K, N> implements InternalTimerService<N> {
 		}
 
 		if (timer != null && nextTimer == null) {
+//			nextTimer = processingTimeService.registerTimer(timer.getTimestamp(), this::onProcessingTime);
 			nextTimer = processingTimeService.registerTimer(timer.getTimestamp(), this::onProcessingTime);
 		}
+	}
+
+	public ProcessingTimeCallbackID getID() {
+		return processingTimeCallbackID;
 	}
 
 	public void advanceWatermark(long time) throws Exception {

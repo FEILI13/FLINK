@@ -55,7 +55,7 @@ public class BufferBuilder {
 	 * @return created matching instance of {@link BufferConsumer} to this {@link BufferBuilder}.
 	 */
 	public BufferConsumer createBufferConsumer() {
-		return createBufferConsumer(positionMarker.cachedPosition);
+		return createBufferConsumer(positionMarker.cachedPosition,0);
 	}
 
 	/**
@@ -63,18 +63,23 @@ public class BufferBuilder {
 	 *
 	 * @return created matching instance of {@link BufferConsumer} to this {@link BufferBuilder}.
 	 */
-	public BufferConsumer createBufferConsumerFromBeginning() {
-		return createBufferConsumer(0);
+	public BufferConsumer createBufferConsumerFromBeginning(long checkp) {
+		return createBufferConsumer(0,checkp);
 	}
 
-	private BufferConsumer createBufferConsumer(int currentReaderPosition) {
+	public BufferConsumer createBufferConsumerFromBeginning() {
+		return createBufferConsumer(0,0);
+	}
+
+	private BufferConsumer createBufferConsumer(int currentReaderPosition,long checkp) {
 		checkState(!bufferConsumerCreated, "Two BufferConsumer shouldn't exist for one BufferBuilder");
 		bufferConsumerCreated = true;
 		return new BufferConsumer(
 			memorySegment,
 			recycler,
 			positionMarker,
-			currentReaderPosition);
+			currentReaderPosition,
+			checkp);
 	}
 
 	/**

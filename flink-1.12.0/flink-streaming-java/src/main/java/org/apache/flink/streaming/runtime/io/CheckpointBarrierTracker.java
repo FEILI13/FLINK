@@ -28,6 +28,11 @@ import org.apache.flink.runtime.io.network.partition.consumer.CheckpointableInpu
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 
 import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
+import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
+
+import org.apache.flink.runtime.taskmanager.InputGateWithMetrics;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,6 +40,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayDeque;
+import java.util.Optional;
 
 /**
  * The {@link CheckpointBarrierTracker} keeps track of what checkpoint barriers have been received from
@@ -83,11 +89,15 @@ public class CheckpointBarrierTracker extends CheckpointBarrierHandler {
 		this.pendingCheckpoints = new ArrayDeque<>();
 	}
 
-	public CheckpointBarrierTracker(int totalNumberOfInputChannels, AbstractInvokable toNotifyOnCheckpoint, CheckpointableInput[] inputs){
+	public CheckpointBarrierTracker(int totalNumberOfInputChannels, AbstractInvokable toNotifyOnCheckpoint, CheckpointableInput[] inputs) {
 		super(toNotifyOnCheckpoint);
 		this.totalNumberOfInputChannels = totalNumberOfInputChannels;
 		this.pendingCheckpoints = new ArrayDeque<>();
 		this.inputs = inputs;
+	}
+	public CheckpointBarrierTracker(int totalNumberOfInputChannels, AbstractInvokable toNotifyOnCheckpoint,InputGate inputGate) {
+		this(totalNumberOfInputChannels,toNotifyOnCheckpoint);
+		this.inputGate = inputGate;
 	}
 
 	public void processBarrier(CheckpointBarrier receivedBarrier, InputChannelInfo channelInfo) throws IOException {
@@ -236,6 +246,77 @@ public class CheckpointBarrierTracker extends CheckpointBarrierHandler {
 		return pendingCheckpoints.isEmpty() ? -1 : pendingCheckpoints.peekLast().checkpointId();
 	}
 
+	@Override
+	public void ignoreCheckpoint(long checkpointID) throws IOException {
+
+
+		// fast path for single channel cases
+		if (totalNumberOfInputChannels == 1) {
+			if (checkpointID > latestPendingCheckpointID) {
+				// new checkpoint
+				latestPendingCheckpointID = checkpointID;
+			}
+			return;
+		}
+
+		CheckpointBarrierCount barrierCount = null;
+		int pos = 0;
+
+		for (CheckpointBarrierCount next : pendingCheckpoints) {
+			if (next.checkpointId == checkpointID) {
+				barrierCount = next;
+				break;
+			}
+			pos++;
+		}
+
+		if(barrierCount!=null){
+
+			if (checkpointID == latestPendingCheckpointID) {
+				// cancel this alignment
+				if (LOG.isDebugEnabled()) {
+					LOG.debug("Checkpoint {} ignored, aborting alignment", checkpointID);
+				}
+				barrierCount.setBc(0);
+
+				resetAlignment();
+			}
+			else if (checkpointID > latestPendingCheckpointID) {//应该不会出现这种情况
+				// we canceled the next which also cancels the current
+				LOG.warn("Received ignore request for checkpoint {} before completing current checkpoint {}. " +
+					"Skipping current checkpoint.", checkpointID, latestPendingCheckpointID);
+
+				// this stops the current alignment
+				barrierCount.setBc(0);
+
+				resetAlignment();
+
+				// the next checkpoint starts as canceled
+				latestPendingCheckpointID = checkpointID;
+
+			}
+
+		}
+		else if (checkpointID > latestPendingCheckpointID) {
+			// first barrier of a new checkpoint is directly a cancellation
+
+			// by setting the currentCheckpointId to this checkpoint while keeping the numBarriers
+			// at zero means that no checkpoint barrier can start a new alignment
+//			CheckpointBarrierCount ignore = new CheckpointBarrierCount(checkpointID);
+//			ignore.setBc(0);
+//			pendingCheckpoints.addLast(ignore);
+			latestPendingCheckpointID = checkpointID;
+
+			resetAlignment();
+
+			if (LOG.isDebugEnabled()) {
+				LOG.debug("Checkpoint {} ignored, skipping alignment", checkpointID);
+			}
+
+		}
+
+	}
+
 	public boolean isCheckpointPending() {
 		return !pendingCheckpoints.isEmpty();
 	}
@@ -254,6 +335,10 @@ public class CheckpointBarrierTracker extends CheckpointBarrierHandler {
 		CheckpointBarrierCount(long checkpointId) {
 			this.checkpointId = checkpointId;
 			this.barrierCount = 1;
+		}
+		public void setBc(int barrierCount){
+			this.barrierCount = barrierCount;
+
 		}
 
 		public long checkpointId() {
@@ -295,4 +380,42 @@ public class CheckpointBarrierTracker extends CheckpointBarrierHandler {
 		InputChannelInfo channelInfo) throws IOException {
 			throw new UnsupportedEncodingException();
 	}
+	public BufferOrEvent getNextNonBlocked(BufferOrEvent inputGate) throws Exception {
+		while (true) {
+			LOG.debug("call inputGate.getNextBufferOrEvent().");
+
+			if(this.inputGate==null){
+				System.out.println("BufferOrEvent getNextNonBlocked() throws Exception");
+				return null;
+			}
+			System.out.println("inputGate:"+this.inputGate.toString());
+			Optional<BufferOrEvent> next = this.inputGate.pollNext();
+//			Optional<BufferOrEvent> next = Optional.of(inputGate);
+			if (!next.isPresent()) {
+				System.out.println("woshinull");
+				// buffer or input exhausted
+				return null;
+			}
+
+			BufferOrEvent bufferOrEvent = next.get();
+			if (bufferOrEvent.isBuffer()) {
+				return bufferOrEvent;
+			}
+			else if (bufferOrEvent.getEvent().getClass() == CheckpointBarrier.class) {
+				processBarrier((CheckpointBarrier) bufferOrEvent.getEvent(), bufferOrEvent.getChannelInfo());
+			}
+			else if (bufferOrEvent.getEvent().getClass() == CancelCheckpointMarker.class) {
+				processCancellationBarrier((CancelCheckpointMarker) bufferOrEvent.getEvent());
+			}
+			else {
+				// some other event
+				return bufferOrEvent;
+			}
+		}
+	}
+
+	public int getTotalNumberOfInputChannels(){
+		return totalNumberOfInputChannels;
+	}
+
 }

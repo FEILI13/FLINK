@@ -55,7 +55,7 @@ public class PhysicalSlotProviderImpl implements PhysicalSlotProvider {
 		SlotProfile slotProfile = physicalSlotRequest.getSlotProfile();
 		ResourceProfile resourceProfile = slotProfile.getPhysicalSlotResourceProfile();
 
-		LOG.debug("Received slot request [{}] with resource requirements: {}", slotRequestId, resourceProfile);
+		LOG.info("Received slot request [{}] with resource requirements: {}", slotRequestId, resourceProfile);
 
 		Optional<PhysicalSlot> availablePhysicalSlot = tryAllocateFromAvailable(slotRequestId, slotProfile);
 
@@ -109,8 +109,11 @@ public class PhysicalSlotProviderImpl implements PhysicalSlotProvider {
 			ResourceProfile resourceProfile,
 			boolean willSlotBeOccupiedIndefinitely) {
 		if (willSlotBeOccupiedIndefinitely) {
+			LOG.info("willSlotBeOccupiedIndefinitely:if");
 			return slotPool.requestNewAllocatedSlot(slotRequestId, resourceProfile, null);
 		} else {
+
+			LOG.info("willSlotBeOccupiedIndefinitely:else");
 			return slotPool.requestNewAllocatedBatchSlot(slotRequestId, resourceProfile);
 		}
 	}
@@ -118,5 +121,13 @@ public class PhysicalSlotProviderImpl implements PhysicalSlotProvider {
 	@Override
 	public void cancelSlotRequest(SlotRequestId slotRequestId, Throwable cause) {
 		slotPool.releaseSlot(slotRequestId, cause);
+	}
+
+	public SlotSelectionStrategy getSlotSelectionStrategy(){
+		return slotSelectionStrategy;
+	}
+
+	public SlotPool getSlotPool(){
+		return slotPool;
 	}
 }

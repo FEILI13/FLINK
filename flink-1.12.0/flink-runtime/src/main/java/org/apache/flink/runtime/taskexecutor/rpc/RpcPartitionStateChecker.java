@@ -20,6 +20,7 @@ package org.apache.flink.runtime.taskexecutor.rpc;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.execution.ExecutionState;
+import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.taskexecutor.PartitionProducerStateChecker;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
@@ -43,5 +44,13 @@ public class RpcPartitionStateChecker implements PartitionProducerStateChecker {
 			ResultPartitionID partitionId) {
 
 		return jobMasterGateway.requestPartitionState(resultId, partitionId);
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> triggerFailProducer(
+		IntermediateDataSetID intermediateDataSetId,
+		ResultPartitionID resultPartitionId,
+		Throwable cause) {
+		return jobMasterGateway.requestFailProducer(intermediateDataSetId, resultPartitionId, cause);
 	}
 }

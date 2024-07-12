@@ -62,6 +62,7 @@ import org.apache.flink.runtime.executiongraph.failover.flip1.ResultPartitionAva
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategy;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategyFactory;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategyResolving;
+import org.apache.flink.runtime.executiongraph.restart.ThrowingRestartStrategy;
 import org.apache.flink.runtime.io.network.partition.JobMasterPartitionTracker;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
@@ -76,6 +77,7 @@ import org.apache.flink.runtime.jobmaster.ExecutionDeploymentTracker;
 import org.apache.flink.runtime.jobmaster.ExecutionDeploymentTrackerDeploymentListenerAdapter;
 import org.apache.flink.runtime.jobmaster.SerializedInputSplit;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
+import org.apache.flink.runtime.jobmaster.slotpool.ThrowingSlotProvider;
 import org.apache.flink.runtime.messages.FlinkJobNotFoundException;
 import org.apache.flink.runtime.messages.checkpoint.AcknowledgeCheckpoint;
 import org.apache.flink.runtime.messages.checkpoint.DeclineCheckpoint;
@@ -99,6 +101,8 @@ import org.apache.flink.runtime.rest.handler.legacy.backpressure.BackPressureSta
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.OperatorBackPressureStats;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingExecutionVertex;
+import org.apache.flink.runtime.scheduler.strategy.SchedulingStrategy;
+import org.apache.flink.runtime.scheduler.strategy.SchedulingStrategyFactory;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingTopology;
 import org.apache.flink.runtime.shuffle.ShuffleMaster;
 import org.apache.flink.runtime.state.KeyGroupRange;
@@ -144,7 +148,7 @@ public abstract class SchedulerBase implements SchedulerNG {
 
 	private final JobGraph jobGraph;
 
-	protected final ExecutionGraph executionGraph;
+	public final ExecutionGraph executionGraph;
 
 	protected SchedulingTopology schedulingTopology;
 
@@ -206,7 +210,8 @@ public abstract class SchedulerBase implements SchedulerNG {
 		final ExecutionVertexVersioner executionVertexVersioner,
 		final ExecutionDeploymentTracker executionDeploymentTracker,
 		final boolean legacyScheduling,
-		long initializationTimestamp) throws Exception {
+		long initializationTimestamp,
+		final SchedulingStrategyFactory schedulingStrategyFactory) throws Exception {
 
 		this.log = checkNotNull(log);
 		this.jobGraph = checkNotNull(jobGraph);
@@ -570,6 +575,7 @@ public abstract class SchedulerBase implements SchedulerNG {
 		registerJobMetrics();
 		startAllOperatorCoordinators();
 		startSchedulingInternal();
+		executionGraph.notifyStandby();
 	}
 
 	private void registerJobMetrics() {
@@ -605,6 +611,7 @@ public abstract class SchedulerBase implements SchedulerNG {
 	public final boolean updateTaskExecutionState(final TaskExecutionStateTransition taskExecutionState) {
 		final Optional<ExecutionVertexID> executionVertexId = getExecutionVertexId(taskExecutionState.getID());
 
+		log.info("updateTaskExecutionState {} {}",taskExecutionState.getID(), taskExecutionState.getExecutionState());
 		boolean updateSuccess = executionGraph.updateState(taskExecutionState);
 
 		if (updateSuccess) {

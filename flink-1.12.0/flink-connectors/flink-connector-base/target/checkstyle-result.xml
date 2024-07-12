@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.14">
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\main\java\org\apache\flink\connector\base\source\reader\fetcher\AddSplitsTask.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\main\java\org\apache\flink\connector\base\source\reader\fetcher\FetchTask.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\main\java\org\apache\flink\connector\base\source\reader\fetcher\SingleThreadFetcherManager.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\main\java\org\apache\flink\connector\base\source\reader\fetcher\SplitFetcher.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\main\java\org\apache\flink\connector\base\source\reader\fetcher\SplitFetcherManager.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\main\java\org\apache\flink\connector\base\source\reader\fetcher\SplitFetcherTask.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\main\java\org\apache\flink\connector\base\source\reader\RecordEmitter.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\main\java\org\apache\flink\connector\base\source\reader\RecordsBySplits.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\main\java\org\apache\flink\connector\base\source\reader\RecordsWithSplitIds.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\main\java\org\apache\flink\connector\base\source\reader\SingleThreadMultiplexSourceReaderBase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\main\java\org\apache\flink\connector\base\source\reader\SourceReaderBase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\main\java\org\apache\flink\connector\base\source\reader\SourceReaderOptions.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\main\java\org\apache\flink\connector\base\source\reader\splitreader\SplitReader.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\main\java\org\apache\flink\connector\base\source\reader\splitreader\SplitsAddition.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\main\java\org\apache\flink\connector\base\source\reader\splitreader\SplitsChange.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\main\java\org\apache\flink\connector\base\source\reader\synchronization\FutureCompletingBlockingQueue.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\main\java\org\apache\flink\connector\base\source\utils\SerdeUtils.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\test\java\org\apache\flink\connector\base\source\reader\CoordinatedSourceITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\test\java\org\apache\flink\connector\base\source\reader\fetcher\SplitFetcherManagerTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\test\java\org\apache\flink\connector\base\source\reader\fetcher\SplitFetcherTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\test\java\org\apache\flink\connector\base\source\reader\mocks\MockBaseSource.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\test\java\org\apache\flink\connector\base\source\reader\mocks\MockRecordEmitter.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\test\java\org\apache\flink\connector\base\source\reader\mocks\MockSourceReader.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\test\java\org\apache\flink\connector\base\source\reader\mocks\MockSplitEnumerator.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\test\java\org\apache\flink\connector\base\source\reader\mocks\MockSplitReader.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\test\java\org\apache\flink\connector\base\source\reader\mocks\PassThroughRecordEmitter.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\test\java\org\apache\flink\connector\base\source\reader\mocks\TestingRecordsWithSplitIds.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\test\java\org\apache\flink\connector\base\source\reader\mocks\TestingSourceSplit.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\test\java\org\apache\flink\connector\base\source\reader\mocks\TestingSplitReader.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\test\java\org\apache\flink\connector\base\source\reader\SourceReaderBaseTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\test\java\org\apache\flink\connector\base\source\reader\synchronization\FutureCompletingBlockingQueueTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-connectors\flink-connector-base\src\test\resources\log4j2-test.properties">
+</file>
+</checkstyle>

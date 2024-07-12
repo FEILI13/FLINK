@@ -23,6 +23,7 @@ import org.apache.flink.core.io.InputStatus;
 import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
 import org.apache.flink.runtime.io.AvailabilityProvider;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.streaming.api.operators.InputSelectable;
 
 import java.io.Closeable;
@@ -44,6 +45,8 @@ public interface StreamInputProcessor extends AvailabilityProvider, Closeable {
 	 */
 	InputStatus processInput() throws Exception;
 
+
+
 	CompletableFuture<Void> prepareSnapshot(ChannelStateWriter channelStateWriter, long checkpointId) throws IOException;
 
 	default void block(){
@@ -57,4 +60,6 @@ public interface StreamInputProcessor extends AvailabilityProvider, Closeable {
     default void updateForRescale(IOManager ioManager){
 		throw new UnsupportedOperationException();
 	}
+	void resetInputChannelDeserializer(InputGate gate, int channelIndex);
+
 }

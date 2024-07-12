@@ -22,6 +22,7 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.core.io.InputStatus;
 import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.streaming.api.operators.BoundedMultiInput;
 import org.apache.flink.streaming.runtime.io.PushingAsyncDataInput.DataOutput;
 
@@ -80,6 +81,23 @@ public final class StreamOneInputProcessor<IN> implements StreamInputProcessor {
 			ChannelStateWriter channelStateWriter,
 			long checkpointId) throws IOException {
 		return input.prepareSnapshot(channelStateWriter, checkpointId);
+	}
+
+	@Override
+	public void resetInputChannelDeserializer(InputGate gate, int channelIndex) {
+
+		if(input instanceof StreamTaskNetworkInput){
+
+
+			int absoluteChannelIndex = input.getCheckpointedInputGate().getInputGate().getAbsoluteChannelIndex(gate,channelIndex);
+
+			if(absoluteChannelIndex==-1){
+				return;
+			}
+			input.recordDeserializers(absoluteChannelIndex);
+			input.getCheckpointedInputGate().getCheckpointBarrierHandler().unblockChannelIfBlocked(absoluteChannelIndex);
+		}
+
 	}
 
 	@Override

@@ -152,13 +152,23 @@ public class ExecutionGraphBuilder {
 		final String jobName = jobGraph.getName();
 		final JobID jobId = jobGraph.getJobID();
 
+//		final JobInformation jobInformation = new JobInformation(
+//			jobId,
+//			jobName,
+//			jobGraph.getSerializedExecutionConfig(),
+//			jobGraph.getJobConfiguration(),
+//			jobGraph.getUserJarBlobKeys(),
+//			jobGraph.getClasspaths());
+
 		final JobInformation jobInformation = new JobInformation(
 			jobId,
 			jobName,
 			jobGraph.getSerializedExecutionConfig(),
 			jobGraph.getJobConfiguration(),
 			jobGraph.getUserJarBlobKeys(),
-			jobGraph.getClasspaths());
+			jobGraph.getClasspaths(),
+			jobGraph.getVerticesSortedTopologicallyFromSources());//新加的，應該是獲取sourceTask任務
+
 
 		final int maxPriorAttemptsHistoryLength =
 				jobManagerConfig.getInteger(JobManagerOptions.MAX_ATTEMPTS_HISTORY_SIZE);

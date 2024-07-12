@@ -18,6 +18,8 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
+import org.apache.flink.runtime.causal.log.CausalLogManager;
+
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
 
@@ -47,9 +49,15 @@ class BufferResponseDecoder extends NettyMessageDecoder {
 
 	/** How many bytes have been received or discarded for the data buffer part. */
 	private int decodedDataBufferSize;
+	private CausalLogManager causalLogManager;
 
 	BufferResponseDecoder(NetworkBufferAllocator allocator) {
+		this(allocator,null);
+	}
+
+	BufferResponseDecoder(NetworkBufferAllocator allocator, CausalLogManager causalLogManager) {
 		this.allocator = checkNotNull(allocator);
+		this.causalLogManager = causalLogManager;
 	}
 
 	@Override
@@ -59,6 +67,8 @@ class BufferResponseDecoder extends NettyMessageDecoder {
 
 	@Override
 	public DecodingResult onChannelRead(ByteBuf data) throws Exception {
+
+//		ByteBuf copy =
 		if (bufferResponse == null) {
 			decodeMessageHeader(data);
 		}
@@ -98,6 +108,27 @@ class BufferResponseDecoder extends NettyMessageDecoder {
 			messageHeaderBuffer.readableBytes());
 		if (fullFrameHeaderBuf != null) {
 			bufferResponse = BufferResponse.readFrom(fullFrameHeaderBuf, allocator);
+			//将输入的因果日志存入本地，因果日志在fullFrameHeaderBuf后面
+			/*fullFrameHeaderBuf结构
+			总长度
+			receiverid
+			sequencenumber
+			backlog
+			type
+			iscompress
+			buffer.size
+
+			{deltaheader
+
+			}
+			{delta
+			}
+
+			 */
+
+//			System.out.println("来了个  bufferResponse");
+//			causalLogManager.deserializeCausalLogDelta(fullFrameHeaderBuf,bufferResponse.receiverId);
+
 		}
 	}
 

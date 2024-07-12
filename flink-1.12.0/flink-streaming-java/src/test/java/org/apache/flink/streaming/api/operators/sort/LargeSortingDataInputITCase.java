@@ -34,6 +34,7 @@ import org.apache.flink.runtime.operators.testutils.MockEnvironment;
 import org.apache.flink.streaming.api.operators.BoundedMultiInput;
 import org.apache.flink.streaming.api.operators.sort.MultiInputSortingDataInput.SelectableSortingInputs;
 import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.runtime.io.CheckpointedInputGate;
 import org.apache.flink.streaming.runtime.io.MultipleInputSelectionHandler;
 import org.apache.flink.streaming.runtime.io.PushingAsyncDataInput;
 import org.apache.flink.streaming.runtime.io.StreamMultipleInputProcessor;
@@ -290,10 +291,20 @@ public class LargeSortingDataInputITCase {
 		}
 
 		@Override
+		public void recordDeserializers(int index) {
+
+		}
+
+		@Override
 		public CompletableFuture<Void> prepareSnapshot(
 				ChannelStateWriter channelStateWriter,
 				long checkpointId) throws IOException {
 			return CompletableFuture.completedFuture(null);
+		}
+
+		@Override
+		public CheckpointedInputGate getCheckpointedInputGate() {
+			return null;
 		}
 
 		@Override

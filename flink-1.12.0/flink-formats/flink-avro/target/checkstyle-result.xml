@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.14">
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\AvroBuilder.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\AvroBulkWriter.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\AvroDeserializationSchema.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\AvroFileFormatFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\AvroFileSystemFormatFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\AvroFormatFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\AvroInputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\AvroOutputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\AvroRowDataDeserializationSchema.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\AvroRowDataSerializationSchema.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\AvroRowDeserializationSchema.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\AvroRowFormatFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\AvroRowSerializationSchema.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\AvroSerializationSchema.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\AvroToRowDataConverters.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\AvroWriterFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\AvroWriters.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\JodaConverter.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\RegistryAvroDeserializationSchema.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\RegistryAvroSerializationSchema.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\RowDataToAvroConverters.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\SchemaCoder.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\typeutils\AvroFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\typeutils\AvroSchemaConverter.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\typeutils\AvroSerializer.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\typeutils\AvroSerializerDebugInitHelper.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\typeutils\AvroSerializerSnapshot.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\typeutils\AvroTypeInfo.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\typeutils\GenericRecordAvroTypeInfo.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\typeutils\SerializableAvroSchema.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\utils\AvroKryoSerializerUtils.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\utils\DataInputDecoder.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\utils\DataOutputEncoder.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\utils\FSDataInputStreamWrapper.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\formats\avro\utils\MutableByteArrayInputStream.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\table\descriptors\Avro.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\main\java\org\apache\flink\table\descriptors\AvroValidator.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\AvroDeserializationSchemaTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\AvroExternalJarProgramITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\AvroFilesystemITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\AvroFilesystemStreamITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\AvroFormatFactoryTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\AvroInputFormatTypeExtractionTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\AvroKryoClassloadingTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\AvroKryoSerializerRegistrationsTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\AvroOutputFormatITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\AvroOutputFormatTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\AvroRecordInputFormatTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\AvroRowDataDeSerializationSchemaTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\AvroRowDeSerializationSchemaTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\AvroRowFormatFactoryTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\AvroSerializationSchemaTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\AvroSplittableInputFormatTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\AvroStreamingFileSinkITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\EncoderDecoderTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\generated\Address.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\generated\Colors.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\generated\DifferentSchemaRecord.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\generated\Fixed16.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\generated\Fixed2.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\generated\LogicalTimeRecord.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\generated\SchemaRecord.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\generated\SimpleRecord.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\generated\SimpleUser.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\generated\UnionLogicalType.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\generated\User.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\RegistryAvroDeserializationSchemaTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\testjar\AvroExternalJarProgram.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\typeutils\AvroGenericArraySerializerTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\typeutils\AvroGenericTypeComparatorTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\typeutils\AvroGenericTypeSerializerTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\typeutils\AvroSchemaConverterTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\typeutils\AvroSerializerConcurrencyCheckInactiveITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\typeutils\AvroSerializerConcurrencyTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\typeutils\AvroSerializerEmptyArrayTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\typeutils\AvroSerializerGenericRecordTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\typeutils\AvroSerializerSnapshotTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\typeutils\AvroSerializerTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\typeutils\AvroSerializerUpgradeTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\typeutils\AvroTypeExtractionTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\typeutils\AvroTypeInfoTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\typeutils\AvroUnionLogicalSerializerTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\utils\AvroTestUtils.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\formats\avro\utils\TestDataGenerator.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\table\descriptors\AvroTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\java\org\apache\flink\table\runtime\batch\AvroTypesITCase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-formats\flink-avro\src\test\resources\log4j2-test.properties">
+</file>
+</checkstyle>

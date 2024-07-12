@@ -70,6 +70,11 @@ public class MultipleRecordWriters<T extends IOReadableWritable> implements Reco
 	}
 
 	@Override
+	public List<RecordWriter<T>> getRecordWriterList(int outputIndex) {
+		return recordWriters;
+	}
+
+	@Override
 	public CompletableFuture<?> getAvailableFuture() {
 		for (int i = 0; i < futures.length; i++) {
 			futures[i] = recordWriters.get(i).getAvailableFuture();

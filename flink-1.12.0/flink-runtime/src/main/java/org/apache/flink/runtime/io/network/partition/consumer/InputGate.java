@@ -204,4 +204,11 @@ public abstract class InputGate implements PullingAsyncDataInput<BufferOrEvent>,
 	public abstract CompletableFuture<Void> getStateConsumedFuture();
 
 	public abstract void finishReadRecoveredState() throws IOException;
+
+
+	public abstract int getAbsoluteChannelIndex(InputGate gate, int channelIndex);
+
+	public abstract SingleInputGate[] getInputGates();
+
+
 }

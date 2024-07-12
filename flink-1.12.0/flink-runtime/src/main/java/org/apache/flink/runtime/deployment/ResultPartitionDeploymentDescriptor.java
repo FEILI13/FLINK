@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.deployment;
 
+import org.apache.flink.runtime.executiongraph.IntermediateResultPartition;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
@@ -60,7 +61,7 @@ public class ResultPartitionDeploymentDescriptor implements Serializable {
 		this.sendScheduleOrUpdateConsumersMessage = sendScheduleOrUpdateConsumersMessage;
 	}
 
-	public IntermediateDataSetID getResultId() {
+    public IntermediateDataSetID getResultId() {
 		return partitionDescriptor.getResultId();
 	}
 

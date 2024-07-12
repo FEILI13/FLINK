@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.14">
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-end-to-end-tests\flink-plugins-test\another-dummy-fs\src\main\java\org\apache\flink\fs\anotherdummy\AnotherDummyFSFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-end-to-end-tests\flink-plugins-test\another-dummy-fs\src\main\java\org\apache\flink\fs\anotherdummy\AnotherDummyFSFileStatus.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-end-to-end-tests\flink-plugins-test\another-dummy-fs\src\main\java\org\apache\flink\fs\anotherdummy\AnotherDummyFSFileSystem.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-end-to-end-tests\flink-plugins-test\another-dummy-fs\src\main\java\org\apache\flink\fs\anotherdummy\AnotherDummyFSInputStream.java">
+</file>
+</checkstyle>

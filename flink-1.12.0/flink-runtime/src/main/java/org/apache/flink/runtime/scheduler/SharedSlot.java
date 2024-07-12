@@ -37,6 +37,7 @@ import javax.annotation.Nullable;
 
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -129,9 +130,21 @@ class SharedSlot implements SlotOwner, PhysicalSlot.Payload {
 			"Trying to allocate a logical slot for execution %s which is not in the ExecutionSlotSharingGroup",
 			executionVertexId);
 		CompletableFuture<SingleLogicalSlot> logicalSlotFuture = requestedLogicalSlots.getValueByKeyA(executionVertexId);
+
+
 		if (logicalSlotFuture != null) {
-			LOG.debug("Request for {} already exists", getLogicalSlotString(executionVertexId));
+//			LOG.info("logicalSlotFuture != null");
+//			try {
+//				LOG.info("allocateLogicalSlot ：{}  {}",executionVertexId,logicalSlotFuture.get());
+//			} catch (InterruptedException e) {
+//				throw new RuntimeException(e);
+//			} catch (ExecutionException e) {
+//				throw new RuntimeException(e);
+//			}
+			LOG.info("Request for {} already exists", getLogicalSlotString(executionVertexId));
 		} else {
+
+			LOG.info("logicalSlotFuture == null");
 			logicalSlotFuture = allocateNonExistentLogicalSlot(executionVertexId);
 		}
 		return logicalSlotFuture.thenApply(Function.identity());
@@ -141,11 +154,11 @@ class SharedSlot implements SlotOwner, PhysicalSlot.Payload {
 		CompletableFuture<SingleLogicalSlot> logicalSlotFuture;
 		SlotRequestId logicalSlotRequestId = new SlotRequestId();
 		String logMessageBase = getLogicalSlotString(logicalSlotRequestId, executionVertexId);
-		LOG.debug("Request a {}", logMessageBase);
+		LOG.info("Request a {}", logMessageBase);
 
 		logicalSlotFuture = slotContextFuture
 			.thenApply(physicalSlot -> {
-				LOG.debug("Allocated {}", logMessageBase);
+				LOG.info("Allocated {}", logMessageBase);
 				return createLogicalSlot(physicalSlot, logicalSlotRequestId);
 			});
 		requestedLogicalSlots.put(executionVertexId, logicalSlotRequestId, logicalSlotFuture);

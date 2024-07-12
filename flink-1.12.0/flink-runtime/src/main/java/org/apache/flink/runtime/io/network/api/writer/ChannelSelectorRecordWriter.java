@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.io.network.api.writer;
 
 import org.apache.flink.core.io.IOReadableWritable;
+import org.apache.flink.runtime.causal.EpochTracker;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -44,6 +45,18 @@ public final class ChannelSelectorRecordWriter<T extends IOReadableWritable> ext
 			long timeout,
 			String taskName) {
 		super(writer, timeout, taskName);
+
+		this.channelSelector = checkNotNull(channelSelector);
+		this.channelSelector.setup(numberOfChannels);
+	}
+
+	ChannelSelectorRecordWriter(
+		ResultPartitionWriter writer,
+		ChannelSelector<T> channelSelector,
+		long timeout,
+		String taskName,
+		EpochTracker epochTracker) {
+		super(writer, timeout, taskName,epochTracker);
 
 		this.channelSelector = checkNotNull(channelSelector);
 		this.channelSelector.setup(numberOfChannels);

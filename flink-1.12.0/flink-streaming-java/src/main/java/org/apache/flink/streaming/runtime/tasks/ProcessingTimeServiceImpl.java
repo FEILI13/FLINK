@@ -19,6 +19,7 @@
 package org.apache.flink.streaming.runtime.tasks;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.util.concurrent.NeverCompleteFuture;
 
 import java.util.concurrent.CompletableFuture;
@@ -125,5 +126,34 @@ class ProcessingTimeServiceImpl implements ProcessingTimeService {
 				}
 			}
 		};
+
+//		return new ProcessingTimeCallback() {
+//			@Override
+//			public void onProcessingTime(long timestamp) throws Exception {
+//				if (isQuiesced()) {
+//					return;
+//				}
+//
+//				numRunningTimers.incrementAndGet();
+//				try {
+//					// double check to deal with the race condition:
+//					// before executing the previous line to increase the number of running timers,
+//					// the quiesce-completed future is already completed as the number of running
+//					// timers is 0 and "quiesced" is true
+//					if (!isQuiesced()) {
+//						callback.onProcessingTime(timestamp);
+//					}
+//				} finally {
+//					if (numRunningTimers.decrementAndGet() == 0 && isQuiesced()) {
+//						quiesceCompletedFuture.complete(null);
+//					}
+//				}
+//			}
+//
+//			@Override
+//			public ProcessingTimeCallbackID getID() {
+//				return null;
+//			}
+//		};
 	}
 }

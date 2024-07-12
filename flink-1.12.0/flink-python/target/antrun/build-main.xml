@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<project name="maven-antrun-" default="main"  >
+<target name="main">
+  <delete includeEmptyDirs="true">
+    <fileset includes="**/*.pyc,**/__pycache__" dir="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-python/pyflink"/>
+    <fileset dir="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-python/pyflink">
+      <and>
+        <size value="0"/>
+        <type type="dir"/>
+      </and>
+    </fileset>
+  </delete>
+  <delete file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-python/lib/pyflink.zip"/>
+  <zip destfile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-python/lib/pyflink.zip">
+    <fileset includes="pyflink/**/*" dir="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-python"/>
+  </zip>
+</target>
+</project>

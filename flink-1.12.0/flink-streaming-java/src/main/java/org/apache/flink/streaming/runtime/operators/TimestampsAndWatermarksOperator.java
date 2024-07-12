@@ -23,6 +23,7 @@ import org.apache.flink.api.common.eventtime.Watermark;
 import org.apache.flink.api.common.eventtime.WatermarkGenerator;
 import org.apache.flink.api.common.eventtime.WatermarkOutput;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
@@ -115,6 +116,11 @@ public class TimestampsAndWatermarksOperator<T>
 		final long now = getProcessingTimeService().getCurrentProcessingTime();
 		getProcessingTimeService().registerTimer(now + watermarkInterval, this);
 	}
+
+//	@Override
+//	public ProcessingTimeCallbackID getID() {
+//		return new ProcessingTimeCallbackID(ProcessingTimeCallbackID.Type.TIMESTAMP_EXTRACTOR);
+//	}
 
 	/**
 	 * Override the base implementation to completely ignore watermarks propagated from

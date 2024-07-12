@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<project name="maven-antrun-" default="main"  >
+<target name="main">
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table/target/flink-examples-table_2.11-1.12.0-GettingStartedExample.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table/target/GettingStartedExample.jar"/>
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table/target/flink-examples-table_2.11-1.12.0-StreamSQLExample.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table/target/StreamSQLExample.jar"/>
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table/target/flink-examples-table_2.11-1.12.0-StreamWindowSQLExample.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table/target/StreamWindowSQLExample.jar"/>
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table/target/flink-examples-table_2.11-1.12.0-WordCountSQL.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table/target/WordCountSQL.jar"/>
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table/target/flink-examples-table_2.11-1.12.0-WordCountTable.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table/target/WordCountTable.jar"/>
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table/target/flink-examples-table_2.11-1.12.0-StreamTableExample.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table/target/StreamTableExample.jar"/>
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table/target/flink-examples-table_2.11-1.12.0-TPCHQuery3Table.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table/target/TPCHQuery3Table.jar"/>
+  <copy file="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table/target/flink-examples-table_2.11-1.12.0-ChangelogSocketExample.jar" tofile="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-examples\flink-examples-table/target/ChangelogSocketExample.jar"/>
+</target>
+</project>

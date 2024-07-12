@@ -26,11 +26,18 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.core.io.InputSplit;
 import org.apache.flink.core.io.InputSplitAssigner;
 import org.apache.flink.runtime.JobException;
+import org.apache.flink.runtime.blob.PermanentBlobKey;
+import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
+import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
+import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
+import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.jobgraph.JobEdge;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
@@ -40,18 +47,28 @@ import org.apache.flink.runtime.jobmanager.scheduler.LocationPreferenceConstrain
 import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.reConfig.utils.RescaleState;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
+import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
+import org.apache.flink.runtime.topology.VertexID;
 import org.apache.flink.runtime.util.EvictingBoundedList;
+import org.apache.flink.types.Either;
 import org.apache.flink.util.ExceptionUtils;
+
+import org.apache.flink.util.Preconditions;
+
+import org.apache.flink.util.SerializedValue;
 
 import org.slf4j.Logger;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
@@ -60,8 +77,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 
 import static org.apache.flink.runtime.execution.ExecutionState.FINISHED;
+import static org.apache.flink.runtime.execution.ExecutionState.RUNNING;
 
 /**
  * The ExecutionVertex is a parallel subtask of the execution. It may be executed once, or several times, each of
@@ -108,6 +128,16 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	public RescaleState rescaleState = RescaleState.NONE;
 
 	// --------------------------------------------------------------------------------------------
+
+	private final ArrayList<Execution> standbyExecutions;
+
+	private final Time failSignalTimeSpan= Time.milliseconds(2000L);
+	private int lastKillAttemptNumber = -1;
+	int count=0;
+
+	int standCount=0;
+
+	int flag=0;
 
 	/**
 	 * Creates an ExecutionVertex.
@@ -174,6 +204,29 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 		this.timeout = timeout;
 		this.inputSplits = new ArrayList<>();
+
+		/************************************************************************************************/
+		// We can make the size match a replication factor
+		this.standbyExecutions = new ArrayList<Execution>();
+
+
+		final long globalModVersion = currentExecution.getGlobalModVersion();
+		final long createTimestampStandby = System.currentTimeMillis();
+		final boolean isStandby = true;
+
+//		Execution newStandbyExecution = new Execution(
+//			getExecutionGraph().getFutureExecutor(),
+//			this,
+//			currentExecution.getAttemptNumber() + 1,
+//			globalModVersion,
+//			createTimestampStandby,
+//			timeout,
+//			isStandby);
+//		standbyExecutions.add(newStandbyExecution);
+//		LOG.info("Added standby execution for task");
+//		// register this execution at the execution graph, to receive call backs such as task state updates.
+//		getExecutionGraph().registerExecution(newStandbyExecution);
+//		LOG.info("Added standby execution for task " + taskNameWithSubtask + "and registered it to running executions. Now scheduling it.");
 	}
 
 
@@ -692,6 +745,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			SlotProviderStrategy slotProviderStrategy,
 			LocationPreferenceConstraint locationPreferenceConstraint,
 			@Nonnull Set<AllocationID> allPreviousExecutionGraphAllocationIds) {
+
+		LOG.info("executionVertex:scheduleForExecution(");
 		return this.currentExecution.scheduleForExecution(
 			slotProviderStrategy,
 			locationPreferenceConstraint,
@@ -699,14 +754,45 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	}
 
 	public void tryAssignResource(LogicalSlot slot) {
-		if (!currentExecution.tryAssignResource(slot)) {
-			throw new IllegalStateException("Could not assign resource " + slot + " to current execution " +
-				currentExecution + '.');
+//		if (!currentExecution.tryAssignResource(slot)) {
+//			throw new IllegalStateException("Could not assign resource " + slot + " to current execution " +
+//				currentExecution + '.');
+//		}
+		if(standCount==0){
+			if (!currentExecution.tryAssignResource(slot)) {
+				throw new IllegalStateException("Could not assign resource " + slot + " to current execution " +
+					currentExecution + '.');
+			}
+			standCount++;
 		}
+		else {
+			for (Execution execution:standbyExecutions){
+				if (!execution.tryAssignResource(slot)) {
+					throw new IllegalStateException("Could not assign resource " + slot + " to current execution " +
+						currentExecution + '.');
+				}
+			}
+		}
+
 	}
 
 	public void deploy() throws JobException {
-		currentExecution.deploy();
+		if(flag==0){
+			count++;
+			flag++;
+			//System.out.println("我被部署第"+count+"次");
+			currentExecution.deploy();
+		}
+		else {
+			for (Execution execution:standbyExecutions){
+				count++;
+				//System.out.println("我被部署第"+count+"次");
+				execution.deploy();
+			}
+		}
+//		count++;
+//		System.out.println("我被部署第"+count+"次");
+//		currentExecution.deploy();
 	}
 
 	@VisibleForTesting
@@ -903,6 +989,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		// only forward this notification if the execution is still the current execution
 		// otherwise we have an outdated execution
 		if (isCurrentExecution(execution)) {
+			LOG.info("if (isCurrentExecution(execution)) {");
 			getExecutionGraph().notifyExecutionChange(execution, newState, error);
 		}
 	}
@@ -1012,4 +1099,196 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			}
 		}
 	}
+	/************************************************************************************************************************************/
+	/*
+	todo 赫明萱后加
+	 */
+	public ArrayList<Execution> getStandbyExecutions() {
+		return new ArrayList<>(standbyExecutions);
+	}
+
+	public VertexID getVertexId() {
+		return executionVertexId;
+	}
+
+	public void runStandbyExecution() throws IllegalStateException {
+		if (standbyExecutions.isEmpty()) {
+			throw new IllegalStateException("No standby execution to run.");
+		}
+
+		Execution firstStandbyExecution = this.standbyExecutions.remove(0);
+		priorExecutions.add(currentExecution.archive());
+		currentExecution = firstStandbyExecution;
+
+		currentExecution.runStandbyExecution();  //运行这个Execution,并解除StreamTask的阻塞
+
+
+		boolean updateConsumersOnFailover = true;
+
+		//Tell consumers of failed operator to reconfigure connections 告诉故障操作员的使用者重新配置连接
+		LOG.debug("Update the to-run standby task's " + currentExecution + " consumer vertices (if any).");
+		// 一个分区，有多个边，每个边连接一个executionvertice
+		for (IntermediateResultPartition partition : resultPartitions.values()) {
+			checkPartition(partition);
+			final HashSet<ExecutionVertex> consumerDeduplicator1 = new HashSet<>();
+			currentExecution.scheduleOrUpdateConsumers(partition.getConsumers(),consumerDeduplicator1,
+				updateConsumersOnFailover);
+		}
+
+		//Tell producers for failed operator to reconfigure connections  告诉失败操作员的生产者重新配置连接
+		for (ExecutionEdge[] edges : inputEdges) {
+			for (ExecutionEdge edge : edges) {
+				List<List<ExecutionEdge>> currentConsumerEdge = new ArrayList<List<ExecutionEdge>>(0);
+				currentConsumerEdge.add(new ArrayList<ExecutionEdge>(0));
+				currentConsumerEdge.get(0).add(edge);
+
+				checkPartition(edge.getSource());
+				Execution producer = edge.getSource().getProducer().getCurrentExecutionAttempt();
+
+				LOG.debug("Update the " + producer + " producer execution's consumer execution " + currentExecution + ".");
+				final HashSet<ExecutionVertex> consumerDeduplicator2 = new HashSet<>();
+				producer.scheduleOrUpdateConsumers(currentConsumerEdge,consumerDeduplicator2,
+					//producer.scheduleOrUpdateConsumers(edge.getSource().getConsumers(),
+					updateConsumersOnFailover);
+			}
+		}
+
+	}
+
+	/**
+	 * Check intermediate result partition is pipelined and not null. 新加的
+	 */
+	private void checkPartition(IntermediateResultPartition partition) {
+		if (partition == null) {
+			throw new IllegalStateException("Unknown partition " + partition + ".");
+		}
+
+		if (!partition.getIntermediateResult().getResultType().isPipelined()) {
+			throw new IllegalArgumentException("ScheduleOrUpdateConsumers msg is only valid for" +
+				"pipelined partitions.");
+		}
+	}
+
+	public List<ExecutionVertex> getDirectUpstreamVertexes() {
+		return Arrays.stream(inputEdges).flatMap(Arrays::stream).map(ExecutionEdge::getSource)
+			.map(IntermediateResultPartition::getProducer).distinct().collect(Collectors.toList());
+	}
+
+//	public CompletableFuture<Void> addStandbyExecution() {
+//
+//		LOG.info("addStandbyExecution()qina");
+//		final long globalModVersion = currentExecution.getGlobalModVersion();
+//		final long createTimestamp = System.currentTimeMillis();
+//		final boolean isStandby = true;
+//
+//		Execution newStandbyExecution = new Execution(
+//			getExecutionGraph().getFutureExecutor(),
+//			this,
+//			currentExecution.getAttemptNumber() + 1,
+//			globalModVersion,
+//			createTimestamp,
+//			timeout,
+//			isStandby);
+//		LOG.info("addStandbyExecution()hou");
+//		standbyExecutions.add(newStandbyExecution);
+//		LOG.info("Added standby execution for task");
+//		// register this execution at the execution graph, to receive call backs such as task state updates.
+//		getExecutionGraph().registerExecution(newStandbyExecution);
+//		LOG.info("Added standby execution for task " + taskNameWithSubtask + "and registered it to running executions. Now scheduling it.");
+//		//todo 在这里为新增加的execution 分配slot
+//		return newStandbyExecution.scheduleForExecution();
+//
+//	}
+
+
+	public void addStandbyExecution() {
+
+		LOG.info("addStandbyExecution()前");
+		final long globalModVersion = currentExecution.getGlobalModVersion();
+		final long createTimestamp = System.currentTimeMillis();
+		final boolean isStandby = true;
+
+		Execution newStandbyExecution = new Execution(
+			getExecutionGraph().getFutureExecutor(),
+			this,
+			currentExecution.getAttemptNumber() + 1,
+			globalModVersion,
+			createTimestamp,
+			timeout,
+			isStandby);
+		LOG.info("addStandbyExecution()后");
+		standbyExecutions.add(newStandbyExecution);
+		LOG.info("Added standby execution for task");
+		// register this execution at the execution graph, to receive call backs such as task state updates.
+		getExecutionGraph().registerExecution(newStandbyExecution);
+		LOG.info("Added standby execution for task " + taskNameWithSubtask + "and registered it to running executions. Now scheduling it.");
+		//todo 在这里为新增加的execution 分配slot
+		newStandbyExecution.scheduleForExecution();
+	}
+
+	public CompletableFuture<?> cancelStandbyExecution() {
+		if (!standbyExecutions.isEmpty()) {
+			LOG.debug(String.format("Cancelling standby execution %s", this));
+			final Execution standbyExecution = standbyExecutions.remove(0);
+			standbyExecution.cancel();
+			return standbyExecution.getReleaseFuture();
+		}
+		return null;
+	}
+
+	public List<ExecutionVertex> getDownstreamVertexes() {
+		List<ExecutionVertex> toReturn = new LinkedList<>();
+		Deque<ExecutionVertex> unexplored = new LinkedList<>(getDirectDownstreamVertexes());
+
+		while (!unexplored.isEmpty()){
+			ExecutionVertex toExplore = unexplored.pop();
+			toReturn.add(toExplore);
+
+			unexplored.addAll(toExplore.getDirectDownstreamVertexes());
+		}
+		return toReturn.stream().distinct().collect(Collectors.toList());
+	}
+
+	public List<ExecutionVertex> getDirectDownstreamVertexes() {
+		return getProducedPartitions().values().stream()
+			.flatMap(x -> x.getConsumers().stream().flatMap(Collection::stream))
+			.map(ExecutionEdge::getTarget).distinct().collect(Collectors.toList());
+	}
+
+	public void ignoreCheckpoint(long checkpointId) {
+
+		try {
+			this.currentExecution.ignoreCheckpointRpcCall(checkpointId).get();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		} catch (ExecutionException e) {
+			e.printStackTrace();
+		}
+
+	}
+
+	//todo 新加的
+	public boolean concurrentFailExecutionSignal() {
+		final long currentTimeMillis = System.currentTimeMillis();
+		final int currentAttemptNumber = currentExecution.getAttemptNumber();
+		final long currentRunningTime = currentExecution.getStateTimestamp(RUNNING);
+
+		if (currentExecution.getState() == RUNNING &&
+			// The following condition states that a standby execution is running
+			// at least for a minimal amount of time. This is an empirical rule
+			// to try and rule out subsequent fail signals that arrive late.
+			(currentAttemptNumber > 0 && currentTimeMillis - currentRunningTime >
+				failSignalTimeSpan.toMilliseconds() ||
+				currentAttemptNumber == 0)) {
+			// Ignore subsequent signals for failing the same execution instance.
+			if (currentAttemptNumber > lastKillAttemptNumber) {
+				lastKillAttemptNumber = currentAttemptNumber;
+				LOG.debug("Allow to fail current execution {}.", currentExecution);
+				return false;
+			}
+		}
+		LOG.debug("Ignore subsequent signal to fail current execution {} of vertex {}.", currentExecution, this);
+		return true;
+	}
+
 }

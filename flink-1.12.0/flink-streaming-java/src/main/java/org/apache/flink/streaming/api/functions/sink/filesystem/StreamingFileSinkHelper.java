@@ -24,6 +24,7 @@ import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.state.OperatorStateStore;
 import org.apache.flink.api.common.typeutils.base.LongSerializer;
 import org.apache.flink.api.common.typeutils.base.array.BytePrimitiveArraySerializer;
+import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
 import org.apache.flink.streaming.api.operators.StreamOperator;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
@@ -95,6 +96,11 @@ public class StreamingFileSinkHelper<IN> implements ProcessingTimeCallback {
 		buckets.onProcessingTime(currentTime);
 		procTimeService.registerTimer(currentTime + bucketCheckInterval, this);
 	}
+
+//	@Override
+//	public ProcessingTimeCallbackID getID() {
+//		return new ProcessingTimeCallbackID("SFS");
+//	}
 
 	public void onElement(
 			IN value,

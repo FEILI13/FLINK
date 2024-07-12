@@ -19,6 +19,7 @@ package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
@@ -215,6 +216,11 @@ public class TaskExecutorPartitionTrackerImplTest extends TestLogger {
 		@Override
 		public boolean updatePartitionInfo(ExecutionAttemptID consumerID, PartitionInfo partitionInfo) throws IOException, InterruptedException {
 			return backingShuffleEnvironment.updatePartitionInfo(consumerID, partitionInfo);
+		}
+
+		@Override
+		public CausalLogManager getCausalLogManager() {
+			return null;
 		}
 
 		@Override

@@ -30,10 +30,12 @@ import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
+import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.checkpoint.CheckpointException;
 import org.apache.flink.runtime.checkpoint.CheckpointFailureReason;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
+import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
@@ -59,12 +61,14 @@ import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.consumer.IndexedInputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.jobgraph.tasks.TaskOperatorEventGateway;
 import org.apache.flink.runtime.memory.MemoryManager;
+import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.operators.coordination.TaskNotRunningException;
@@ -109,6 +113,8 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -291,11 +297,23 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 	private ShuffleIOOwnerContext taskShuffleContext;
 
 	private RescaleState rescaleState = RescaleState.NONE;
+	/**todo 赫明萱加
+	 * Whether the task is a standby task
+	 */
+	private final boolean isStandby;
+
+
+	private List<JobVertex> topologicallySortedJobVertexes;
+
+	private volatile ExecutorService asyncCallDispatcher;
+
+	private CausalLogManager causalLogManager;
 
 	/**
 	 * <p><b>IMPORTANT:</b> This constructor may not start any work that would need to
 	 * be undone in the case of a failing task deployment.</p>
 	 */
+
 	public Task(
 		JobInformation jobInformation,
 		TaskInformation taskInformation,
@@ -325,7 +343,10 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 		@Nonnull TaskMetricGroup metricGroup,
 		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
 		PartitionProducerStateChecker partitionProducerStateChecker,
-		Executor executor) {
+		Executor executor,
+		boolean isStandby,
+		List<JobVertex> topologicallySortedJobVertexes) {
+
 
 		// TODO: make it work as before
 		throw new UnsupportedOperationException();
@@ -361,7 +382,9 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 		@Nonnull TaskMetricGroup metricGroup,
 		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
 		PartitionProducerStateChecker partitionProducerStateChecker,
-		Executor executor) {
+		Executor executor,
+		boolean isStandby,
+		List<JobVertex> topologicallySortedJobVertexes) {
 
 		Preconditions.checkNotNull(jobInformation);
 		Preconditions.checkNotNull(taskInformation);
@@ -371,18 +394,24 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 		Preconditions.checkArgument(0 <= targetSlotNumber, "The target slot number must be positive.");
 
 		this.taskInfo = new TaskInfo(
-				taskInformation.getTaskName(),
-				taskInformation.getMaxNumberOfSubtasks(),
-				subtaskIndex,
-				taskInformation.getNumberOfSubtasks(),
-				attemptNumber,
-				String.valueOf(slotAllocationId));
+			taskInformation.getTaskName(),
+			taskInformation.getMaxNumberOfSubtasks(),
+			subtaskIndex,
+			taskInformation.getNumberOfSubtasks(),
+			attemptNumber,
+			String.valueOf(slotAllocationId));
 
 		this.jobId = jobInformation.getJobId();
 		this.vertexId = taskInformation.getJobVertexId();
 		this.executionId  = Preconditions.checkNotNull(executionAttemptID);
 		this.allocationId = Preconditions.checkNotNull(slotAllocationId);
-		this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks();
+		this.isStandby = isStandby;
+
+		if (this.isStandby) {
+			this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks() + " (STANDBY)";
+		} else {
+			this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks();
+		}
 		this.jobConfiguration = jobInformation.getJobConfiguration();
 		this.taskConfiguration = taskInformation.getTaskConfiguration();
 		this.requiredJarFiles = jobInformation.getRequiredJarFileBlobKeys();
@@ -419,6 +448,8 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 		this.partitionProducerStateChecker = Preconditions.checkNotNull(partitionProducerStateChecker);
 		this.executor = Preconditions.checkNotNull(executor);
 
+		this.causalLogManager = shuffleEnvironment.getCausalLogManager();
+
 		// create the reader and writer structures
 
 		final String taskNameWithSubtaskAndId = taskNameWithSubtask + " (" + executionId + ')';
@@ -427,6 +458,8 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 			.createShuffleIOOwnerContext(taskNameWithSubtaskAndId, executionId, metrics.getIOMetricGroup());
 
 		this.taskShuffleContext = taskShuffleContext;
+		//LOG.warn("\n" + resultPartitionDeploymentDescriptors.size() +
+		//	     "\n" + taskNameWithSubtask +  " " + this.isStandby);
 
 		// produced intermediate result partitions
 		final ResultPartitionWriter[] resultPartitionWriters = shuffleEnvironment.createResultPartitionWriters(
@@ -440,6 +473,8 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 			jobId,
 			resultPartitionConsumableNotifier);
 
+		//LOG.warn("\n" + consumableNotifyingPartitionWriters.length + " " + resultPartitionWriters.length +
+		//	     "\n" + taskNameWithSubtask +  " " + this.isStandby);
 		// consumed intermediate result partitions
 		final IndexedInputGate[] gates = shuffleEnvironment.createInputGates(
 				taskShuffleContext,
@@ -463,7 +498,65 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 
 		// finally, create the executing thread, but do not start it
 		executingThread = new Thread(TASK_THREADS_GROUP, this, taskNameWithSubtask);
+
+		this.topologicallySortedJobVertexes = topologicallySortedJobVertexes;
 	}
+
+
+
+	public Task(
+		JobInformation jobInformation,
+		TaskInformation taskInformation,
+		ExecutionAttemptID executionAttemptID,
+		AllocationID slotAllocationId,
+		int subtaskIndex,
+		int attemptNumber,
+		List<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+		List<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
+		int targetSlotNumber,
+		MemoryManager memManager,
+		IOManager ioManager,
+		ShuffleEnvironment<?, ?> shuffleEnvironment,
+		KvStateService kvStateService,
+		BroadcastVariableManager bcVarManager,
+		TaskEventDispatcher taskEventDispatcher,
+		ExternalResourceInfoProvider externalResourceInfoProvider,
+		TaskStateManager taskStateManager,
+		TaskManagerActions taskManagerActions,
+		InputSplitProvider inputSplitProvider,
+		CheckpointResponder checkpointResponder,
+		TaskOperatorEventGateway operatorCoordinatorEventGateway,
+		GlobalAggregateManager aggregateManager,
+		LibraryCacheManager.ClassLoaderHandle classLoaderHandle,
+		FileCache fileCache,
+		TaskManagerRuntimeInfo taskManagerConfig,
+		@Nonnull TaskMetricGroup metricGroup,
+		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
+		PartitionProducerStateChecker partitionProducerStateChecker,
+		Executor executor) {
+
+		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId,
+			subtaskIndex, attemptNumber, resultPartitionDeploymentDescriptors,
+			inputGateDeploymentDescriptors, targetSlotNumber, memManager,
+			ioManager, shuffleEnvironment, kvStateService,bcVarManager, taskEventDispatcher, externalResourceInfoProvider,taskStateManager,
+			taskManagerActions,
+			inputSplitProvider,
+			checkpointResponder,
+			operatorCoordinatorEventGateway,
+			aggregateManager,
+			classLoaderHandle,
+			fileCache,
+			taskManagerConfig,
+			metricGroup,
+			resultPartitionConsumableNotifier,
+			partitionProducerStateChecker,
+			executor,false,null);
+
+
+	}
+
+
+
 
 	// ------------------------------------------------------------------------
 	//  Accessors
@@ -706,6 +799,7 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 			}
 
 			if (isCanceledOrFailed()) {
+				LOG.info("if (isCanceledOrFailed())");
 				throw new CancelTaskException();
 			}
 
@@ -742,7 +836,9 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 				taskManagerConfig,
 				metrics,
 				this,
-				externalResourceInfoProvider);
+				externalResourceInfoProvider,
+				topologicallySortedJobVertexes,
+				causalLogManager);
 
 			// Make sure the user code classloader is accessible thread-locally.
 			// We are setting the correct context class loader before instantiating the invokable
@@ -761,17 +857,32 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 			this.invokable = invokable;
 
 			// switch to the RUNNING state, if that fails, we have been canceled/failed in the meantime
-			if (!transitionState(ExecutionState.DEPLOYING, ExecutionState.RUNNING)) {
-				throw new CancelTaskException();
-			}
+//			if (!transitionState(ExecutionState.DEPLOYING, ExecutionState.RUNNING)) {
+//				throw new CancelTaskException();
+//			}
+//
+//			// notify everyone that we switched to running
+//			taskManagerActions.updateTaskExecutionState(new TaskExecutionState(jobId, executionId, ExecutionState.RUNNING));
 
-			// notify everyone that we switched to running
-			taskManagerActions.updateTaskExecutionState(new TaskExecutionState(jobId, executionId, ExecutionState.RUNNING));
+			LOG.info("i am standby? {}",isStandby);
+			if (!this.isStandby) {
+
+
+				// switch to the RUNNING state, if that fails, we have been canceled/failed in the meantime
+				if (!transitionState(ExecutionState.DEPLOYING, ExecutionState.RUNNING)) {
+					throw new CancelTaskException();
+				}
+				// notify everyone that we switched to running
+				taskManagerActions.updateTaskExecutionState(new TaskExecutionState(jobId, executionId,
+					ExecutionState.RUNNING));
+			}
 
 			// make sure the user code classloader is accessible thread-locally
 			executingThread.setContextClassLoader(userCodeClassLoader.asClassLoader());
 
 			// run the invokable
+
+			LOG.info("invokable.invoke();");
 			invokable.invoke();
 
 			// make sure, we enter the catch block if the task leaves the invoke() method due
@@ -1019,9 +1130,11 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 	private boolean transitionState(ExecutionState currentState, ExecutionState newState, Throwable cause) {
 		if (STATE_UPDATER.compareAndSet(this, currentState, newState)) {
 			if (cause == null) {
-				LOG.info("{} ({}) switched from {} to {}.", taskNameWithSubtask, executionId, currentState, newState);
+				LOG.info("{} ({}) {} switched from {} to {}.", taskNameWithSubtask, executionId, (isStandby ?
+					"[STANDBY]" : ""), currentState, newState);
 			} else {
-				LOG.warn("{} ({}) switched from {} to {}.", taskNameWithSubtask, executionId, currentState, newState, cause);
+				LOG.info("{} ({}) {} switched from {} to {}.", taskNameWithSubtask, executionId, (isStandby ?
+					"[STANDBY]" : ""), currentState, newState, cause);
 			}
 
 			return true;
@@ -1770,6 +1883,180 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 			}
 			catch (Throwable t) {
 				throw new FlinkRuntimeException("Error in Task Cancellation Watch Dog", t);
+			}
+		}
+	}
+
+	/*
+	todo 赫明萱加
+	 */
+	public void triggerFailProducer(
+		final IntermediateDataSetID intermediateDataSetId,
+		final ResultPartitionID resultPartitionId,
+		final Throwable cause) {
+
+		LOG.debug("Task {} triggers fail producer of result partition {} on cause {}.", this, resultPartitionId,
+			cause);
+
+		CompletableFuture<Acknowledge> futureFailProducer =
+			partitionProducerStateChecker.triggerFailProducer(
+				intermediateDataSetId,
+				resultPartitionId,
+				cause);
+
+		futureFailProducer.whenCompleteAsync(
+			(Acknowledge ack, Throwable throwable) -> {
+				if (throwable != null) {
+					LOG.warn("Operation to fail producer execution of {} failed.", resultPartitionId, throwable);
+				}
+			},
+			executor);
+	}
+
+
+	public void ignoreCheckpoint(final long checkpointId) {
+		final AbstractInvokable invokable = this.invokable;
+
+		if (executionState == ExecutionState.RUNNING && invokable != null)
+			invokable.ignoreCheckpoint(checkpointId);
+		else
+			LOG.debug("Ignoring checkpoint commit notification for non-running task {}.", taskNameWithSubtask);
+
+	}
+
+	/**
+	 * Unblock execution of a standby task (partly; see ackConnection()).
+	 */
+	public void switchStandbyToRunning() throws Exception {
+		LOG.debug("Switch task {} to RUNNING.", this);
+		if (!isStandby) {
+			throw new Exception("Task " + taskNameWithSubtask + " is not a STANDBY task. It cannot be switched to " +
+				"RUNNING state.");
+		}
+
+		ExecutionState current = executionState;
+		if (current == ExecutionState.STANDBY) {
+			//解除阻塞
+			invokable.switchStandbyToRunning();
+			LOG.debug("Task {} has {} inputGates.", this, inputGates.length);
+
+			// switch to the RUNNING state, if that fails, we have been canceled/failed in the meantime
+			if (!transitionState(ExecutionState.STANDBY, ExecutionState.RUNNING)) {
+				throw new CancelTaskException();
+			}
+			// notify everyone that we switched to running
+			taskManagerActions.updateTaskExecutionState(new TaskExecutionState(jobId, executionId,
+				ExecutionState.RUNNING));
+		} else if (current == ExecutionState.CREATED || current == ExecutionState.DEPLOYING) {
+			throw new Exception("Standby task still in " + current + " state. Retry.");
+		} else {
+			throw new Exception("Tried to run standby task that was not in STANDBY state, but in " + current + " state" +
+				".");
+		}
+	}
+
+
+	public boolean getIsStandby() {
+		return isStandby;
+	}
+
+	public void transitionToStandbyState() {
+		if (this.isStandby) {
+			// switch to the STANDBY state, if that fails, we have been canceled/failed in the meantime
+			if (!transitionState(ExecutionState.DEPLOYING, ExecutionState.STANDBY)) {
+				LOG.info("woshibaile?");
+				throw new CancelTaskException();
+			}
+
+			LOG.info("Standby task " + taskNameWithSubtask + " is at STANDBY state.");
+			LOG.info("Test " + executionId + " " + isStandby);
+			// notify everyone that we switched to standby
+			taskManagerActions.updateTaskExecutionState(new TaskExecutionState(jobId, executionId,
+				ExecutionState.STANDBY));
+		}
+	}
+
+	/**
+	 * Receive the latest checkpointed state snapshot of a running task.
+	 * It only applies to a standby task in STANDBY state.
+	 */
+	public void dispatchStateToStandbyTask(JobManagerTaskRestore taskRestore) throws Exception {
+		if (!isStandby) {
+			throw new Exception("Task " + taskNameWithSubtask + " is not a STANDBY task. It cannot receive a state " +
+				"snapshot.");
+		}
+
+		ExecutionState current = executionState;
+		if (current != ExecutionState.STANDBY) {
+			throw new Exception("Standby task " + taskNameWithSubtask + " is not in STANDBY state. Failing state " +
+				"dispatch.");
+		}
+
+		taskStateManager.setTaskRestore(taskRestore);
+		LOG.info("Standby task " + taskNameWithSubtask + " received state snapshot of checkpoint " +
+			taskRestore.getRestoreCheckpointId() + ".");
+
+		long checkpointId = taskRestore.getRestoreCheckpointId();
+		invokable.notifyStartedRestoringCheckpoint(checkpointId);
+
+
+		// Invokable should be an instance of an operator class in the hierarchy of StreamTask.可调用的应该是StreamTask层次结构中的运算符类的实例。
+		executeAsyncCallRunnable(() -> {
+			try {
+				invokable.initializeState();
+				invokable.notifyCompletedRestoringCheckpoint(checkpointId);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}, "Async restore checkpoint " + checkpointId);
+
+	}
+
+
+	/**
+	 * Utility method to dispatch an asynchronous call on the invokable.
+	 *
+	 * @param runnable The async call runnable.
+	 * @param callName The name of the call, for logging purposes.
+	 */
+	private void executeAsyncCallRunnable(Runnable runnable, String callName) {
+		// make sure the executor is initialized. lock against concurrent calls to this function
+		synchronized (this) {
+			if (!(executionState == ExecutionState.RUNNING || executionState == ExecutionState.STANDBY)) {
+				return;
+			}
+
+			// get ourselves a reference on the stack that cannot be concurrently modified
+			ExecutorService executor = this.asyncCallDispatcher;
+			if (executor == null) {
+				// first time use, initialize
+				checkState(userCodeClassLoader != null, "userCodeClassLoader must not be null");
+				executor = Executors.newSingleThreadExecutor(
+					new DispatcherThreadFactory(
+						TASK_THREADS_GROUP,
+						"Async calls on " + taskNameWithSubtask,
+						userCodeClassLoader.asClassLoader()));
+				this.asyncCallDispatcher = executor;
+
+				// double-check for execution state, and make sure we clean up after ourselves
+				// if we created the dispatcher while the task was concurrently canceled
+				if (!(executionState == ExecutionState.RUNNING || executionState == ExecutionState.STANDBY)) {
+					executor.shutdown();
+					asyncCallDispatcher = null;
+					return;
+				}
+			}
+
+			LOG.debug("Invoking async call {} on task {}", callName, taskNameWithSubtask);
+
+			try {
+				executor.submit(runnable);
+			} catch (RejectedExecutionException e) {
+				// may be that we are concurrently finished or canceled.
+				// if not, report that something is fishy
+				if (executionState == ExecutionState.RUNNING || executionState == ExecutionState.STANDBY) {
+					throw new RuntimeException("Async call was rejected, even though the task is running or standby.", e);
+				}
 			}
 		}
 	}

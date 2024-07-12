@@ -148,7 +148,8 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		this.jobVertex = jobVertex;
 
 		int vertexParallelism = jobVertex.getParallelism();
-		int numTaskVertices = vertexParallelism > 0 ? vertexParallelism : defaultParallelism;
+//		int numTaskVertices = vertexParallelism > 0 ? vertexParallelism : defaultParallelism;
+		int numTaskVertices = 1;
 
 		final int configuredMaxParallelism = jobVertex.getMaxParallelism();
 
@@ -437,6 +438,8 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 				ev.connectSource(num, ires, edge, consumerIndex);
 			}
 		}
+
+		//LOG.warn("\n" + inputs.size() + " | " + this.inputs.size());
 	}
 
 	//---------------------------------------------------------------------------------------------

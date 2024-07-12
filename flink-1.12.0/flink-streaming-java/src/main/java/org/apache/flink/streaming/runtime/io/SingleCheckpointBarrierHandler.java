@@ -26,7 +26,9 @@ import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
+import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.CheckpointableInput;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
 import org.apache.flink.streaming.runtime.tasks.SubtaskCheckpointCoordinator;
@@ -38,6 +40,7 @@ import javax.annotation.concurrent.NotThreadSafe;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import static org.apache.flink.runtime.checkpoint.CheckpointFailureReason.CHECKPOINT_DECLINED_INPUT_END_OF_STREAM;
@@ -282,7 +285,8 @@ public class SingleCheckpointBarrierHandler extends CheckpointBarrierHandler {
 		long version = receivedBarrier.getVersion();
 		LOG.debug("{}: Received barrier from channel {} @ {}.", taskName, channelInfo, version);
 
-		if (currentReConfigVersion > version || (currentReConfigVersion == version && !isCheckpointPending())) {
+		if (currentReConfigVersion > version || (currentReConfigVersion == version
+			&& !isCheckpointPending())) {
 			controller.obsoleteBarrierReceived(channelInfo, receivedBarrier);
 			return;
 		}
@@ -297,7 +301,8 @@ public class SingleCheckpointBarrierHandler extends CheckpointBarrierHandler {
 		controller.barrierReceived(channelInfo, receivedBarrier);
 
 		if (currentReConfigVersion == version) {
-			LOG.debug("channel"+channelInfo.getInputChannelIdx()+ " received count:"+numBarriersReceived);
+			LOG.debug("channel" + channelInfo.getInputChannelIdx() + " received count:"
+				+ numBarriersReceived);
 			if (++numBarriersReceived == numOpenChannels) {
 				System.out.println("对齐完成");
 				numBarriersReceived = 0;
@@ -307,5 +312,97 @@ public class SingleCheckpointBarrierHandler extends CheckpointBarrierHandler {
 				allBarriersReceivedFuture.complete(null);
 			}
 		}
+	}
+	public void ignoreCheckpoint(long checkpointID) throws IOException {
+//		// fast path for single channel cases
+//		if (numOpenChannels == 1) {
+//			if (checkpointID > currentCheckpointId) {
+//				// new checkpoint
+//				currentCheckpointId = checkpointID;
+//			}
+//			return;
+//		}
+//
+//		// -- general code path for multiple input channels --
+//
+//		if (numBarriersReceived > 0) {
+//			// this is only true if some alignment is in progress and nothing was canceled
+//
+//			if (checkpointID == currentCheckpointId) {
+//				// cancel this alignment
+//				if (LOG.isDebugEnabled()) {
+//					LOG.debug("Checkpoint {} ignored, aborting alignment", checkpointID);
+//				}
+//
+//				releaseBlocksAndResetBarriers();
+//			} else if (checkpointID > currentCheckpointId) {
+//				// we canceled the next which also cancels the current
+//				LOG.warn("Received ignore request for checkpoint {} before completing current checkpoint {}. " +
+//					"Skipping current checkpoint.", checkpointID, currentCheckpointId);
+//
+//				// this stops the current alignment
+//				releaseBlocksAndResetBarriers();
+//
+//				// the next checkpoint starts as canceled
+//				currentCheckpointId = checkpointID;
+//				startOfAlignmentTimestamp = 0L;
+//				latestAlignmentDurationNanos.complete(0l);
+//
+//			}
+//
+//			// else: ignore trailing (cancellation) barrier from an earlier checkpoint (obsolete now)
+//
+//		} else if (checkpointID > currentCheckpointId) {
+//			// first barrier of a new checkpoint is directly a cancellation
+//
+//			// by setting the currentCheckpointId to this checkpoint while keeping the numBarriers
+//			// at zero means that no checkpoint barrier can start a new alignment
+//			currentCheckpointId = checkpointID;
+//
+//			this.startOfAlignmentTimestamp = 0L;
+//			latestAlignmentDurationNanos.complete(0l);
+//
+//			if (LOG.isDebugEnabled()) {
+//				LOG.debug("Checkpoint {} ignored, skipping alignment", checkpointID);
+//			}
+//
+//		}
+//
+//		// else: trailing barrier from either
+//		//   - a previous (subsumed) checkpoint
+//		//   - the current checkpoint if it was already canceled
+	}
+
+	public BufferOrEvent getNextNonBlocked(BufferOrEvent inputGate) throws Exception {
+
+		System.out.println("SingleCheckpointBarrierHandler");
+//		while (true) {
+//			LOG.debug("call inputGate.getNextBufferOrEvent().");
+//			Optional<BufferOrEvent> next = inputGate.getNextBufferOrEvent();
+//			if (!next.isPresent()) {
+//				// buffer or input exhausted
+//				return null;
+//			}
+//
+//			BufferOrEvent bufferOrEvent = next.get();
+//			if (bufferOrEvent.isBuffer()) {
+//				return bufferOrEvent;
+//			}
+//			else if (bufferOrEvent.getEvent().getClass() == CheckpointBarrier.class) {
+//				processBarrier((CheckpointBarrier) bufferOrEvent.getEvent(), bufferOrEvent.getChannelIndex());
+//			}
+//			else if (bufferOrEvent.getEvent().getClass() == CancelCheckpointMarker.class) {
+//				processCheckpointAbortBarrier((CancelCheckpointMarker) bufferOrEvent.getEvent(), bufferOrEvent.getChannelIndex());
+//			}
+//			else {
+//				// some other event
+//				return bufferOrEvent;
+//			}
+//		}
+		return  null;
+	}
+
+	public int getTotalNumberOfInputChannels(){
+		return numOpenChannels;
 	}
 }

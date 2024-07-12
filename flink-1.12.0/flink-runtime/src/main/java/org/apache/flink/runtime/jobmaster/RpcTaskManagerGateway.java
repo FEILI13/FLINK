@@ -21,10 +21,12 @@ package org.apache.flink.runtime.jobmaster;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
+import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.event.RuntimeEvent;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
+import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
@@ -37,6 +39,9 @@ import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Collections;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -46,6 +51,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public class RpcTaskManagerGateway implements TaskManagerGateway {
 
+	static final Logger LOG = LoggerFactory.getLogger(RpcTaskManagerGateway.class);
 	private final TaskExecutorGateway taskExecutorGateway;
 
 	private final JobMasterId jobMasterId;
@@ -71,6 +77,7 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> submitTask(TaskDeploymentDescriptor tdd, Time timeout) {
+		LOG.info("RpcTaskManagerGateway submitTask");
 		return taskExecutorGateway.submitTask(tdd, jobMasterId, timeout);
 	}
 
@@ -143,5 +150,26 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 	@Override
 	public void triggerUpdatePartitionStrategy(ExecutionAttemptID executionAttemptID) {
 		taskExecutorGateway.triggerUpdatePartitionStrategy(executionAttemptID);
+	}
+	/**
+	 * todo 赫明萱加
+	 * @param attemptId
+	 * @param checkpointId
+	 * @param rpcTimeout
+	 * @return
+	 */
+	public CompletableFuture<Acknowledge> ignoreCheckpoint(ExecutionAttemptID attemptId, long checkpointId,
+														   Time rpcTimeout) {
+		return taskExecutorGateway.ignoreCheckpoint(attemptId, checkpointId, rpcTimeout);
+	}
+
+
+	public CompletableFuture<Acknowledge> switchStandbyTaskToRunning(ExecutionAttemptID executionAttemptID, Time timeout) {
+		return taskExecutorGateway.switchStandbyTaskToRunning(executionAttemptID, timeout);
+	}
+
+
+	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobManagerTaskRestore taskRestore, Time timeout) {
+		return taskExecutorGateway.dispatchStateToStandbyTask(executionAttemptID, taskRestore, timeout);
 	}
 }

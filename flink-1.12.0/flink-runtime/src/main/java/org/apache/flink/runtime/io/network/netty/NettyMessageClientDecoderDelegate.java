@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
+import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.io.network.NetworkClientHandler;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
@@ -65,11 +66,20 @@ public class NettyMessageClientDecoderDelegate extends ChannelInboundHandlerAdap
 	/** The decoder for the current message. It is null if we are decoding the frame header. */
 	private NettyMessageDecoder currentDecoder;
 
-    NettyMessageClientDecoderDelegate(NetworkClientHandler networkClientHandler) {
+	private CausalLogManager causalLogManager;
+
+	NettyMessageClientDecoderDelegate(NetworkClientHandler networkClientHandler) {
+		this(networkClientHandler,null);
+	}
+
+    NettyMessageClientDecoderDelegate(NetworkClientHandler networkClientHandler,
+									  CausalLogManager causalLogManager) {
 		this.bufferResponseDecoder = new BufferResponseDecoder(
 			new NetworkBufferAllocator(
-				checkNotNull(networkClientHandler)));
+				checkNotNull(networkClientHandler)),
+			causalLogManager);
         this.nonBufferResponseDecoder = new NonBufferResponseDecoder();
+		this.causalLogManager = causalLogManager;
     }
 
     @Override

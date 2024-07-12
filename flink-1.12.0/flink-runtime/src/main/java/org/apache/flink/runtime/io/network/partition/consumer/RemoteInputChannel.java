@@ -29,6 +29,7 @@ import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.ConnectionManager;
 import org.apache.flink.runtime.io.network.PartitionRequestClient;
+import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.api.EventAnnouncement;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
@@ -39,7 +40,13 @@ import org.apache.flink.runtime.io.network.partition.PartitionNotFoundException;
 import org.apache.flink.runtime.io.network.partition.PrioritizedDeque;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 
+import org.apache.flink.runtime.io.network.partition.ResultPartitionManager;
+import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
+
 import org.apache.flink.shaded.guava18.com.google.common.collect.Iterators;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
@@ -61,6 +68,8 @@ import static org.apache.flink.util.Preconditions.checkState;
  * An input channel, which requests a remote partition queue.
  */
 public class RemoteInputChannel extends InputChannel {
+
+	private static final Logger LOG = LoggerFactory.getLogger(RemoteInputChannel.class);
 
 	private static final int NONE = -1;
 
@@ -109,6 +118,9 @@ public class RemoteInputChannel extends InputChannel {
 
 	private final ChannelStatePersister channelStatePersister;
 
+
+	private int numBuffersRemoved;
+
 	public RemoteInputChannel(
 		SingleInputGate inputGate,
 		int channelIndex,
@@ -129,6 +141,7 @@ public class RemoteInputChannel extends InputChannel {
 		this.connectionManager = checkNotNull(connectionManager);
 		this.bufferManager = new BufferManager(inputGate.getMemorySegmentProvider(), this, 0);
 		this.channelStatePersister = new ChannelStatePersister(stateWriter, getChannelInfo());
+		this.numBuffersRemoved = 0;
 	}
 
 	@VisibleForTesting
@@ -187,6 +200,8 @@ public class RemoteInputChannel extends InputChannel {
 
 	@Override
 	Optional<BufferAndAvailability> getNextBuffer() throws IOException {
+
+		System.out.println("remote");
 		checkPartitionRequestQueueInitialized();
 
 		final SequenceBuffer next;
@@ -203,7 +218,7 @@ public class RemoteInputChannel extends InputChannel {
 			}
 			return Optional.empty();
 		}
-
+		numBuffersRemoved++;
 		numBytesIn.inc(next.buffer.getSize());
 		numBuffersIn.inc();
 		return Optional.of(new BufferAndAvailability(next.buffer, nextDataType, 0, next.sequenceNumber));
@@ -214,7 +229,7 @@ public class RemoteInputChannel extends InputChannel {
 	// ------------------------------------------------------------------------
 
 	@Override
-	void sendTaskEvent(TaskEvent event) throws IOException {
+	public void sendTaskEvent(TaskEvent event) throws IOException {
 		checkState(!isReleased.get(), "Tried to send task event to producer after channel has been released.");
 		checkPartitionRequestQueueInitialized();
 
@@ -667,5 +682,74 @@ public class RemoteInputChannel extends InputChannel {
 			this.buffer = buffer;
 			this.sequenceNumber = sequenceNumber;
 		}
+	}
+
+
+
+	/*
+	todo 赫明萱加
+	 */
+	public LocalInputChannel toNewLocalInputChannel(ResultPartitionID newPartitionId,
+													ResultPartitionManager partitionManager, TaskEventDispatcher taskEventDispatcher,
+													int initialBackoff, int maxBackoff, TaskIOMetricGroup metrics) throws IOException {
+		releaseAllResources();
+		return new LocalInputChannel(inputGate,
+			channelInfo.getInputChannelIdx(),
+			newPartitionId,
+			partitionManager,
+			taskEventDispatcher,
+			initialBackoff,
+			maxBackoff,
+			metrics.getNumBytesInCounter(),
+			metrics.getNumBytesInCounter(),
+			channelStatePersister.channelStateWriter);
+	}
+
+	public RemoteInputChannel toNewRemoteInputChannel(ResultPartitionID newPartitionId,
+													  ConnectionID newProducerAddress, ConnectionManager connectionManager,
+													  int initialBackoff, int maxBackoff, int networkBuffersPerChannel ,TaskIOMetricGroup metrics) throws IOException {
+		LOG.info("Transforming remote input channel.");
+		//Wait for all data we have received to be processed.
+		//This is to ensure correctness, otherwise, we may have the determinants, but not have  processed the data.
+		//If we instead deduplicated at the receiver, we could disregard this.
+		while(true){
+			synchronized (receivedBuffers) {
+				if (receivedBuffers.isEmpty())
+					break;
+				else
+					LOG.info("There are still {} buffers to be processed, waiting.", receivedBuffers.size());
+			}
+			try {
+				Thread.sleep(100L);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+		LOG.info("All data has been processed, releasing.");
+		releaseAllResources();
+		RemoteInputChannel newRemoteInputChannel = new RemoteInputChannel(inputGate,
+			channelInfo.getInputChannelIdx(),
+			newPartitionId,
+			checkNotNull(newProducerAddress),
+			connectionManager,
+			initialBackoff,
+			maxBackoff,
+			networkBuffersPerChannel,
+			metrics.getNumBytesInCounter(),
+			metrics.getNumBytesInCounter(),
+			channelStatePersister.channelStateWriter);
+//		if (inputGate.isCreditBased()) {
+//			inputGate.assignExclusiveSegments((InputChannel) newRemoteInputChannel);
+//		}
+		return newRemoteInputChannel;
+	}
+
+	public ConnectionID getConnectionId() {
+		return connectionId;
+	}
+
+
+	public int getNumberOfBuffersRemoved(){
+		return numBuffersRemoved;
 	}
 }

@@ -24,6 +24,8 @@ import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.BufferOrEvent;
 import org.apache.flink.runtime.io.network.partition.consumer.IndexedInputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 
 import java.util.List;
 import java.util.Optional;
@@ -58,6 +60,16 @@ public class MockIndexedInputGate extends IndexedInputGate {
 
 	@Override
 	public void finishReadRecoveredState() {
+	}
+
+	@Override
+	public int getAbsoluteChannelIndex(InputGate gate, int channelIndex) {
+		return 0;
+	}
+
+	@Override
+	public SingleInputGate[] getInputGates() {
+		return new SingleInputGate[0];
 	}
 
 	@Override
@@ -115,5 +127,10 @@ public class MockIndexedInputGate extends IndexedInputGate {
 	@Override
 	public int getGateIndex() {
 		return gateIndex;
+	}
+
+	@Override
+	public SingleInputGate get() {
+		return null;
 	}
 }

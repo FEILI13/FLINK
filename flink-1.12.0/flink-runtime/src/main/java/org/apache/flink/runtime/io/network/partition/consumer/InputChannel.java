@@ -195,7 +195,7 @@ public abstract class InputChannel {
 	 * the producer will wait for all backwards events. Otherwise, this will lead to an Exception
 	 * at runtime.
 	 */
-	abstract void sendTaskEvent(TaskEvent event) throws IOException;
+	public abstract void sendTaskEvent(TaskEvent event) throws IOException;
 
 	// ------------------------------------------------------------------------
 	// Life cycle
@@ -309,16 +309,27 @@ public abstract class InputChannel {
 		private final Buffer.DataType nextDataType;
 		private final int buffersInBacklog;
 		private final int sequenceNumber;
+		private final long epochID;
+
+		public BufferAndAvailability(
+			Buffer buffer,
+			Buffer.DataType nextDataType,
+			int buffersInBacklog,
+			int sequenceNumber) {
+			this(buffer,nextDataType,buffersInBacklog,sequenceNumber,-1);
+		}
 
 		public BufferAndAvailability(
 				Buffer buffer,
 				Buffer.DataType nextDataType,
 				int buffersInBacklog,
-				int sequenceNumber) {
+				int sequenceNumber,
+				long epochID) {
 			this.buffer = checkNotNull(buffer);
 			this.nextDataType = checkNotNull(nextDataType);
 			this.buffersInBacklog = buffersInBacklog;
 			this.sequenceNumber = sequenceNumber;
+			this.epochID = epochID;
 		}
 
 		public Buffer buffer() {
@@ -345,6 +356,10 @@ public abstract class InputChannel {
 			return sequenceNumber;
 		}
 
+		public long getEpochID() {
+			return epochID;
+		}
+
 		@Override
 		public String toString() {
 			return "BufferAndAvailability{" +
@@ -358,4 +373,6 @@ public abstract class InputChannel {
 
 	void setup() throws IOException {
 	}
+
+	public SingleInputGate getInputGate(){return inputGate;}
 }

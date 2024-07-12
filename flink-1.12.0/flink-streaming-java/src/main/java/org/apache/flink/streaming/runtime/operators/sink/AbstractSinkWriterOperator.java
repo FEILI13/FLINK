@@ -22,12 +22,14 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.connector.sink.Sink;
 import org.apache.flink.api.connector.sink.SinkWriter;
 import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.runtime.causal.determinant.ProcessingTimeCallbackID;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.BoundedOneInput;
 import org.apache.flink.streaming.api.operators.InternalTimerService;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 
 import java.util.List;
@@ -192,6 +194,10 @@ abstract class AbstractSinkWriterOperator<InputT, CommT> extends AbstractStreamO
 			checkNotNull(processingTimerCallback);
 			processingTimeService.registerTimer(
 					time, processingTimerCallback::onProcessingTime);
+//			processingTimeService.registerTimer(
+//				time, processingTimerCallback);
+
 		}
+
 	}
 }

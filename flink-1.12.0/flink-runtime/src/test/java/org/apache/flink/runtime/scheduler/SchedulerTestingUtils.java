@@ -513,7 +513,7 @@ public class SchedulerTestingUtils {
 				executionVertexVersioner,
 				executionSlotAllocatorFactory,
 				new DefaultExecutionDeploymentTracker(),
-				System.currentTimeMillis());
+				System.currentTimeMillis(),null);
 		}
 	}
 }

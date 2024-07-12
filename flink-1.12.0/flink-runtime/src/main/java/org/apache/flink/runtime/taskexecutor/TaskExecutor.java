@@ -18,6 +18,8 @@
 
 package org.apache.flink.runtime.taskexecutor;
 
+import org.apache.commons.logging.Log;
+
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
@@ -524,7 +526,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				final String message = "Could not submit task because there is no JobManager " +
 					"associated for the job " + jobId + '.';
 
-				log.debug(message);
+				log.info(message);
 				return new TaskSubmissionException(message);
 			});
 
@@ -533,14 +535,14 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 					jobMasterId + " does not match the expected job manager leader id " +
 					jobManagerConnection.getJobMasterId() + '.';
 
-				log.debug(message);
+				log.info(message);
 				throw new TaskSubmissionException(message);
 			}
 
 			if (!taskSlotTable.tryMarkSlotActive(jobId, tdd.getAllocationId())) {
 				final String message = "No task slot allocated for job ID " + jobId +
 					" and allocation ID " + tdd.getAllocationId() + '.';
-				log.debug(message);
+				log.info(message);
 				throw new TaskSubmissionException(message);
 			}
 
@@ -618,6 +620,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				throw new TaskSubmissionException("Could not submit task.", e);
 			}
 
+			//log.warn("\n" + taskInformation.getTaskName() + " " + tdd.getProducedPartitions().size());
+
 			Task task = new Task(
 				jobInformation,
 				taskInformation,
@@ -648,12 +652,14 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				taskMetricGroup,
 				resultPartitionConsumableNotifier,
 				partitionStateChecker,
-				getRpcService().getExecutor());
+				getRpcService().getExecutor(),
+				tdd.isStandby,
+				jobInformation.getTopologicallySortedJobVertexes());
 
 			taskMetricGroup.gauge(MetricNames.IS_BACKPRESSURED, task::isBackPressured);
 
-			log.info("Received task {} ({}), deploy into slot with allocation id {}.",
-				task.getTaskInfo().getTaskNameWithSubtasks(), tdd.getExecutionAttemptId(), tdd.getAllocationId());
+			log.info("Received task {} ({} {}), deploy into slot with allocation id {}.",
+				task.getTaskInfo().getTaskNameWithSubtasks(), tdd.getExecutionAttemptId(), tdd.isStandby, tdd.getAllocationId());
 
 			boolean taskAdded;
 
@@ -664,6 +670,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			}
 
 			if (taskAdded) {
+
+
 				task.startTaskThread();
 
 				setupResultPartitionBookkeeping(
@@ -761,6 +769,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 					CompletableFuture.runAsync(
 						() -> {
 							try {
+								partitionInfo.metric = task.getMetricGroup().getIOMetricGroup();
 								if (!shuffleEnvironment.updatePartitionInfo(executionAttemptID, partitionInfo)) {
 									log.debug(
 										"Discard update for input gate partition {} of result {} in task {}. " +
@@ -2108,10 +2117,62 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 		if (task != null) {
 			task.triggerUpdatePartitionStrategy();
-		}else{
+		} else {
 			System.out.println("trigger partition error");
-			final String message = "TaskManager received a checkpoint request for unknown task " + executionAttemptID + '.';
+			final String message =
+				"TaskManager received a checkpoint request for unknown task " + executionAttemptID
+					+ '.';
 			log.error(message);
+		}
+	}
+	/**
+	 * todo 赫明萱加
+	 */
+	public CompletableFuture<Acknowledge> ignoreCheckpoint(ExecutionAttemptID attemptId, long checkpointId,
+														   Time rpcTimeout) {
+		log.info("Ignore checkpoint {} for {}.", checkpointId, attemptId);
+		final Task task = taskSlotTable.getTask(attemptId);
+		if (task != null)
+			task.ignoreCheckpoint(checkpointId);
+		else
+			log.debug("TaskManager received a ignore checkpoint request for unknown task " + attemptId + '.');
+
+		return CompletableFuture.completedFuture(Acknowledge.get());
+	}
+
+	public CompletableFuture<Acknowledge> switchStandbyTaskToRunning(ExecutionAttemptID executionAttemptID, Time timeout) {
+		final Task task = taskSlotTable.getTask(executionAttemptID);
+
+		if (task != null) {
+			try {
+				task.switchStandbyToRunning();
+				return CompletableFuture.completedFuture(Acknowledge.get());
+			} catch (Throwable t) {
+				return FutureUtils.completedExceptionally(new TaskException("Cannot switch standby task to running " + executionAttemptID + '.', t));
+			}
+		} else {
+			final String message = "Cannot find standby task to switch to running " + executionAttemptID + '.';
+
+			log.debug(message);
+			return FutureUtils.completedExceptionally(new TaskException(message));
+		}
+	}
+
+	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobManagerTaskRestore taskRestore, Time timeout) {
+		final Task task = taskSlotTable.getTask(executionAttemptID);
+
+		if (task != null) {
+			try {
+				task.dispatchStateToStandbyTask(taskRestore);
+				return CompletableFuture.completedFuture(Acknowledge.get());
+			} catch (Throwable t) {
+				return FutureUtils.completedExceptionally(new TaskException("Cannot dispatch state snapshot to standby task " + executionAttemptID + '.', t));
+			}
+		} else {
+			final String message = "Cannot find standby task " + executionAttemptID + " to dispatch state to it.";
+
+			log.debug(message);
+			return FutureUtils.completedExceptionally(new TaskException(message));
 		}
 	}
 }

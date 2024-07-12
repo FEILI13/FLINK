@@ -43,6 +43,9 @@ import org.apache.flink.runtime.scheduler.strategy.PipelinedRegionSchedulingStra
 import org.apache.flink.runtime.scheduler.strategy.SchedulingStrategyFactory;
 import org.apache.flink.util.clock.SystemClock;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.function.Consumer;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
@@ -52,6 +55,8 @@ import static org.apache.flink.util.Preconditions.checkArgument;
  * configured {@link JobManagerOptions#SCHEDULING_STRATEGY}.
  */
 public class DefaultSchedulerComponents {
+
+	private static final Logger LOG = LoggerFactory.getLogger(DefaultSchedulerComponents.class);
 
 	private static final String PIPELINED_REGION_SCHEDULING = "region";
 	private static final String LEGACY_SCHEDULING = "legacy";
@@ -92,6 +97,8 @@ public class DefaultSchedulerComponents {
 		final String schedulingStrategy = jobMasterConfiguration.getString(JobManagerOptions.SCHEDULING_STRATEGY);
 		switch (schedulingStrategy) {
 			case PIPELINED_REGION_SCHEDULING:
+
+				LOG.info("PIPELINED_REGION_SCHEDULING");
 				checkArgument(
 					!isApproximateLocalRecoveryEnabled,
 					"Approximate local recovery can not be used together with PipelinedRegionScheduler for now! " +
@@ -102,6 +109,8 @@ public class DefaultSchedulerComponents {
 					slotPool,
 					slotRequestTimeout);
 			case LEGACY_SCHEDULING:
+
+				LOG.info("LEGACY_SCHEDULING");
 				checkArgument(!isApproximateLocalRecoveryEnabled || !scheduleMode.allowLazyDeployment(),
 					"Approximate local recovery can only be used together with EAGER schedule mode!");
 				return createLegacySchedulerComponents(
@@ -170,10 +179,12 @@ public class DefaultSchedulerComponents {
 
 		final SlotSelectionStrategy locationPreferenceSlotSelectionStrategy;
 
+		//return new DefaultLocationPreferenceSlotSelectionStrategy();
 		locationPreferenceSlotSelectionStrategy = evenlySpreadOutSlots ?
 			LocationPreferenceSlotSelectionStrategy.createEvenlySpreadOut() :
 			LocationPreferenceSlotSelectionStrategy.createDefault();
 
+		//			locationPreferenceSlotSelectionStrategy;
 		return configuration.getBoolean(CheckpointingOptions.LOCAL_RECOVERY) ?
 			PreviousAllocationSlotSelectionStrategy.create(locationPreferenceSlotSelectionStrategy) :
 			locationPreferenceSlotSelectionStrategy;

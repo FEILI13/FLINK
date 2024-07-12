@@ -44,4 +44,5 @@ public interface SchedulerOperations {
 	default void cancelTasksAndChannelsForRescale(List<ExecutionVertexDeploymentOption> savedExecutionVertexDeploymentOptionsForRescale) {
 		throw new UnsupportedOperationException();
 	}
+	void allocateStandbySlotsAndDeploy(List<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions);
 }

@@ -21,8 +21,12 @@ package org.apache.flink.runtime.io.network.partition.consumer;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
+import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.execution.CancelTaskException;
+import org.apache.flink.runtime.io.network.ConnectionID;
+import org.apache.flink.runtime.io.network.ConnectionManager;
+import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.TaskEventPublisher;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
@@ -33,6 +37,8 @@ import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionManager;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartition.BufferAndBacklog;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartitionView;
+
+import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -197,6 +203,7 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 
 	@Override
 	Optional<BufferAndAvailability> getNextBuffer() throws IOException {
+		System.out.println("local");
 		checkError();
 
 		ResultSubpartitionView subpartitionView = this.subpartitionView;
@@ -279,7 +286,7 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 	// ------------------------------------------------------------------------
 
 	@Override
-	void sendTaskEvent(TaskEvent event) throws IOException {
+	public void sendTaskEvent(TaskEvent event) throws IOException {
 		checkError();
 		checkState(subpartitionView != null, "Tried to send task event to producer before requesting the subpartition.");
 
@@ -336,5 +343,45 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 	@VisibleForTesting
 	ResultSubpartitionView getSubpartitionView() {
 		return subpartitionView;
+	}
+
+
+
+	/*
+	todo 赫明萱加
+	 */
+	public LocalInputChannel toNewLocalInputChannel(ResultPartitionID newPartitionId,
+													ResultPartitionManager partitionManager, TaskEventDispatcher taskEventDispatcher,
+													int initialBackoff, int maxBackoff, TaskIOMetricGroup metrics) throws IOException {
+		return new LocalInputChannel(inputGate,
+			channelInfo.getInputChannelIdx(),
+			newPartitionId,
+			partitionManager,
+			taskEventDispatcher,
+			initialBackoff,
+			maxBackoff,
+			metrics.getNumBytesInCounter(),
+			metrics.getNumBytesInCounter(),
+			channelStatePersister.channelStateWriter);
+	}
+
+
+	public RemoteInputChannel toNewRemoteInputChannel(ResultPartitionID newPartitionId,
+													  ConnectionID newProducerAddress, ConnectionManager connectionManager,
+													  int initialBackoff, int maxBackoff,int networkBuffersPerChannel ,TaskIOMetricGroup metrics) throws IOException {
+		releaseAllResources();
+		RemoteInputChannel newRemoteInputChannel = new RemoteInputChannel(inputGate,
+			channelInfo.getInputChannelIdx(),
+			newPartitionId,
+			checkNotNull(newProducerAddress),
+			connectionManager,
+			initialBackoff,
+			maxBackoff,
+			networkBuffersPerChannel,
+			metrics.getNumBytesInCounter(),
+			metrics.getNumBytesInCounter(),
+			channelStatePersister.channelStateWriter);
+
+		return newRemoteInputChannel;
 	}
 }

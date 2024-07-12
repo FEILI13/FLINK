@@ -37,6 +37,11 @@ public class TestingSchedulerOperations implements SchedulerOperations {
 		scheduledVertices.add(executionVertexDeploymentOptions);
 	}
 
+	@Override
+	public void allocateStandbySlotsAndDeploy(List<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions) {
+
+	}
+
 	List<List<ExecutionVertexDeploymentOption>> getScheduledVertices() {
 		return Collections.unmodifiableList(scheduledVertices);
 	}

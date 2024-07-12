@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.14">
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-walkthroughs\flink-walkthrough-common\src\main\java\org\apache\flink\walkthrough\common\entity\Alert.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-walkthroughs\flink-walkthrough-common\src\main\java\org\apache\flink\walkthrough\common\entity\Transaction.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-walkthroughs\flink-walkthrough-common\src\main\java\org\apache\flink\walkthrough\common\sink\AlertSink.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-walkthroughs\flink-walkthrough-common\src\main\java\org\apache\flink\walkthrough\common\sink\LoggerOutputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-walkthroughs\flink-walkthrough-common\src\main\java\org\apache\flink\walkthrough\common\source\TransactionIterator.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-walkthroughs\flink-walkthrough-common\src\main\java\org\apache\flink\walkthrough\common\source\TransactionRowInputFormat.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-walkthroughs\flink-walkthrough-common\src\main\java\org\apache\flink\walkthrough\common\source\TransactionSource.java">
+</file>
+</checkstyle>

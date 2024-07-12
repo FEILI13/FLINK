@@ -28,7 +28,7 @@ public class ExecutionVertexVersion {
 
 	private final ExecutionVertexID executionVertexId;
 
-	private final long version;
+	private  long version;
 
 	ExecutionVertexVersion(final ExecutionVertexID executionVertexId, final long version) {
 		this.executionVertexId = executionVertexId;
@@ -41,5 +41,9 @@ public class ExecutionVertexVersion {
 
 	public long getVersion() {
 		return version;
+	}
+
+	public void add(){
+		version++;
 	}
 }

@@ -62,4 +62,5 @@ public abstract class IndexedInputGate extends InputGate implements Checkpointab
 			}
 		}
 	}
+	public abstract SingleInputGate get();
 }

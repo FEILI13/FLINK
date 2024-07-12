@@ -28,6 +28,7 @@ import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.ArchivedExecutionGraph;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
+import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.executiongraph.JobStatusListener;
 import org.apache.flink.runtime.executiongraph.TaskExecutionStateTransition;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
@@ -68,6 +69,11 @@ public class TestingSchedulerNG implements SchedulerNG {
 		this.terminationFuture = terminationFuture;
 		this.startSchedulingRunnable = startSchedulingRunnable;
 		this.suspendConsumer = suspendConsumer;
+	}
+
+	@Override
+	public ExecutionGraph getExecutionGraph() {
+		return null;
 	}
 
 	@Override

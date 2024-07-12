@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="8.14">
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\constraint\SqlConstraintEnforcement.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\constraint\SqlTableConstraint.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\constraint\SqlUniqueSpec.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlAddPartitions.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlAddReplaceColumns.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlAlterDatabase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlAlterFunction.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlAlterTable.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlAlterTableAddConstraint.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlAlterTableDropConstraint.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlAlterTableProperties.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlAlterTableRename.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlAlterView.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlAlterViewAs.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlAlterViewProperties.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlAlterViewRename.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlChangeColumn.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlCreateCatalog.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlCreateDatabase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlCreateFunction.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlCreateTable.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlCreateView.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlDropCatalog.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlDropDatabase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlDropFunction.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlDropPartitions.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlDropTable.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlDropView.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlTableColumn.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlTableLike.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlTableOption.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlUseCatalog.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlUseDatabase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ddl\SqlWatermark.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\dml\RichSqlInsert.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\dml\RichSqlInsertKeyword.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\dql\SqlDescribeCatalog.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\dql\SqlDescribeDatabase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\dql\SqlRichDescribeTable.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\dql\SqlShowCatalogs.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\dql\SqlShowCurrentCatalog.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\dql\SqlShowCurrentDatabase.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\dql\SqlShowDatabases.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\dql\SqlShowFunctions.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\dql\SqlShowPartitions.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\dql\SqlShowTables.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\dql\SqlShowViews.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\error\SqlValidateException.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\ExtendedSqlNode.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\package-info.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\SqlPartitionUtils.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\SqlProperty.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\type\ExtendedSqlCollectionTypeNameSpec.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\type\ExtendedSqlRowTypeNameSpec.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\type\SqlMapTypeNameSpec.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\type\SqlRawTypeNameSpec.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\utils\ParserResource.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\sql\parser\validate\FlinkSqlConformance.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\java\org\apache\flink\table\calcite\ExtendedRelTypeFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\test\java\org\apache\flink\sql\parser\CreateTableLikeTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\test\java\org\apache\flink\sql\parser\Fixture.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\test\java\org\apache\flink\sql\parser\FlinkDDLDataTypeTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\test\java\org\apache\flink\sql\parser\FlinkSqlParserImplTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\test\java\org\apache\flink\sql\parser\FlinkSqlUnParserTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\test\java\org\apache\flink\sql\parser\TableApiIdentifierParsingTest.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\test\java\org\apache\flink\sql\parser\TestRelDataTypeFactory.java">
+</file>
+<file name="C:\Users\FEILI13\Desktop\stream\code\flink12.0\flink-1.12.0\flink-table\flink-sql-parser\src\main\resources\org.apache.flink.sql.parser.utils\ParserResource.properties">
+</file>
+</checkstyle>

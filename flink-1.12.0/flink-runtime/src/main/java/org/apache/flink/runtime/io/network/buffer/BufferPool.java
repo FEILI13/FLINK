@@ -18,6 +18,8 @@
 
 package org.apache.flink.runtime.io.network.buffer;
 
+import java.io.IOException;
+
 /**
  * A dynamically sized buffer pool.
  */
@@ -77,4 +79,7 @@ public interface BufferPool extends BufferProvider, BufferRecycler {
     default void updateForRescale(int newNumSubpartitions){
 		throw new UnsupportedOperationException();
 	}
+	int getMemorySegmentSize();
+
+	Buffer requestBufferBlocking() throws IOException, InterruptedException;
 }

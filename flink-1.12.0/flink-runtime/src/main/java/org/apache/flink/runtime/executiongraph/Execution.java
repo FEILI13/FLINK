@@ -61,6 +61,11 @@ import org.apache.flink.runtime.operators.coordination.TaskNotRunningException;
 import org.apache.flink.runtime.reConfig.message.ReConfigSignal;
 import org.apache.flink.runtime.reConfig.utils.RedisUtil;
 import org.apache.flink.runtime.reConfig.utils.RescaleState;
+import org.apache.flink.runtime.scheduler.DeploymentOption;
+import org.apache.flink.runtime.scheduler.ExecutionVertexDeploymentOption;
+import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
+import org.apache.flink.runtime.scheduler.strategy.PipelinedRegionSchedulingStrategy;
+import org.apache.flink.runtime.scheduler.strategy.SchedulingStrategy;
 import org.apache.flink.runtime.shuffle.NettyShuffleMaster;
 import org.apache.flink.runtime.shuffle.PartitionDescriptor;
 import org.apache.flink.runtime.shuffle.ProducerDescriptor;
@@ -93,6 +98,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
@@ -107,6 +113,7 @@ import static org.apache.flink.runtime.execution.ExecutionState.FAILED;
 import static org.apache.flink.runtime.execution.ExecutionState.FINISHED;
 import static org.apache.flink.runtime.execution.ExecutionState.RUNNING;
 import static org.apache.flink.runtime.execution.ExecutionState.SCHEDULED;
+import static org.apache.flink.runtime.execution.ExecutionState.STANDBY;
 import static org.apache.flink.runtime.scheduler.ExecutionVertexSchedulingRequirementsMapper.getPhysicalSlotResourceProfile;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -194,9 +201,11 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 	private IOMetrics ioMetrics;
 
-	private Map<IntermediateResultPartitionID, ResultPartitionDeploymentDescriptor> producedPartitions;
+	public Map<IntermediateResultPartitionID, ResultPartitionDeploymentDescriptor> producedPartitions;
 
 	// --------------------------------------------------------------------------------------------
+
+	public boolean isStandby = false;
 
 	/**
 	 * Creates a new Execution attempt.
@@ -240,6 +249,36 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		this.taskManagerLocationFuture = new CompletableFuture<>();
 
 		this.assignedResource = null;
+	}
+
+	public Execution(
+		Executor executor,
+		ExecutionVertex vertex,
+		int attemptNumber,
+		long globalModVersion,
+		long startTimestamp,
+		Time rpcTimeout,
+		boolean isStandby) {
+
+		this.executor = checkNotNull(executor);
+		this.vertex = checkNotNull(vertex);
+		this.attemptId = new ExecutionAttemptID();
+		this.rpcTimeout = checkNotNull(rpcTimeout);
+
+		this.globalModVersion = globalModVersion;
+		this.attemptNumber = attemptNumber;
+
+		this.stateTimestamps = new long[ExecutionState.values().length];
+		markTimestamp(CREATED, startTimestamp);
+
+		this.partitionInfos = new ArrayList<>(16);
+		this.producedPartitions = Collections.emptyMap();
+		this.terminalStateFuture = new CompletableFuture<>();
+		this.releaseFuture = new CompletableFuture<>();
+		this.taskManagerLocationFuture = new CompletableFuture<>();
+
+		this.assignedResource = null;
+		this.isStandby = isStandby;
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -309,32 +348,45 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		// only allow to set the assigned resource in state SCHEDULED or CREATED
 		// note: we also accept resource assignment when being in state CREATED for testing purposes
 		if (state == SCHEDULED || state == CREATED) {
+			LOG.info("(state == SCHEDULED || state == CREATED");
 			if (assignedResource == null) {
+				LOG.info("assignedResource == null");
 				assignedResource = logicalSlot;
 				if (logicalSlot.tryAssignPayload(this)) {
+					LOG.info("logicalSlot.tryAssignPayload(this)");
 					// check for concurrent modification (e.g. cancelling call)
 					if ((state == SCHEDULED || state == CREATED) && !taskManagerLocationFuture.isDone()) {
+						LOG.info("(state == SCHEDULED || state == CREATED) && !taskManagerLocationFuture.isDone()");
 						taskManagerLocationFuture.complete(logicalSlot.getTaskManagerLocation());
 						assignedAllocationID = logicalSlot.getAllocationId();
 						System.out.println("state = " + state + "assignedAllocationID = " + assignedAllocationID);
 						return true;
 					} else {
+
+						LOG.info("(state == SCHEDULED || state == CREATED) && !taskManagerLocationFuture.isDone() false");
 						// free assigned resource and return false
 						assignedResource = null;
 						System.out.println("state = " + state + "assignedResource = " + assignedResource + "try failed");
 						return false;
 					}
 				} else {
+					LOG.info("logicalSlot.tryAssignPayload(this) false");
 					assignedResource = null;
 					System.out.println("state = " + state + "assignedResource = " + assignedResource);
 					return false;
 				}
 			} else {
+
+				LOG.info("assignedResource == null false");
 				// the slot already has another slot assigned
 				System.out.println("the slot already has another slot assigned");
 				return false;
 			}
 		} else {
+
+
+			LOG.info("(state == SCHEDULED || state == CREATED  fasle");
+			LOG.info("我的阶段 {}",state);
 			// do not allow resource assignment if we are not in state SCHEDULED
 			return false;
 		}
@@ -389,6 +441,17 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	 */
 	public void setInitialState(@Nullable JobManagerTaskRestore taskRestore) {
 		this.taskRestore = taskRestore;
+
+		if (isStandby && state == STANDBY) {
+			CompletableFuture<Acknowledge> ack = dispatchStateToStandbyTaskRpcCall(taskRestore);
+			//We must synchronously wait for the result
+			try {
+				ack.get();
+			} catch (InterruptedException | ExecutionException e) {
+				e.printStackTrace();
+			}
+			LOG.debug("Dispatch state snapshot {} to standby task {}.", taskRestore, vertex.getTaskNameWithSubtaskIndex());
+		}
 	}
 
 	/**
@@ -418,13 +481,48 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	//  Actions
 	// --------------------------------------------------------------------------------------------
 
-	public CompletableFuture<Void> scheduleForExecution() {
+//	public CompletableFuture<Void> scheduleForExecution() {
+//
+//		LOG.info("public CompletableFuture<Void> scheduleForExecution()");
+//		final ExecutionGraph executionGraph = getVertex().getExecutionGraph();
+//
+////		final SchedulingStrategy schedulingStrategy = executionGraph.schedulingStrategy_hmx;
+////
+////		LOG.info("schedulingStrategy {}",schedulingStrategy.getClass());
+////		LOG.info("SchedulingStrategy schedulingStrategy = executionGraph.schedulingStrategy_hmx;");
+////		DeploymentOption deploymentOption = new DeploymentOption(false);
+////		ExecutionVertexDeploymentOption executionVertexDeploymentOption = new ExecutionVertexDeploymentOption((ExecutionVertexID)vertex.getVertexId(),deploymentOption);
+////
+////		LOG.info("PipelinedRegionSchedulingStrategy)schedulingStrategy)");
+////		((PipelinedRegionSchedulingStrategy)schedulingStrategy).allocatestandbySlotsAndDeploy((List<ExecutionVertexDeploymentOption>) executionVertexDeploymentOption);
+//
+//
+//		final SlotProviderStrategy resourceProvider = executionGraph.getSlotProviderStrategy();
+//		LOG.info("scheduleForExecution()");
+//		return scheduleForExecution(
+//			resourceProvider,
+//			LocationPreferenceConstraint.ANY,
+//			Collections.emptySet());
+//	}
+
+
+	public void scheduleForExecution() {
+
+		LOG.info("public CompletableFuture<Void> scheduleForExecution()");
 		final ExecutionGraph executionGraph = getVertex().getExecutionGraph();
-		final SlotProviderStrategy resourceProvider = executionGraph.getSlotProviderStrategy();
-		return scheduleForExecution(
-			resourceProvider,
-			LocationPreferenceConstraint.ANY,
-			Collections.emptySet());
+
+		final SchedulingStrategy schedulingStrategy = executionGraph.schedulingStrategy_hmx;
+
+//		LOG.info("schedulingStrategy {}",schedulingStrategy.getClass());
+		LOG.info("SchedulingStrategy schedulingStrategy = executionGraph.schedulingStrategy_hmx;");
+		DeploymentOption deploymentOption = new DeploymentOption(false);
+		ExecutionVertexDeploymentOption executionVertexDeploymentOption = new ExecutionVertexDeploymentOption((ExecutionVertexID)vertex.getVertexId(),deploymentOption);
+
+		List<ExecutionVertexDeploymentOption> list = new ArrayList<>();
+		list.add(executionVertexDeploymentOption);
+		LOG.info("PipelinedRegionSchedulingStrategy)schedulingStrategy)");
+		((PipelinedRegionSchedulingStrategy)schedulingStrategy).allocatestandbySlotsAndDeploy( list);
+
 	}
 
 	/**
@@ -449,6 +547,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				slotProviderStrategy,
 				locationPreferenceConstraint,
 				allPreviousExecutionGraphAllocationIds);
+
+
 
 			final CompletableFuture<Void> deploymentFuture = allocationFuture.thenRun(ThrowingRunnable.unchecked(this::deploy));
 
@@ -550,6 +650,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				preferredLocationsFuture.thenCompose(
 					(Collection<TaskManagerLocation> preferredLocations) -> {
 						LOG.info("Allocating slot with SlotRequestID {} for the execution attempt {}.", slotRequestId, attemptId);
+
+
 						return slotProviderStrategy.allocateSlot(
 							slotRequestId,
 							toSchedule,
@@ -650,6 +752,9 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		Collection<CompletableFuture<ResultPartitionDeploymentDescriptor>> partitionRegistrations =
 			new ArrayList<>(partitions.size());
 
+		//LOG.warn("\n\n" + vertex.getTaskNameWithSubtaskIndex() + attemptId +
+		//	" registerProducedPartition: " + partitions.size());
+
 		for (IntermediateResultPartition partition : partitions) {
 			PartitionDescriptor partitionDescriptor = PartitionDescriptor.from(partition);
 			int maxParallelism = getPartitionMaxParallelism(partition);
@@ -696,6 +801,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		assertRunningInJobMasterMainThread();
 
 		final LogicalSlot slot  = assignedResource;
+		LOG.info("LogicalSlot slot {}",slot.getTaskManagerGateway().getAddress());
 
 		checkNotNull(slot, "In order to deploy the execution we first have to assign a resource via tryAssignResource.");
 
@@ -717,6 +823,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			}
 		}
 		else {
+			LOG.info("previous = this.state {}",previous);
+			//LOG.info("woshistandby? {}",isStandby);
 			// vertex may have been cancelled, or it was already scheduled
 			throw new IllegalStateException("The vertex must be in CREATED or SCHEDULED state to be deployed. Found state " + previous);
 		}
@@ -744,25 +852,36 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 					"Rescaling from unaligned checkpoint is not yet supported.");
 			}
 
+			LOG.info("TaskDeploymentDescriptor deployment = TaskDeploymentDescriptorFactory");
 			final TaskDeploymentDescriptor deployment = TaskDeploymentDescriptorFactory
 				.fromExecutionVertex(vertex, attemptNumber)
 				.createDeploymentDescriptor(
 					slot.getAllocationId(),
 					slot.getPhysicalSlotNumber(),
 					taskRestore,
-					producedPartitions.values());
+					producedPartitions.values(),
+					isStandby);
 
+			deployment.setExecutionAttemptId(attemptId);
+
+			//LOG.warn("\n" + vertex.getTaskNameWithSubtaskIndex() + isStandby + " producedPartitions: " + producedPartitions.values().size() );
+			//LOG.warn("\n" + vertex.getTaskNameWithSubtaskIndex() + deployment.isStandby + " attemptId  " + deployment.getExecutionAttemptId()  + " | " + attemptId);
 			// null taskRestore to let it be GC'ed
 			taskRestore = null;
 
 			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
 
+			LOG.info("TaskManagerGateway IP {}",taskManagerGateway.getAddress());
 			final ComponentMainThreadExecutor jobMasterMainThreadExecutor =
 				vertex.getExecutionGraph().getJobMasterMainThreadExecutor();
+
+
 
 			getVertex().notifyPendingDeployment(this);
 			// We run the submission in the future executor so that the serialization of large TDDs does not block
 			// the main thread and sync back to the main thread once submission is completed.
+
+			LOG.info("taskManagerGateway.submitTask");
 			CompletableFuture.supplyAsync(() -> taskManagerGateway.submitTask(deployment, rpcTimeout), executor)
 				.thenCompose(Function.identity())
 				.whenCompleteAsync(
@@ -902,7 +1021,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		scheduleOrUpdateConsumers(allConsumers, consumerDeduplicator);
 	}
 
-	private void scheduleOrUpdateConsumers(
+	public void scheduleOrUpdateConsumers(
 			final List<List<ExecutionEdge>> allConsumers,
 			final HashSet<ExecutionVertex> consumerDeduplicator) {
 
@@ -1319,7 +1438,9 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			return;
 		}
 
+		LOG.info("!fromSchedulerNg {} && !isLegacyScheduling() {}", fromSchedulerNg, isLegacyScheduling());
 		if (!fromSchedulerNg && !isLegacyScheduling()) {
+			LOG.info("进来了!fromSchedulerNg {} && !isLegacyScheduling() {}", fromSchedulerNg, isLegacyScheduling());
 			vertex.getExecutionGraph().notifySchedulerNgAboutInternalTaskFailure(
 				attemptId,
 				t,
@@ -1327,6 +1448,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				releasePartitions);
 			return;
 		}
+
+
 
 		checkState(transitionState(current, FAILED, t));
 
@@ -1628,6 +1751,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			}
 
 			if (targetState.isTerminal()) {
+				LOG.info("if (targetState.isTerminal()) {");
 				// complete the terminal state future
 				terminalStateFuture.complete(targetState);
 			}
@@ -1635,6 +1759,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			// make sure that the state transition completes normally.
 			// potential errors (in listeners may not affect the main logic)
 			try {
+				LOG.info("vertex.notifyStateTransition(this, targetState, error)");
 				vertex.notifyStateTransition(this, targetState, error);
 			}
 			catch (Throwable t) {
@@ -1729,7 +1854,6 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		return String.format("Attempt #%d (%s) @ %s - [%s]", attemptNumber, vertex.getTaskNameWithSubtaskIndex(),
 				(slot == null ? "(unassigned)" : slot), state);
 	}
-
 	@Override
 	public ArchivedExecution archive() {
 		return new ArchivedExecution(this);
@@ -1842,5 +1966,149 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		} else {
 			LOG.debug("The execution has no slot assigned. This indicates that the execution is no longer running.");
 		}
+	/*
+	todo h赫明萱加
+	 */
+	public CompletableFuture<Acknowledge> ignoreCheckpointRpcCall(long checkpointId) {
+		final LogicalSlot slot = assignedResource;
+		if (slot != null) {
+			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+			CompletableFuture<Acknowledge> cancelResult = FutureUtils.retry(
+				() -> taskManagerGateway.ignoreCheckpoint(attemptId, checkpointId, rpcTimeout),
+				NUM_CANCEL_CALL_TRIES,
+				executor);
+			return cancelResult;
+		}
+
+		return CompletableFuture.completedFuture(Acknowledge.get());
+	}
+
+	CompletableFuture<Acknowledge> runStandbyExecution() throws IllegalStateException {
+		if (!this.isStandby) {
+			markFailed(new Exception("Tried to run a standby execution instance that is not a standby one."));
+		}
+
+		ExecutionState current = this.state;
+		if (current != STANDBY) {
+			throw new IllegalStateException("Tried to run a standby execution that is not in STANDBY state, but in " + current + " state.");
+		}
+
+		return sendSwitchStandbyToRunningRpcCall();
+	}
+
+	/**
+	 * This method sends a switchStandbyTaskToRunning message to the instance of the assigned slot.
+	 *
+	 * <p>The sending is tried up to NUM_CANCEL_CALL_TRIES times.
+	 */
+	private CompletableFuture<Acknowledge> sendSwitchStandbyToRunningRpcCall() {
+		final LogicalSlot slot = assignedResource;
+
+		CompletableFuture<Acknowledge> toReturn = CompletableFuture.completedFuture(Acknowledge.get());
+		if (slot != null) {
+			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+
+			CompletableFuture<Acknowledge> switchToRunningResultFuture = FutureUtils.retry(
+				() -> taskManagerGateway.switchStandbyTaskToRunning(attemptId, rpcTimeout),
+				NUM_CANCEL_CALL_TRIES,
+				executor);
+
+			toReturn = switchToRunningResultFuture.whenCompleteAsync(
+				(ack, failure) -> {
+					if (failure != null) {
+						fail(new Exception("Standby task could not be switched to running.", failure));
+					}
+				},
+				executor);
+		}
+		return toReturn;
+	}
+
+	public void scheduleOrUpdateConsumers(
+		final List<List<ExecutionEdge>> allConsumers,
+		final HashSet<ExecutionVertex> consumerDeduplicator,
+		boolean updateConsumersOnFailover) {
+
+		if (allConsumers.size() == 0) {
+			return;
+		}
+		if (allConsumers.size() > 1) {
+			fail(new IllegalStateException("Currently, only a single consumer group per partition is supported."));
+			return;
+		}
+
+		for (ExecutionEdge edge : allConsumers.get(0)) {
+			final ExecutionVertex consumerVertex = edge.getTarget();
+			final Execution consumer = consumerVertex.getCurrentExecutionAttempt();
+			final ExecutionState consumerState = consumer.getState();
+
+			// ----------------------------------------------------------------
+			// Consumer is created => needs to be scheduled
+			// ----------------------------------------------------------------
+			if (consumerState == CREATED) {
+				// Schedule the consumer vertex if its inputs constraint is satisfied, otherwise skip the scheduling.
+				// A shortcut of input constraint check is added for InputDependencyConstraint.ANY since
+				// at least one of the consumer vertex's inputs is consumable here. This is to avoid the
+				// O(N) complexity introduced by input constraint check for InputDependencyConstraint.ANY,
+				// as we do not want the default scheduling performance to be affected.
+				if (isLegacyScheduling() && consumerDeduplicator.add(consumerVertex) &&
+					(consumerVertex.getInputDependencyConstraint() == InputDependencyConstraint.ANY ||
+						consumerVertex.checkInputDependencyConstraints())) {
+
+					scheduleConsumer(consumerVertex);
+				}
+			}
+			// ----------------------------------------------------------------
+			// Consumer is running => send update message now
+			// Consumer is deploying => cache the partition info which would be
+			// sent after switching to running
+			// ----------------------------------------------------------------
+			else if (consumerState == DEPLOYING || consumerState == RUNNING||consumerState == STANDBY||consumerState == SCHEDULED) {
+				final PartitionInfo partitionInfo = createPartitionInfo(edge);
+				partitionInfo.updateConsumersOnFailover = updateConsumersOnFailover;
+				if (consumerState == DEPLOYING||consumerState == SCHEDULED) {
+					consumerVertex.cachePartitionInfo(partitionInfo);
+				} else {
+					consumer.sendUpdatePartitionInfoRpcCall(Collections.singleton(partitionInfo));
+				}
+			}
+		}
+	}
+
+	/**
+	 * This method sends a dispatchStateToStandbyTask message to the instance of the assigned slot.
+	 *
+	 * <p>The sending is tried up to NUM_CANCEL_CALL_TRIES times.
+	 * @return
+	 */
+	private CompletableFuture<Acknowledge> dispatchStateToStandbyTaskRpcCall(JobManagerTaskRestore taskRestore) {
+		final LogicalSlot slot = assignedResource;
+
+		final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+
+		CompletableFuture<Acknowledge> dispatchStateResultFuture = FutureUtils.retry(
+			() -> taskManagerGateway.dispatchStateToStandbyTask(attemptId, taskRestore, rpcTimeout),
+			NUM_CANCEL_CALL_TRIES,
+			executor);
+
+		dispatchStateResultFuture.whenCompleteAsync(
+			(ack, failure) -> {
+				if (failure != null) {
+					fail(new Exception("State snapshot could not be dispatched to standby task " +
+						vertex.getTaskNameWithSubtaskIndex() + '.', failure));
+				}
+			},
+			executor);
+
+		return dispatchStateResultFuture;
+	}
+
+	boolean switchToStandby() {
+
+		if (!this.isStandby) {
+			markFailed(new Exception("Tried to switch to STANDBY state a non-standby execution instance."));
+		}
+
+		return transitionState(DEPLOYING, STANDBY);
 	}
 }

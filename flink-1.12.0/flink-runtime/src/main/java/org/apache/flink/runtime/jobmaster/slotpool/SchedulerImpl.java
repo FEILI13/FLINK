@@ -134,9 +134,9 @@ public class SchedulerImpl implements Scheduler {
 		ScheduledUnit scheduledUnit,
 		SlotProfile slotProfile,
 		@Nullable Time allocationTimeout) {
-		log.debug("Received slot request [{}] for task: {}", slotRequestId, scheduledUnit.getJobVertexId());
+		log.info("Received slot request [{}] for task: {}", slotRequestId, scheduledUnit.getJobVertexId());
 
-		componentMainThreadExecutor.assertRunningInMainThread();
+		//componentMainThreadExecutor.assertRunningInMainThread();
 
 		final CompletableFuture<LogicalSlot> allocationResultFuture = new CompletableFuture<>();
 		internalAllocateSlot(
@@ -179,7 +179,7 @@ public class SchedulerImpl implements Scheduler {
 		@Nullable SlotSharingGroupId slotSharingGroupId,
 		Throwable cause) {
 
-		componentMainThreadExecutor.assertRunningInMainThread();
+		//componentMainThreadExecutor.assertRunningInMainThread();
 
 		if (slotSharingGroupId != null) {
 			releaseSharedSlot(slotRequestId, slotSharingGroupId, cause);
@@ -204,8 +204,11 @@ public class SchedulerImpl implements Scheduler {
 			SlotProfile slotProfile,
 			@Nullable Time allocationTimeout) {
 		if (allocationTimeout == null) {
+			log.info("requestNewAllocatedSlot:allocationTimeout == null");
 			return slotPool.requestNewAllocatedBatchSlot(slotRequestId, slotProfile.getPhysicalSlotResourceProfile());
 		} else {
+
+			log.info("requestNewAllocatedSlot:else");
 			return slotPool.requestNewAllocatedSlot(slotRequestId, slotProfile.getPhysicalSlotResourceProfile(), allocationTimeout);
 		}
 	}
@@ -251,12 +254,14 @@ public class SchedulerImpl implements Scheduler {
 		final SlotSharingManager.MultiTaskSlotLocality multiTaskSlotLocality;
 		try {
 			if (scheduledUnit.getCoLocationConstraint() != null) {
+				log.info("scheduledUnit.getCoLocationConstraint() != null");
 				multiTaskSlotLocality = allocateCoLocatedMultiTaskSlot(
 					scheduledUnit.getCoLocationConstraint(),
 					multiTaskSlotManager,
 					slotProfile,
 					allocationTimeout);
 			} else {
+				log.info("scheduledUnit.getCoLocationConstraint() == null");
 				multiTaskSlotLocality = allocateMultiTaskSlot(
 					scheduledUnit.getJobVertexId(),
 					multiTaskSlotManager,
@@ -451,6 +456,8 @@ public class SchedulerImpl implements Scheduler {
 		SlotSharingManager.MultiTaskSlot multiTaskSlot = slotSharingManager.getUnresolvedRootSlot(groupId);
 
 		if (multiTaskSlot == null) {
+
+			log.info("multiTaskSlot == null");
 			// it seems as if we have to request a new slot from the resource manager, this is always the last resort!!!
 			final CompletableFuture<PhysicalSlot> slotAllocationFuture = requestNewAllocatedSlot(
 				allocatedSlotRequestId,

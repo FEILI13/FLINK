@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
+import org.apache.flink.runtime.causal.log.CausalLogManager;
 import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.ConnectionManager;
 import org.apache.flink.runtime.io.network.PartitionRequestClient;
@@ -40,18 +41,29 @@ public class NettyConnectionManager implements ConnectionManager {
 
 	private final NettyProtocol nettyProtocol;
 
+	private final CausalLogManager causalLogManager;
+
 	public NettyConnectionManager(
 		ResultPartitionProvider partitionProvider,
 		TaskEventPublisher taskEventPublisher,
 		NettyConfig nettyConfig) {
+
+		this(partitionProvider,taskEventPublisher,nettyConfig,null);
+	}
+
+	public NettyConnectionManager(
+		ResultPartitionProvider partitionProvider,
+		TaskEventPublisher taskEventPublisher,
+		NettyConfig nettyConfig,
+		CausalLogManager causalLogManager) {
 
 		this.server = new NettyServer(nettyConfig);
 		this.client = new NettyClient(nettyConfig);
 		this.bufferPool = new NettyBufferPool(nettyConfig.getNumberOfArenas());
 
 		this.partitionRequestClientFactory = new PartitionRequestClientFactory(client, nettyConfig.getNetworkRetries());
-
-		this.nettyProtocol = new NettyProtocol(checkNotNull(partitionProvider), checkNotNull(taskEventPublisher));
+		this.causalLogManager = causalLogManager;
+		this.nettyProtocol = new NettyProtocol(checkNotNull(partitionProvider), checkNotNull(taskEventPublisher),causalLogManager);
 	}
 
 	@Override
